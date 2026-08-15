@@ -102,7 +102,21 @@ const NEXT_TURN: Record<PlayerColor, PlayerColor> = {
 };
 
 export default function App() {
-  const [viewMode, setViewMode] = useState<ViewMode>('lobby');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if (typeof window === 'undefined') return 'lobby';
+    const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
+    const searchParams = new URLSearchParams(window.location.search);
+    const isHashAdmin = window.location.hash.includes('admin');
+    if (
+      path === 'admin' ||
+      path === 'custom' ||
+      searchParams.get('view') === 'admin' ||
+      isHashAdmin
+    ) {
+      return 'admin';
+    }
+    return 'lobby';
+  });
   const [balance, setBalance] = useState<number>(0.50);
   const [adminToken, setAdminToken] = useState<string | null>(() => localStorage.getItem('ludo_admin_token'));
   const [adminData, setAdminData] = useState<any | null>(null);
