@@ -11,14 +11,12 @@ import { StudioModal } from './StudioModal';
 import { ReferModal } from './ReferModal';
 import { ProfileModal } from './ProfileModal';
 import { NotificationsModal } from './NotificationsModal';
-import { Shield } from 'lucide-react';
 
 interface GameLobbyProps {
   balance: number;
   onAddFunds: (amount: number) => void;
   onPlayLudo: () => void;
   onPlaySnakeLudo: () => void;
-  onOpenAdmin?: () => void;
 }
 
 export const GameLobby: React.FC<GameLobbyProps> = ({
@@ -26,7 +24,6 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   onAddFunds,
   onPlayLudo,
   onPlaySnakeLudo,
-  onOpenAdmin,
 }) => {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [isWalletOpen, setIsWalletOpen] = useState(false);
@@ -66,19 +63,6 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
 
         {/* CARD 3: MEGA TOURNAMENT (Win up to $50K Cash!) */}
         <LobbyCardTournament onPlay={onPlayLudo} />
-
-        {/* ADMIN PORTAL DISCREET ACCESS LINK */}
-        {onOpenAdmin && (
-          <div className="w-full pt-2 pb-1 flex items-center justify-center">
-            <button
-              onClick={onOpenAdmin}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-[11px] font-bold text-slate-600 hover:text-slate-900 transition-all border border-slate-200/80 cursor-pointer shadow-sm"
-            >
-              <Shield className="w-3.5 h-3.5 text-amber-500" />
-              <span>Platform Admin Control Center</span>
-            </button>
-          </div>
-        )}
       </main>
 
       {/* FLOATING STUCK RANK BADGE ON THE RIGHT DISPLAY */}

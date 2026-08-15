@@ -701,10 +701,6 @@ export default function App() {
           SoundManager.play('click');
           setViewMode('snake_ludo');
         }}
-        onOpenAdmin={() => {
-          setViewMode('admin');
-          window.history.pushState({}, '', `/${adminAlias}`);
-        }}
       />
     );
   }
