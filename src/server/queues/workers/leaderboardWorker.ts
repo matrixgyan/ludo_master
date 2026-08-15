@@ -1,21 +1,23 @@
 import { Worker, Job } from 'bullmq';
 import { LeaderboardJobData } from '../queueManager';
 import { getRedisConfig } from '../../redis/client';
-import { getDb } from '../../db/client';
+import { getDb, isPostgresConfigured } from '../../db/client';
 import { leaderboards, playerStatistics } from '../../db/schema';
-import { desc, sql } from 'drizzle-orm';
-import { config, Logger } from '../../config/env';
+import { desc } from 'drizzle-orm';
+import { Logger } from '../../config/env';
 
 export function createLeaderboardWorker(): Worker<LeaderboardJobData> {
   const worker = new Worker<LeaderboardJobData>(
     'leaderboardQueue',
     async (job: Job<LeaderboardJobData>) => {
-      Logger.info(`Processing leaderboard job ${job.id} for type ${job.data.leaderboardType}`);
+      Logger.info(`Processing leaderboard recalculation for ${job.data.leaderboardType}`);
       const { leaderboardType } = job.data;
+
+      if (!isPostgresConfigured()) return;
       const db = getDb();
+      if (!db) return;
 
       try {
-        // Query top players ordered by games won and win rate
         const topPlayers = await db
           .select({
             userId: playerStatistics.userId,
@@ -49,21 +51,20 @@ export function createLeaderboardWorker(): Worker<LeaderboardJobData> {
           rank++;
         }
 
-        Logger.info(`Leaderboard rankings updated for ${leaderboardType} (${topPlayers.length} players ranked)`);
+        Logger.info(`Leaderboard rankings updated for ${leaderboardType}`);
       } catch (err) {
-        Logger.error(`Leaderboard calculation failed for ${leaderboardType}`, err);
-        throw err;
+        Logger.error(`Leaderboard calculation failed: ${String(err)}`);
       }
     },
     {
       connection: getRedisConfig(),
-      prefix: config.BULLMQ_PREFIX,
+      prefix: 'ludo_prod',
       concurrency: 2,
     }
   );
 
-  worker.on('failed', (job, err) => {
-    Logger.error(`Leaderboard job ${job?.id} failed: ${err.message}`, err);
+  worker.on('error', (err) => {
+    Logger.warn(`Leaderboard worker notice: ${err.message}`);
   });
 
   return worker;

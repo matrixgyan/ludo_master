@@ -1,6 +1,6 @@
 {
   "name": "Ludo World Master",
-  "description": "A premium Ludo game lobby with Ludo Supreme, Snake Ludo, Mega Cash Tournaments, 3D animated dice & pawns, decentralized USDT EVM Web3 gaming wallet for multi-chain game assets, and player HUDs.",
+  "description": "A production Ludo game platform featuring Neon PostgreSQL, Redis real-time presence & locks, Cloudflare R2 asset storage, BullMQ background queues, full-featured Admin Control Center (/admin & /custom alias), and real-time multiplayer.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -6,43 +6,27 @@ let redisSubscriber: Redis | null = null;
 let connectionFailed = false;
 
 export function isRedisConfigured(): boolean {
-  return Boolean(config.REDIS_URL || config.REDIS_HOST);
+  return Boolean(
+    config.REDIS_URL &&
+    config.REDIS_URL.trim().length > 0 &&
+    !config.REDIS_URL.includes('samplepassword')
+  );
 }
 
 export function getRedisConfig(): RedisOptions {
-  if (config.REDIS_URL) {
-    return {
-      lazyConnect: true,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: true,
-      enableOfflineQueue: false,
-      retryStrategy(times) {
-        if (times > 5) {
-          connectionFailed = true;
-          return null; // Stop retrying after 5 attempts
-        }
-        return Math.min(times * 200, 2000);
-      },
-    };
-  }
-
   return {
-    host: config.REDIS_HOST || '127.0.0.1',
-    port: config.REDIS_PORT,
-    username: config.REDIS_USERNAME || undefined,
-    password: config.REDIS_PASSWORD || undefined,
-    db: config.REDIS_DB,
-    tls: config.REDIS_TLS ? {} : undefined,
     lazyConnect: true,
     maxRetriesPerRequest: null,
-    enableReadyCheck: true,
+    enableReadyCheck: false,
     enableOfflineQueue: false,
+    // Automatic TLS support for Upstash rediss:// or Cloud Redis
+    tls: config.REDIS_URL?.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
     retryStrategy(times) {
-      if (times > 5) {
+      if (times > 3) {
         connectionFailed = true;
         return null;
       }
-      return Math.min(times * 200, 2000);
+      return Math.min(times * 100, 1000);
     },
   };
 }
@@ -54,33 +38,23 @@ export function getRedisClient(): Redis | null {
 
   if (!redisClient) {
     try {
-      if (config.REDIS_URL) {
-        redisClient = new Redis(config.REDIS_URL, getRedisConfig());
-      } else if (config.REDIS_HOST) {
-        redisClient = new Redis(getRedisConfig());
-      }
+      redisClient = new Redis(config.REDIS_URL!, getRedisConfig());
 
-      if (redisClient) {
-        redisClient.on('connect', () => {
-          connectionFailed = false;
-          Logger.info('Redis client connected successfully');
-        });
+      redisClient.on('connect', () => {
+        connectionFailed = false;
+        Logger.info('Redis / Upstash client connected successfully');
+      });
 
-        redisClient.on('error', (err) => {
-          // Suppress continuous error logs when offline
-          if (!connectionFailed) {
-            Logger.warn(`Redis connection unavailable: ${err.message}. Operating in fallback mode.`);
-          }
-          connectionFailed = true;
-        });
-
-        redisClient.on('close', () => {
-          // Silent close handling
-        });
-      }
-    } catch (err: unknown) {
+      redisClient.on('error', (err: any) => {
+        if (!connectionFailed) {
+          Logger.warn('Redis connection notice: operating in standalone mode until reachable', {
+            error: err?.message,
+          });
+        }
+        connectionFailed = true;
+      });
+    } catch {
       connectionFailed = true;
-      Logger.warn('Failed to initialize Redis client', { error: String(err) });
       return null;
     }
   }
@@ -94,22 +68,15 @@ export function getRedisSubscriber(): Redis | null {
 
   if (!redisSubscriber) {
     try {
-      const opts = getRedisConfig();
-      if (config.REDIS_URL) {
-        redisSubscriber = new Redis(config.REDIS_URL, opts);
-      } else if (config.REDIS_HOST) {
-        redisSubscriber = new Redis(opts);
-      }
+      redisSubscriber = new Redis(config.REDIS_URL!, getRedisConfig());
 
-      if (redisSubscriber) {
-        redisSubscriber.on('connect', () => {
-          Logger.info('Redis subscriber connected successfully');
-        });
+      redisSubscriber.on('connect', () => {
+        Logger.info('Redis subscriber connected successfully');
+      });
 
-        redisSubscriber.on('error', () => {
-          // Silent error handling for subscriber
-        });
-      }
+      redisSubscriber.on('error', () => {
+        // Silent error handler for pub/sub channel
+      });
     } catch {
       return null;
     }
@@ -118,9 +85,13 @@ export function getRedisSubscriber(): Redis | null {
 }
 
 /**
- * Health check test for Redis connection
+ * Health check test for Redis / Upstash connection
  */
-export async function checkRedisHealth(): Promise<{ status: 'healthy' | 'unhealthy' | 'unconfigured'; latencyMs: number; error?: string }> {
+export async function checkRedisHealth(): Promise<{
+  status: 'healthy' | 'unhealthy' | 'unconfigured';
+  latencyMs: number;
+  error?: string;
+}> {
   if (!isRedisConfigured()) {
     return { status: 'unconfigured', latencyMs: 0 };
   }
@@ -129,7 +100,7 @@ export async function checkRedisHealth(): Promise<{ status: 'healthy' | 'unhealt
   try {
     const client = getRedisClient();
     if (!client) {
-      return { status: 'unhealthy', latencyMs: 0, error: 'Redis client not initialized' };
+      return { status: 'unconfigured', latencyMs: 0 };
     }
     if (client.status !== 'ready' && client.status !== 'connecting' && client.status !== 'connect') {
       await client.connect().catch(() => {});
@@ -157,16 +128,13 @@ export async function checkRedisHealth(): Promise<{ status: 'healthy' | 'unhealt
 export async function closeRedis(): Promise<void> {
   const promises: Promise<string>[] = [];
   if (redisClient) {
-    Logger.info('Closing Redis main client...');
     promises.push(redisClient.quit().catch(() => 'OK'));
     redisClient = null;
   }
   if (redisSubscriber) {
-    Logger.info('Closing Redis subscriber client...');
     promises.push(redisSubscriber.quit().catch(() => 'OK'));
     redisSubscriber = null;
   }
   await Promise.all(promises);
   connectionFailed = false;
-  Logger.info('Redis connections closed.');
 }

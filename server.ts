@@ -2,13 +2,14 @@ import express from 'express';
 import http from 'http';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { config, Logger } from './src/server/config/env';
+import { config, Logger, getServicesStatusSummary } from './src/server/config/env';
 import { apiRouter } from './src/server/routes/api';
+import { adminRouter } from './src/server/routes/adminApi';
 import { wsServerInstance } from './src/server/websocket/wsServer';
-import { WorkerManager } from './src/server/queues/workerRunner';
-import { runMigrations } from './src/server/db/migrator';
+import { ensureDatabaseTables } from './src/server/db/migrator';
 import { closeDbPool } from './src/server/db/client';
 import { closeRedis } from './src/server/redis/client';
+import { BackgroundWorkerManager } from './src/server/queues/workerRunner';
 import { QueueRegistry } from './src/server/queues/queueManager';
 
 async function bootstrap() {
@@ -18,29 +19,18 @@ async function bootstrap() {
 
   app.use(express.json());
 
-  // 1. Mount API & Health routes first
+  // 1. Initialize PostgreSQL Database Tables if configured
+  await ensureDatabaseTables();
+
+  // 2. Initialize BullMQ Background Workers if Redis is configured
+  BackgroundWorkerManager.initialize();
+
+  // 3. Mount API & Admin & Health routes
   app.use(apiRouter);
+  app.use(adminRouter);
 
-  // 2. Attach WebSocket Server
+  // 4. Attach WebSocket Server
   wsServerInstance.initialize(server);
-
-  // 3. Initialize Database Migrations if DATABASE_URL is provided
-  if (config.DATABASE_URL) {
-    try {
-      await runMigrations();
-    } catch (err) {
-      Logger.error('Failed to run database migrations during startup', err);
-    }
-  } else {
-    Logger.info('No DATABASE_URL provided. Skipping auto-migration on boot.');
-  }
-
-  // 4. Start BullMQ background workers if Redis is configured
-  try {
-    WorkerManager.startAll();
-  } catch (err) {
-    Logger.warn('Skipping BullMQ background workers startup', { error: String(err) });
-  }
 
   // 5. Mount Vite middleware for development, or static files in production
   if (process.env.NODE_ENV !== 'production') {
@@ -59,7 +49,11 @@ async function bootstrap() {
 
   // 6. Start HTTP + WS listener on port 3000
   server.listen(PORT, '0.0.0.0', () => {
-    Logger.info(`🚀 Production Ludo Server running on http://0.0.0.0:${PORT} [Node: ${process.version}, PID: ${process.pid}]`);
+    Logger.info(`🚀 Ludo World Master Server running on http://0.0.0.0:${PORT}`);
+    const services = getServicesStatusSummary();
+    Logger.info(`  • Neon PostgreSQL: ${services.neonPostgres.message}`);
+    Logger.info(`  • Redis / Upstash: ${services.redis.message}`);
+    Logger.info(`  • Cloudflare R2:   ${services.cloudflareR2.message}`);
   });
 
   // 7. Graceful Shutdown Handlers
@@ -67,32 +61,23 @@ async function bootstrap() {
   async function gracefulShutdown(signal: string) {
     if (isShuttingDown) return;
     isShuttingDown = true;
-    Logger.info(`Received ${signal}. Initiating graceful shutdown...`);
+    Logger.info(`Received ${signal}. Initiating graceful shutdown of all services...`);
 
-    // 1. Close WebSocket server
     await wsServerInstance.close();
-
-    // 2. Stop BullMQ workers & queues
-    await WorkerManager.stopAll();
+    await BackgroundWorkerManager.shutdown();
     await QueueRegistry.closeAll();
-
-    // 3. Close Redis connections
     await closeRedis();
-
-    // 4. Close PostgreSQL connection pool
     await closeDbPool();
 
-    // 5. Close HTTP server
     server.close(() => {
-      Logger.info('HTTP server closed. Exiting process.');
+      Logger.info('HTTP server closed. Exiting process cleanly.');
       process.exit(0);
     });
 
-    // Force exit after 10s timeout
     setTimeout(() => {
       Logger.warn('Graceful shutdown timeout exceeded. Forcing exit.');
       process.exit(1);
-    }, 10000);
+    }, 5000);
   }
 
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

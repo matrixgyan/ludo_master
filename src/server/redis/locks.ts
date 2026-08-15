@@ -1,114 +1,83 @@
-import { v4 as uuidv4 } from 'uuid';
 import { getRedisClient } from './client';
 import { Logger } from '../config/env';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
- * Distributed Locking via Redis with Memory Fallback for offline development
+ * Distributed Lock backed by Redis with atomic Lua release and local lock fallback
  */
 export class DistributedLock {
-  private static localLocks = new Map<string, { token: string; expiresAt: number }>();
+  private static localLocks = new Map<string, Promise<void>>();
 
-  private static releaseLuaScript = `
-    if redis.call("get", KEYS[1]) == ARGV[1] then
-      return redis.call("del", KEYS[1])
-    else
-      return 0
-    end
-  `;
-
-  /**
-   * Acquire a lock with a unique token and automatic TTL expiration
-   */
-  static async acquire(
-    key: string,
-    ttlMs: number = 5000,
-    retryCount: number = 3,
-    retryDelayMs: number = 100
-  ): Promise<{ acquired: boolean; token: string | null }> {
+  static async acquire(key: string, ttlMs = 5000): Promise<string | null> {
     const redis = getRedisClient();
     const token = uuidv4();
 
-    if (!redis) {
-      // Memory fallback lock
-      const existing = this.localLocks.get(key);
-      const now = Date.now();
-      if (!existing || existing.expiresAt <= now) {
-        this.localLocks.set(key, { token, expiresAt: now + ttlMs });
-        return { acquired: true, token };
-      }
-      return { acquired: false, token: null };
-    }
-
-    for (let attempt = 0; attempt <= retryCount; attempt++) {
+    if (redis) {
       try {
         const result = await redis.set(key, token, 'PX', ttlMs, 'NX');
         if (result === 'OK') {
-          return { acquired: true, token };
+          return token;
         }
-      } catch {
-        // Fallback to local memory lock on error
-        const existing = this.localLocks.get(key);
-        const now = Date.now();
-        if (!existing || existing.expiresAt <= now) {
-          this.localLocks.set(key, { token, expiresAt: now + ttlMs });
-          return { acquired: true, token };
-        }
-        return { acquired: false, token: null };
-      }
-
-      if (attempt < retryCount) {
-        await new Promise((res) => setTimeout(res, retryDelayMs));
+        return null;
+      } catch (err) {
+        Logger.warn(`Redis lock acquire error on key ${key}: ${String(err)}`);
       }
     }
 
-    return { acquired: false, token: null };
+    // Local in-memory lock fallback when Redis is absent
+    if (this.localLocks.has(key)) {
+      return null;
+    }
+    this.localLocks.set(key, Promise.resolve());
+    return token;
   }
 
-  /**
-   * Safely release lock only if the token matches
-   */
   static async release(key: string, token: string): Promise<boolean> {
     const redis = getRedisClient();
-    if (!redis) {
-      const existing = this.localLocks.get(key);
-      if (existing && existing.token === token) {
-        this.localLocks.delete(key);
-        return true;
+
+    if (redis) {
+      // Atomic release Lua script
+      const luaScript = `
+        if redis.call("get", KEYS[1]) == ARGV[1] then
+          return redis.call("del", KEYS[1])
+        else
+          return 0
+        end
+      `;
+      try {
+        const result = await redis.eval(luaScript, 1, key, token);
+        return result === 1;
+      } catch (err) {
+        Logger.warn(`Redis lock release error on key ${key}: ${String(err)}`);
       }
-      return false;
     }
 
-    try {
-      const result = await redis.eval(DistributedLock.releaseLuaScript, 1, key, token);
-      return result === 1;
-    } catch {
-      const existing = this.localLocks.get(key);
-      if (existing && existing.token === token) {
-        this.localLocks.delete(key);
-        return true;
-      }
-      return false;
-    }
+    this.localLocks.delete(key);
+    return true;
   }
 
-  /**
-   * Helper to execute an async action inside a distributed lock block
-   */
   static async withLock<T>(
     key: string,
     action: () => Promise<T>,
-    ttlMs: number = 5000,
-    retryCount: number = 3
+    ttlMs = 5000,
+    retryCount = 3,
+    retryDelayMs = 150
   ): Promise<T> {
-    const { acquired, token } = await DistributedLock.acquire(key, ttlMs, retryCount);
-    if (!acquired || !token) {
-      throw new Error(`Failed to acquire lock for key: ${key}`);
+    let token: string | null = null;
+    for (let i = 0; i < retryCount; i++) {
+      token = await this.acquire(key, ttlMs);
+      if (token) break;
+      await new Promise((r) => setTimeout(r, retryDelayMs));
+    }
+
+    if (!token) {
+      throw new Error(`Failed to acquire distributed lock for resource: ${key}`);
     }
 
     try {
       return await action();
     } finally {
-      await DistributedLock.release(key, token);
+      await this.release(key, token);
     }
   }
 }

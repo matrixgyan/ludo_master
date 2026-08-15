@@ -14,8 +14,10 @@ import confetti from 'canvas-confetti';
 import { GameLobby } from './components/lobby/GameLobby';
 import { SnakeLudoGame } from './components/lobby/SnakeLudoGame';
 import { AngelFlightData } from './components/ludo/effects/AngelFlightOverlay';
+import { AdminLayout } from './components/admin/AdminLayout';
+import { AdminLogin } from './components/admin/AdminLogin';
 
-type ViewMode = 'lobby' | 'ludo_game' | 'snake_ludo';
+type ViewMode = 'lobby' | 'ludo_game' | 'snake_ludo' | 'admin';
 
 const INITIAL_PLAYERS: Record<PlayerColor, Player> = {
   blue: {
@@ -102,6 +104,75 @@ const NEXT_TURN: Record<PlayerColor, PlayerColor> = {
 export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('lobby');
   const [balance, setBalance] = useState<number>(0.50);
+  const [adminToken, setAdminToken] = useState<string | null>(() => localStorage.getItem('ludo_admin_token'));
+  const [adminData, setAdminData] = useState<any | null>(null);
+  const [adminAlias, setAdminAlias] = useState<string>('admin');
+
+  // URL Path & Query Detection for Admin Portal (supports /admin, /custom, ?view=admin, etc.)
+  useEffect(() => {
+    // 1. Fetch current platform settings to know the current admin alias (e.g. 'admin' or 'custom')
+    fetch('/api/admin/settings')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.adminUrls?.currentSlug) {
+          const slug = data.adminUrls.currentSlug;
+          setAdminAlias(slug);
+
+          // Check if current URL matches /admin or /custom or currentSlug
+          const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
+          const searchParams = new URLSearchParams(window.location.search);
+          const isHashAdmin = window.location.hash.includes('admin') || window.location.hash.includes(slug);
+
+          if (
+            path === 'admin' ||
+            path === 'custom' ||
+            path === slug ||
+            searchParams.get('view') === 'admin' ||
+            isHashAdmin
+          ) {
+            setViewMode('admin');
+          }
+        }
+      })
+      .catch(() => {
+        // Fallback check
+        const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
+        if (path === 'admin' || path === 'custom') {
+          setViewMode('admin');
+        }
+      });
+
+    // 2. Verify cached admin token if available
+    const cachedToken = localStorage.getItem('ludo_admin_token');
+    if (cachedToken) {
+      fetch('/api/admin/auth/me', {
+        headers: { Authorization: `Bearer ${cachedToken}` },
+      })
+        .then((res) => {
+          if (res.ok) return res.json();
+          throw new Error('Invalid token');
+        })
+        .then((data) => {
+          setAdminData(data.admin);
+        })
+        .catch(() => {
+          localStorage.removeItem('ludo_admin_token');
+          setAdminToken(null);
+        });
+    }
+
+    const handlePopState = () => {
+      const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
+      if (path === 'admin' || path === 'custom' || path === adminAlias) {
+        setViewMode('admin');
+      } else if (path === '') {
+        setViewMode('lobby');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [adminAlias]);
 
   const [gameState, setGameState] = useState<GameState>({
     players: INITIAL_PLAYERS,
@@ -562,6 +633,46 @@ export default function App() {
     setActiveAngelFlight(null);
   }, []);
 
+  // 0. ADMIN CONTROL PANEL VIEW
+  if (viewMode === 'admin') {
+    if (!adminToken) {
+      return (
+        <AdminLogin
+          adminAlias={adminAlias}
+          onLoginSuccess={(token, admin) => {
+            setAdminToken(token);
+            setAdminData(admin);
+          }}
+          onBackToGame={() => {
+            setViewMode('lobby');
+            window.history.pushState({}, '', '/');
+          }}
+        />
+      );
+    }
+
+    return (
+      <AdminLayout
+        token={adminToken}
+        adminData={adminData}
+        adminAlias={adminAlias}
+        onLogout={() => {
+          localStorage.removeItem('ludo_admin_token');
+          setAdminToken(null);
+          setAdminData(null);
+        }}
+        onAdminAliasChange={(newAlias) => {
+          setAdminAlias(newAlias);
+          window.history.replaceState({}, '', `/${newAlias}`);
+        }}
+        onBackToGame={() => {
+          setViewMode('lobby');
+          window.history.pushState({}, '', '/');
+        }}
+      />
+    );
+  }
+
   // 1. GAME LOBBY VIEW
   if (viewMode === 'lobby') {
     return (
@@ -575,6 +686,10 @@ export default function App() {
         onPlaySnakeLudo={() => {
           SoundManager.play('click');
           setViewMode('snake_ludo');
+        }}
+        onOpenAdmin={() => {
+          setViewMode('admin');
+          window.history.pushState({}, '', `/${adminAlias}`);
         }}
       />
     );

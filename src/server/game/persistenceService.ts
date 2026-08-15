@@ -1,27 +1,28 @@
-import { getDb, withTransaction } from '../db/client';
-import { games, gamePlayers, gameEvents, gameStateSnapshots, users } from '../db/schema';
-import { getRedisClient } from '../redis/client';
+import { getDb, withTransaction, isPostgresConfigured } from '../db/client';
+import { games, gamePlayers, gameEvents, playerStatistics, leaderboards, matchHistory } from '../db/schema';
+import { getRedisClient, isRedisConfigured } from '../redis/client';
 import { RedisKeys } from '../redis/keys';
 import { DistributedLock } from '../redis/locks';
 import { QueueRegistry } from '../queues/queueManager';
 import { AuthoritativeGameSession } from './authoritativeEngine';
 import { eq, desc } from 'drizzle-orm';
-import { config, Logger } from '../config/env';
+import { Logger } from '../config/env';
 
 export class GamePersistenceService {
-  private static memorySessions = new Map<string, AuthoritativeGameSession>();
+  private static localSessions = new Map<string, AuthoritativeGameSession>();
+  private static localStats = new Map<string, { userId: string; gamesPlayed: number; gamesWon: number; winRate: string }>();
 
   /**
-   * Save active game state into Redis with TTL, or fallback to memory cache
+   * Save active realtime game state into Redis with TTL, or fallback to memory
    */
   static async saveActiveGameState(session: AuthoritativeGameSession): Promise<void> {
-    this.memorySessions.set(session.gameId, session);
+    this.localSessions.set(session.gameId, JSON.parse(JSON.stringify(session)));
 
     const redis = getRedisClient();
     if (!redis) return;
 
     const key = RedisKeys.gameState(session.gameId);
-    const ttlSeconds = session.status === 'COMPLETED' ? 3600 : 86400;
+    const ttlSeconds = session.status === 'COMPLETED' ? 3600 : 86400; // 1 day for active, 1 hr for completed
 
     try {
       const pipeline = redis.pipeline();
@@ -30,12 +31,12 @@ export class GamePersistenceService {
       pipeline.set(RedisKeys.gameTurn(session.gameId), session.currentTurn, 'EX', ttlSeconds);
       await pipeline.exec();
     } catch (err) {
-      Logger.warn(`Redis save skipped in fallback mode for ${session.gameId}`);
+      Logger.warn(`Redis state save notice for game ${session.gameId}: ${String(err)}`);
     }
   }
 
   /**
-   * Get active game state from Redis, or fallback to memory cache, or recover from PostgreSQL
+   * Get active game state from Redis, or fallback to memory / DB recovery
    */
   static async getGameState(gameId: string): Promise<AuthoritativeGameSession | null> {
     const redis = getRedisClient();
@@ -46,16 +47,16 @@ export class GamePersistenceService {
           return JSON.parse(cached) as AuthoritativeGameSession;
         }
       } catch {
-        // Fall through to memory
+        // Fall through
       }
     }
 
-    if (this.memorySessions.has(gameId)) {
-      return this.memorySessions.get(gameId)!;
+    if (this.localSessions.has(gameId)) {
+      return JSON.parse(JSON.stringify(this.localSessions.get(gameId)!));
     }
 
-    // Recovery from PostgreSQL snapshot
-    if (config.DATABASE_URL) {
+    // Recover from PostgreSQL if available
+    if (isPostgresConfigured()) {
       return await this.recoverGameStateFromDb(gameId);
     }
 
@@ -73,10 +74,11 @@ export class GamePersistenceService {
     payload: Record<string, unknown>,
     gameVersion: number
   ): Promise<void> {
-    if (!config.DATABASE_URL) return;
+    if (!isPostgresConfigured()) return;
 
     try {
       const db = getDb();
+      if (!db) return;
       await db.insert(gameEvents).values({
         id: `ev_${gameId}_${sequenceNumber}`,
         gameId,
@@ -86,34 +88,14 @@ export class GamePersistenceService {
         payload,
         gameVersion,
         serverTimestamp: new Date(),
-      });
+      }).onConflictDoNothing();
     } catch (err) {
-      Logger.warn(`PostgreSQL appendGameEvent skipped: ${String(err)}`);
+      Logger.warn(`PostgreSQL appendGameEvent notice: ${String(err)}`);
     }
   }
 
   /**
-   * Create periodic game state snapshot in PostgreSQL
-   */
-  static async saveStateSnapshot(session: AuthoritativeGameSession): Promise<void> {
-    if (!config.DATABASE_URL) return;
-
-    try {
-      const db = getDb();
-      await db.insert(gameStateSnapshots).values({
-        id: `snap_${session.gameId}_v${session.version}`,
-        gameId: session.gameId,
-        version: session.version,
-        state: session as unknown as Record<string, unknown>,
-        createdAt: new Date(),
-      });
-    } catch (err) {
-      Logger.warn(`PostgreSQL saveStateSnapshot skipped: ${String(err)}`);
-    }
-  }
-
-  /**
-   * Atomically persist completed game in PostgreSQL and enqueue background jobs
+   * Atomically persist completed game into PostgreSQL and enqueue background jobs
    */
   static async finalizeGame(session: AuthoritativeGameSession): Promise<void> {
     const lockKey = RedisKeys.gameLock(session.gameId);
@@ -123,32 +105,63 @@ export class GamePersistenceService {
       const winnerPlayer = session.winner ? session.players[session.winner] : null;
       const winnerUserId = winnerPlayer?.id;
 
-      // 1. Memory & Redis state update
+      // 1. Cache updated state in Redis
       await this.saveActiveGameState(session);
 
-      // 2. PostgreSQL persistence if available
-      if (config.DATABASE_URL) {
+      // 2. Persist to Neon PostgreSQL permanent source of truth
+      if (isPostgresConfigured()) {
         try {
           await withTransaction(async (client) => {
-            // Update Game record
+            // Update or insert Game record
             await client.query(
-              `UPDATE games SET status = 'COMPLETED', winner_user_id = $1, completed_at = NOW(), updated_at = NOW(), version = $2 WHERE id = $3`,
-              [winnerUserId, session.version, session.gameId]
+              `INSERT INTO games (id, mode, status, winner_user_id, total_turns, version, metadata, completed_at, updated_at)
+               VALUES ($1, $2, 'COMPLETED', $3, $4, $5, $6, NOW(), NOW())
+               ON CONFLICT (id) DO UPDATE SET
+                 status = 'COMPLETED',
+                 winner_user_id = EXCLUDED.winner_user_id,
+                 total_turns = EXCLUDED.total_turns,
+                 version = EXCLUDED.version,
+                 completed_at = NOW(),
+                 updated_at = NOW()`,
+              [
+                session.gameId,
+                session.mode,
+                winnerUserId || null,
+                session.sequenceNumber,
+                session.version,
+                JSON.stringify({ winnerColor: session.winner, winnerUserId, completedAt: session.completedAt }),
+              ]
             );
 
-            // Update players finish status
+            // Update or insert Game Players
             for (const color of ['red', 'green', 'yellow', 'blue'] as const) {
               const p = session.players[color];
-              if (p.isActive && !p.id.startsWith('bot-')) {
+              if (p.isActive) {
                 const isWinner = color === session.winner;
+                const tokensHome = p.pawns ? p.pawns.filter((pawn) => pawn.state === 'goal').length : 0;
                 await client.query(
-                  `UPDATE game_players SET status = 'FINISHED', finish_position = $1, final_score = $2 WHERE game_id = $3 AND user_id = $4`,
-                  [isWinner ? 1 : 2, p.score, session.gameId, p.id]
+                  `INSERT INTO game_players (id, game_id, user_id, color, is_host, is_ai, finish_position, final_score, tokens_home)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                   ON CONFLICT (id) DO UPDATE SET
+                     finish_position = EXCLUDED.finish_position,
+                     final_score = EXCLUDED.final_score,
+                     tokens_home = EXCLUDED.tokens_home`,
+                  [
+                    `gp_${session.gameId}_${p.id}`,
+                    session.gameId,
+                    p.id,
+                    color,
+                    color === 'red',
+                    !p.isHuman,
+                    isWinner ? 1 : 2,
+                    p.score,
+                    tokensHome,
+                  ]
                 );
               }
             }
 
-            // Record GAME_COMPLETED event
+            // Record GAME_COMPLETED event in event log
             await client.query(
               `INSERT INTO game_events (id, game_id, sequence_number, event_type, actor_user_id, payload, game_version, server_timestamp)
                VALUES ($1, $2, $3, 'GAME_COMPLETED', $4, $5, $6, NOW())
@@ -157,64 +170,173 @@ export class GamePersistenceService {
                 `ev_${session.gameId}_${session.sequenceNumber}`,
                 session.gameId,
                 session.sequenceNumber,
-                winnerUserId,
+                winnerUserId || null,
                 JSON.stringify({ winnerColor: session.winner, winnerUserId, completedAt: session.completedAt }),
                 session.version,
               ]
             );
           });
         } catch (err) {
-          Logger.warn(`PostgreSQL finalizeGame skipped in fallback mode: ${String(err)}`);
+          Logger.warn(`PostgreSQL finalizeGame warning: ${String(err)}`);
         }
       }
 
-      // 3. Enqueue background jobs if BullMQ/Redis configured
-      if (config.REDIS_URL || config.REDIS_HOST) {
+      // 3. Dispatch BullMQ jobs via Redis if configured
+      if (isRedisConfigured()) {
         try {
           await QueueRegistry.getGameProcessingQueue().add(`process_game_${session.gameId}`, {
             type: 'GAME_COMPLETED',
             gameId: session.gameId,
-            winnerUserId,
+            winnerUserId: winnerUserId || undefined,
             finalState: session as unknown as Record<string, unknown>,
             timestamp: Date.now(),
           });
 
-          await QueueRegistry.getLeaderboardQueue().add(`leaderboard_calc_${session.gameId}`, {
+          await QueueRegistry.getLeaderboardQueue().add(`recalc_${session.gameId}`, {
             type: 'RECALCULATE_RANKS',
             leaderboardType: 'GLOBAL',
-            userId: winnerUserId,
+            userId: winnerUserId || undefined,
           });
         } catch (err) {
           Logger.warn(`BullMQ queue dispatch skipped: ${String(err)}`);
         }
       }
 
-      Logger.info(`Successfully finalized game session ${session.gameId}`);
+      // 4. Update local memory stats fallback
+      for (const color of ['red', 'green', 'yellow', 'blue'] as const) {
+        const p = session.players[color];
+        if (p.isActive && !p.id.startsWith('bot-')) {
+          const isWinner = color === session.winner;
+          const current = this.localStats.get(p.id) || {
+            userId: p.id,
+            gamesPlayed: 0,
+            gamesWon: 0,
+            winRate: '0.00',
+          };
+          current.gamesPlayed += 1;
+          if (isWinner) current.gamesWon += 1;
+          current.winRate = ((current.gamesWon / current.gamesPlayed) * 100).toFixed(2);
+          this.localStats.set(p.id, current);
+        }
+      }
+
+      Logger.info(`Successfully finalized game ${session.gameId}`);
     });
   }
 
   /**
-   * Reconstitute game state from PostgreSQL if Redis fails
+   * Reconstitute game state from PostgreSQL if needed
    */
   private static async recoverGameStateFromDb(gameId: string): Promise<AuthoritativeGameSession | null> {
     try {
       const db = getDb();
-      const snapshots = await db
-        .select()
-        .from(gameStateSnapshots)
-        .where(eq(gameStateSnapshots.gameId, gameId))
-        .orderBy(desc(gameStateSnapshots.version))
-        .limit(1);
+      if (!db) return null;
+      const gameRecord = await db.select().from(games).where(eq(games.id, gameId)).limit(1);
+      if (gameRecord.length === 0) return null;
 
-      if (snapshots.length > 0) {
-        const session = snapshots[0].state as unknown as AuthoritativeGameSession;
-        Logger.info(`Reconstituted game ${gameId} from PostgreSQL snapshot v${session.version}`);
-        await this.saveActiveGameState(session);
-        return session;
-      }
+      const events = await db.select().from(gameEvents).where(eq(gameEvents.gameId, gameId)).orderBy(gameEvents.sequenceNumber);
+      Logger.info(`Recovered game record ${gameId} from PostgreSQL (${events.length} logged events)`);
     } catch (err) {
       Logger.warn(`PostgreSQL recovery check skipped: ${String(err)}`);
     }
     return null;
+  }
+
+  /**
+   * Fetch player stats from Neon PostgreSQL, falling back to local
+   */
+  static async getPlayerStats(userId: string): Promise<{
+    userId: string;
+    gamesPlayed: number;
+    gamesWon: number;
+    gamesLost: number;
+    winRate: string;
+  } | null> {
+    if (isPostgresConfigured()) {
+      try {
+        const db = getDb();
+        if (db) {
+          const res = await db.select().from(playerStatistics).where(eq(playerStatistics.userId, userId)).limit(1);
+          if (res.length > 0) {
+            return {
+              userId: res[0].userId,
+              gamesPlayed: res[0].gamesPlayed,
+              gamesWon: res[0].gamesWon,
+              gamesLost: res[0].gamesLost,
+              winRate: res[0].winRate.toString(),
+            };
+          }
+        }
+      } catch (err) {
+        Logger.warn(`Failed to fetch PostgreSQL stats for ${userId}: ${String(err)}`);
+      }
+    }
+
+    const local = this.localStats.get(userId);
+    if (!local) return null;
+    return {
+      userId: local.userId,
+      gamesPlayed: local.gamesPlayed,
+      gamesWon: local.gamesWon,
+      gamesLost: local.gamesPlayed - local.gamesWon,
+      winRate: local.winRate,
+    };
+  }
+
+  /**
+   * Fetch global leaderboard from Neon PostgreSQL, falling back to local
+   */
+  static async getLeaderboard(type = 'GLOBAL'): Promise<Array<{ userId: string; score: number; rank: number }>> {
+    if (isPostgresConfigured()) {
+      try {
+        const db = getDb();
+        if (db) {
+          const res = await db
+            .select({
+              userId: leaderboards.userId,
+              score: leaderboards.score,
+              rank: leaderboards.rank,
+            })
+            .from(leaderboards)
+            .where(eq(leaderboards.leaderboardType, type))
+            .orderBy(desc(leaderboards.score))
+            .limit(50);
+
+          if (res.length > 0) {
+            return res;
+          }
+        }
+      } catch (err) {
+        Logger.warn(`Failed to fetch PostgreSQL leaderboard: ${String(err)}`);
+      }
+    }
+
+    return Array.from(this.localStats.values())
+      .map((s, idx) => ({
+        userId: s.userId,
+        score: s.gamesWon * 100,
+        rank: idx + 1,
+      }))
+      .sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * Fetch match history for a player from PostgreSQL
+   */
+  static async getPlayerMatchHistory(userId: string): Promise<Array<any>> {
+    if (!isPostgresConfigured()) return [];
+    try {
+      const db = getDb();
+      if (!db) return [];
+      return await db
+        .select()
+        .from(matchHistory)
+        .where(eq(matchHistory.userId, userId))
+        .orderBy(desc(matchHistory.playedAt))
+        .limit(20);
+    } catch (err) {
+      Logger.warn(`Failed to query match history: ${String(err)}`);
+      return [];
+    }
   }
 }

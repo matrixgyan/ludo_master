@@ -1,11 +1,8 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { Server as HttpServer } from 'http';
-import { AuthoritativeLudoEngine, AuthoritativeGameSession } from '../game/authoritativeEngine';
+import { AuthoritativeLudoEngine } from '../game/authoritativeEngine';
 import { GamePersistenceService } from '../game/persistenceService';
-import { DistributedLock } from '../redis/locks';
-import { RedisKeys } from '../redis/keys';
 import { PresenceManager } from '../redis/presence';
-import { RateLimiter } from '../redis/rateLimit';
 import { Logger } from '../config/env';
 
 interface ClientConnection {
@@ -58,13 +55,13 @@ export class ProductionWebSocketServer {
         }
       });
 
-      ws.on('close', async () => {
+      ws.on('close', () => {
         const client = this.clients.get(ws);
         if (client) {
           if (client.gameId) {
             this.leaveGameRoom(ws, client.gameId);
           }
-          await PresenceManager.setDisconnected(client.userId);
+          PresenceManager.setDisconnected(client.userId);
           this.clients.delete(ws);
           Logger.info(`Client ${client.userId} disconnected`);
         }
@@ -106,19 +103,12 @@ export class ProductionWebSocketServer {
     const client = this.clients.get(ws);
     if (!client) return;
 
-    // Rate Limiting Check
-    const rateLimit = await RateLimiter.check('ws_command', client.userId, 40, 10);
-    if (!rateLimit.allowed) {
-      this.send(ws, { type: 'ERROR', message: 'Rate limit exceeded. Please slow down.' });
-      return;
-    }
-
     switch (msg.type) {
       case 'AUTH': {
         const { userId, username } = msg as unknown as { userId?: string; username?: string };
         if (userId) client.userId = userId;
         if (username) client.username = username;
-        await PresenceManager.heartbeat(client.userId, client.username, 'ONLINE');
+        PresenceManager.heartbeat(client.userId, client.username, 'ONLINE');
         this.send(ws, { type: 'AUTH_SUCCESS', userId: client.userId, username: client.username });
         break;
       }
@@ -131,7 +121,7 @@ export class ProductionWebSocketServer {
         client.color = color;
         this.joinGameRoom(ws, gameId);
 
-        await PresenceManager.heartbeat(client.userId, client.username, 'IN_GAME', gameId);
+        PresenceManager.heartbeat(client.userId, client.username, 'IN_GAME', gameId);
 
         // Fetch or create authoritative session
         let session = await GamePersistenceService.getGameState(gameId);
@@ -159,37 +149,34 @@ export class ProductionWebSocketServer {
           return;
         }
 
-        const lockKey = RedisKeys.gameLock(gameId);
-        await DistributedLock.withLock(lockKey, async () => {
-          const session = await GamePersistenceService.getGameState(gameId);
-          if (!session) {
-            this.send(ws, { type: 'ERROR', message: 'Game not found' });
-            return;
-          }
+        const session = await GamePersistenceService.getGameState(gameId);
+        if (!session) {
+          this.send(ws, { type: 'ERROR', message: 'Game not found' });
+          return;
+        }
 
-          try {
-            const result = AuthoritativeLudoEngine.rollDiceAuthoritative(session, client.userId);
-            await GamePersistenceService.saveActiveGameState(result.session);
-            await GamePersistenceService.appendGameEvent(
-              gameId,
-              result.session.sequenceNumber,
-              'DICE_ROLLED',
-              client.userId,
-              { rollValue: result.rollValue, penalty: result.consecutiveSixesPenalty },
-              result.session.version
-            );
+        try {
+          const result = AuthoritativeLudoEngine.rollDiceAuthoritative(session, client.userId);
+          await GamePersistenceService.saveActiveGameState(result.session);
+          await GamePersistenceService.appendGameEvent(
+            gameId,
+            result.session.sequenceNumber,
+            'DICE_ROLLED',
+            client.userId,
+            { rollValue: result.rollValue, penalty: result.consecutiveSixesPenalty },
+            result.session.version
+          );
 
-            this.broadcastToRoom(gameId, {
-              type: 'DICE_ROLLED_AUTHORITATIVE',
-              rollValue: result.rollValue,
-              movablePawnIds: result.movablePawnIds,
-              session: result.session,
-            });
-          } catch (err: unknown) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            this.send(ws, { type: 'ERROR', message: errMsg });
-          }
-        });
+          this.broadcastToRoom(gameId, {
+            type: 'DICE_ROLLED_AUTHORITATIVE',
+            rollValue: result.rollValue,
+            movablePawnIds: result.movablePawnIds,
+            session: result.session,
+          });
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          this.send(ws, { type: 'ERROR', message: errMsg });
+        }
         break;
       }
 
@@ -198,48 +185,45 @@ export class ProductionWebSocketServer {
         const pawnId = msg.pawnId as string;
         if (!gameId || !pawnId) return;
 
-        const lockKey = RedisKeys.gameLock(gameId);
-        await DistributedLock.withLock(lockKey, async () => {
-          const session = await GamePersistenceService.getGameState(gameId);
-          if (!session) return;
+        const session = await GamePersistenceService.getGameState(gameId);
+        if (!session) return;
 
-          try {
-            const result = AuthoritativeLudoEngine.moveTokenAuthoritative(session, client.userId, pawnId);
+        try {
+          const result = AuthoritativeLudoEngine.moveTokenAuthoritative(session, client.userId, pawnId);
 
-            if (result.isGameWon) {
-              await GamePersistenceService.finalizeGame(result.session);
-            } else {
-              await GamePersistenceService.saveActiveGameState(result.session);
-            }
+          if (result.isGameWon) {
+            await GamePersistenceService.finalizeGame(result.session);
+          } else {
+            await GamePersistenceService.saveActiveGameState(result.session);
+          }
 
-            await GamePersistenceService.appendGameEvent(
-              gameId,
-              result.session.sequenceNumber,
-              'TOKEN_MOVED',
-              client.userId,
-              {
-                pawnId,
-                movedPawn: result.movedPawn,
-                capturedPawn: result.capturedPawn,
-                reachedGoal: result.reachedGoal,
-                isGameWon: result.isGameWon,
-              },
-              result.session.version
-            );
-
-            this.broadcastToRoom(gameId, {
-              type: 'TOKEN_MOVED_AUTHORITATIVE',
+          await GamePersistenceService.appendGameEvent(
+            gameId,
+            result.session.sequenceNumber,
+            'TOKEN_MOVED',
+            client.userId,
+            {
+              pawnId,
               movedPawn: result.movedPawn,
               capturedPawn: result.capturedPawn,
               reachedGoal: result.reachedGoal,
               isGameWon: result.isGameWon,
-              session: result.session,
-            });
-          } catch (err: unknown) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            this.send(ws, { type: 'ERROR', message: errMsg });
-          }
-        });
+            },
+            result.session.version
+          );
+
+          this.broadcastToRoom(gameId, {
+            type: 'TOKEN_MOVED_AUTHORITATIVE',
+            movedPawn: result.movedPawn,
+            capturedPawn: result.capturedPawn,
+            reachedGoal: result.reachedGoal,
+            isGameWon: result.isGameWon,
+            session: result.session,
+          });
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          this.send(ws, { type: 'ERROR', message: errMsg });
+        }
         break;
       }
 

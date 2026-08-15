@@ -1,5 +1,6 @@
 import { getRedisClient } from './client';
 import { RedisKeys } from './keys';
+import { Logger } from '../config/env';
 
 export type PresenceStatus = 'ONLINE' | 'IN_LOBBY' | 'MATCHMAKING' | 'IN_GAME' | 'DISCONNECTED';
 
@@ -12,11 +13,10 @@ export interface UserPresenceData {
 }
 
 export class PresenceManager {
-  private static TTL_SECONDS = 45; // 45s heartbeat window
-  private static memoryPresence = new Map<string, UserPresenceData>();
+  private static localPresence = new Map<string, UserPresenceData>();
 
   /**
-   * Heartbeat to mark player as active with specific presence state
+   * Register or update user presence heartbeat
    */
   static async heartbeat(
     userId: string,
@@ -24,14 +24,15 @@ export class PresenceManager {
     status: PresenceStatus,
     gameId?: string
   ): Promise<void> {
-    const data: UserPresenceData = {
+    const presenceData: UserPresenceData = {
       userId,
       username,
       status,
       gameId,
       lastHeartbeat: Date.now(),
     };
-    this.memoryPresence.set(userId, data);
+
+    this.localPresence.set(userId, presenceData);
 
     const redis = getRedisClient();
     if (!redis) return;
@@ -39,64 +40,65 @@ export class PresenceManager {
     const key = RedisKeys.userPresence(userId);
     try {
       const pipeline = redis.pipeline();
-      pipeline.set(key, JSON.stringify(data), 'EX', PresenceManager.TTL_SECONDS);
-      pipeline.sadd(RedisKeys.onlineUsersSet(), userId);
+      pipeline.set(key, JSON.stringify(presenceData), 'EX', 45); // 45s TTL
+      pipeline.zadd(RedisKeys.onlineUsers(), Date.now(), userId);
       await pipeline.exec();
-    } catch {
-      // Ignored in fallback mode
+    } catch (err) {
+      Logger.warn(`Presence update error for user ${userId}: ${String(err)}`);
     }
   }
 
   /**
-   * Retrieve current presence of a user
+   * Get user presence data
    */
   static async getPresence(userId: string): Promise<UserPresenceData | null> {
     const redis = getRedisClient();
-    if (!redis) {
-      return this.memoryPresence.get(userId) || null;
+    if (redis) {
+      try {
+        const raw = await redis.get(RedisKeys.userPresence(userId));
+        if (raw) {
+          return JSON.parse(raw) as UserPresenceData;
+        }
+      } catch {
+        // Fall back to local
+      }
     }
-
-    const key = RedisKeys.userPresence(userId);
-    try {
-      const val = await redis.get(key);
-      if (!val) return this.memoryPresence.get(userId) || null;
-      return JSON.parse(val) as UserPresenceData;
-    } catch {
-      return this.memoryPresence.get(userId) || null;
-    }
+    return this.localPresence.get(userId) || null;
   }
 
   /**
-   * Set player explicitly as disconnected
+   * Mark user as disconnected
    */
   static async setDisconnected(userId: string): Promise<void> {
-    this.memoryPresence.delete(userId);
+    this.localPresence.delete(userId);
+
     const redis = getRedisClient();
     if (!redis) return;
 
     try {
       const pipeline = redis.pipeline();
       pipeline.del(RedisKeys.userPresence(userId));
-      pipeline.srem(RedisKeys.onlineUsersSet(), userId);
+      pipeline.zrem(RedisKeys.onlineUsers(), userId);
       await pipeline.exec();
-    } catch {
-      // Ignored in fallback mode
+    } catch (err) {
+      Logger.warn(`Failed to remove presence for user ${userId}: ${String(err)}`);
     }
   }
 
   /**
-   * Get total online user count
+   * Get total online player count
    */
   static async getOnlineCount(): Promise<number> {
     const redis = getRedisClient();
-    if (!redis) {
-      return this.memoryPresence.size;
+    if (redis) {
+      try {
+        const twoMinutesAgo = Date.now() - 120000;
+        await redis.zremrangebyscore(RedisKeys.onlineUsers(), '-inf', twoMinutesAgo);
+        return await redis.zcard(RedisKeys.onlineUsers());
+      } catch {
+        // Fall back to local
+      }
     }
-
-    try {
-      return await redis.scard(RedisKeys.onlineUsersSet());
-    } catch {
-      return this.memoryPresence.size;
-    }
+    return this.localPresence.size;
   }
 }

@@ -9,16 +9,11 @@ export interface MatchmakingTicket {
   avatarUrl?: string;
   mode: '2_PLAYER' | '4_PLAYER' | 'SNAKE_LUDO';
   enqueuedAt: number;
-  matchedGameId?: string;
 }
 
 export class MatchmakingService {
-  private static TICKET_TTL_SECONDS = 120;
-  private static memoryQueue = new Map<string, MatchmakingTicket[]>();
+  private static localQueues = new Map<string, MatchmakingTicket[]>();
 
-  /**
-   * Enqueue a player for matchmaking
-   */
   static async enqueue(
     userId: string,
     username: string,
@@ -34,124 +29,104 @@ export class MatchmakingService {
     };
 
     const redis = getRedisClient();
-    if (!redis) {
-      const q = this.memoryQueue.get(mode) || [];
-      const filtered = q.filter((t) => t.userId !== userId);
-      filtered.push(ticket);
-      this.memoryQueue.set(mode, filtered);
-      return { success: true };
+    if (redis) {
+      const lockKey = RedisKeys.matchmakingLock(mode);
+      try {
+        return await DistributedLock.withLock(lockKey, async () => {
+          const queueKey = RedisKeys.matchmakingQueue(mode);
+          const ticketKey = RedisKeys.playerTicket(userId);
+
+          // Save ticket and push user ID with timestamp score into sorted set
+          const pipeline = redis.pipeline();
+          pipeline.set(ticketKey, JSON.stringify(ticket), 'EX', 180);
+          pipeline.zadd(queueKey, Date.now(), userId);
+          await pipeline.exec();
+
+          Logger.info(`User ${userId} (${username}) enqueued in Redis queue ${mode}`);
+          return { success: true };
+        });
+      } catch (err) {
+        Logger.warn(`Redis matchmaking enqueue error for ${userId}: ${String(err)}`);
+      }
     }
 
-    const queueKey = RedisKeys.matchmakingQueue(mode);
-    const ticketKey = RedisKeys.matchmakingTicket(userId);
-
-    try {
-      const pipeline = redis.pipeline();
-      pipeline.set(ticketKey, JSON.stringify(ticket), 'EX', MatchmakingService.TICKET_TTL_SECONDS);
-      pipeline.zadd(queueKey, Date.now(), userId);
-      await pipeline.exec();
-
-      Logger.info(`User ${userId} joined matchmaking queue for mode ${mode}`);
-      return { success: true };
-    } catch (err) {
-      // Memory fallback
-      const q = this.memoryQueue.get(mode) || [];
-      const filtered = q.filter((t) => t.userId !== userId);
-      filtered.push(ticket);
-      this.memoryQueue.set(mode, filtered);
-      return { success: true };
-    }
+    // Local fallback
+    const list = this.localQueues.get(mode) || [];
+    const filtered = list.filter((t) => t.userId !== userId);
+    filtered.push(ticket);
+    this.localQueues.set(mode, filtered);
+    return { success: true };
   }
 
-  /**
-   * Remove player from queue
-   */
   static async cancel(userId: string, mode: string): Promise<boolean> {
-    const q = this.memoryQueue.get(mode);
-    if (q) {
-      this.memoryQueue.set(
-        mode,
-        q.filter((t) => t.userId !== userId)
-      );
-    }
-
     const redis = getRedisClient();
-    if (!redis) return true;
-
-    try {
-      const pipeline = redis.pipeline();
-      pipeline.del(RedisKeys.matchmakingTicket(userId));
-      pipeline.zrem(RedisKeys.matchmakingQueue(mode), userId);
-      await pipeline.exec();
-      return true;
-    } catch {
-      return true;
+    if (redis) {
+      try {
+        const pipeline = redis.pipeline();
+        pipeline.zrem(RedisKeys.matchmakingQueue(mode), userId);
+        pipeline.del(RedisKeys.playerTicket(userId));
+        await pipeline.exec();
+        return true;
+      } catch (err) {
+        Logger.warn(`Failed to cancel matchmaking for ${userId}: ${String(err)}`);
+      }
     }
+
+    const list = this.localQueues.get(mode);
+    if (list) {
+      this.localQueues.set(mode, list.filter((t) => t.userId !== userId));
+    }
+    return true;
   }
 
-  /**
-   * Check queue and form matches atomically
-   */
   static async tryMatch(mode: '2_PLAYER' | '4_PLAYER' | 'SNAKE_LUDO'): Promise<MatchmakingTicket[] | null> {
-    const lockKey = RedisKeys.matchmakingLock(mode);
     const requiredPlayers = mode === '2_PLAYER' ? 2 : mode === '4_PLAYER' ? 4 : 2;
+    const redis = getRedisClient();
 
-    return await DistributedLock.withLock(
-      lockKey,
-      async () => {
-        const redis = getRedisClient();
-        if (!redis) {
-          const q = this.memoryQueue.get(mode) || [];
-          if (q.length >= requiredPlayers) {
-            const matched = q.slice(0, requiredPlayers);
-            this.memoryQueue.set(mode, q.slice(requiredPlayers));
-            return matched;
-          }
-          return null;
-        }
+    if (redis) {
+      const lockKey = RedisKeys.matchmakingLock(mode);
+      try {
+        return await DistributedLock.withLock(lockKey, async () => {
+          const queueKey = RedisKeys.matchmakingQueue(mode);
+          const candidateUserIds = (await (redis as any).zrange(queueKey, 0, requiredPlayers - 1)) as string[];
 
-        const queueKey = RedisKeys.matchmakingQueue(mode);
-
-        try {
-          const candidateUserIds = await redis.zrange(queueKey, 0, (requiredPlayers - 1) as unknown as string);
           if (candidateUserIds.length < requiredPlayers) {
             return null;
           }
 
-          const tickets: MatchmakingTicket[] = [];
-          for (const uid of candidateUserIds) {
-            const ticketJson = await redis.get(RedisKeys.matchmakingTicket(uid));
-            if (ticketJson) {
-              tickets.push(JSON.parse(ticketJson));
-            } else {
-              await redis.zrem(queueKey, uid);
+          const matchedTickets: MatchmakingTicket[] = [];
+          for (const uId of candidateUserIds) {
+            const raw = await redis.get(RedisKeys.playerTicket(uId));
+            if (raw) {
+              matchedTickets.push(JSON.parse(raw) as MatchmakingTicket);
             }
           }
 
-          if (tickets.length < requiredPlayers) {
-            return null;
+          if (matchedTickets.length === requiredPlayers) {
+            const pipeline = redis.pipeline();
+            for (const ticket of matchedTickets) {
+              pipeline.zrem(queueKey, ticket.userId);
+              pipeline.del(RedisKeys.playerTicket(ticket.userId));
+            }
+            await pipeline.exec();
+            Logger.info(`Formed match for ${mode} with ${matchedTickets.length} players via Redis`);
+            return matchedTickets;
           }
 
-          const popPipeline = redis.pipeline();
-          for (const t of tickets) {
-            popPipeline.zrem(queueKey, t.userId);
-            popPipeline.del(RedisKeys.matchmakingTicket(t.userId));
-          }
-          await popPipeline.exec();
-
-          return tickets;
-        } catch {
-          const q = this.memoryQueue.get(mode) || [];
-          if (q.length >= requiredPlayers) {
-            const matched = q.slice(0, requiredPlayers);
-            this.memoryQueue.set(mode, q.slice(requiredPlayers));
-            return matched;
-          }
           return null;
-        }
-      },
-      3000,
-      1
-    );
+        });
+      } catch (err) {
+        Logger.warn(`Error during match attempt for ${mode}: ${String(err)}`);
+      }
+    }
+
+    // Local fallback
+    const list = this.localQueues.get(mode) || [];
+    if (list.length >= requiredPlayers) {
+      const matched = list.slice(0, requiredPlayers);
+      this.localQueues.set(mode, list.slice(requiredPlayers));
+      return matched;
+    }
+    return null;
   }
 }

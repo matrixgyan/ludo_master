@@ -1,30 +1,27 @@
-/**
- * Structured Redis Key Patterns
- * Prevents arbitrary key pollution and guarantees proper namespacing and TTL enforcement.
- */
 export const RedisKeys = {
-  // Game state & locks
-  gameState: (gameId: string) => `ludo:game:${gameId}:state`,
-  gamePlayers: (gameId: string) => `ludo:game:${gameId}:players`,
-  gameTurn: (gameId: string) => `ludo:game:${gameId}:turn`,
-  gameVersion: (gameId: string) => `ludo:game:${gameId}:version`,
+  // 1. Realtime Game State
+  gameState: (gameId: string) => `ludo:state:${gameId}`,
+  gameVersion: (gameId: string) => `ludo:version:${gameId}`,
+  gameTurn: (gameId: string) => `ludo:turn:${gameId}`,
+  gameRoomMembers: (gameId: string) => `ludo:room:${gameId}:members`,
+
+  // 2. Distributed Locks
   gameLock: (gameId: string) => `ludo:lock:game:${gameId}`,
-  gamePresence: (gameId: string) => `ludo:game:${gameId}:presence`,
-  gameEventsPubSub: (gameId: string) => `ludo:pubsub:game:${gameId}`,
-
-  // Player Presence
-  userPresence: (userId: string) => `ludo:presence:user:${userId}`,
-  onlineUsersSet: () => `ludo:presence:online_users`,
-
-  // Matchmaking
-  matchmakingQueue: (mode: string) => `ludo:matchmaking:${mode}`,
-  matchmakingTicket: (userId: string) => `ludo:matchmaking:ticket:${userId}`,
+  userLock: (userId: string) => `ludo:lock:user:${userId}`,
   matchmakingLock: (mode: string) => `ludo:lock:matchmaking:${mode}`,
 
-  // Rate Limiting
-  rateLimit: (action: string, identifier: string) => `ludo:ratelimit:${action}:${identifier}`,
+  // 3. Player Presence
+  userPresence: (userId: string) => `ludo:presence:${userId}`,
+  onlineUsers: () => 'ludo:presence:online_set',
 
-  // Cache & Session
-  userSession: (sessionId: string) => `ludo:session:${sessionId}`,
-  leaderboardCache: (type: string, period: string) => `ludo:cache:leaderboard:${type}:${period}`,
+  // 4. Matchmaking
+  matchmakingQueue: (mode: string) => `ludo:matchmaking:queue:${mode}`,
+  playerTicket: (userId: string) => `ludo:matchmaking:ticket:${userId}`,
+
+  // 5. Rate Limiting
+  rateLimit: (key: string) => `ludo:ratelimit:${key}`,
+
+  // 6. Cache
+  leaderboardCache: (type: string) => `ludo:cache:leaderboard:${type}`,
+  userStatsCache: (userId: string) => `ludo:cache:stats:${userId}`,
 };
