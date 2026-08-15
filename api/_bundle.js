@@ -325,7 +325,7 @@ async function withTransaction(callback) {
 
 // src/server/redis/client.ts
 import Redis from "ioredis";
-var connectionFailed = false;
+var lastConnectionError = null;
 function isRedisConfigured() {
   return Boolean(
     config.REDIS_URL && config.REDIS_URL.trim().length > 0 && !config.REDIS_URL.includes("samplepassword")
@@ -334,44 +334,42 @@ function isRedisConfigured() {
 function getRedisConfig() {
   return {
     lazyConnect: true,
-    maxRetriesPerRequest: null,
+    maxRetriesPerRequest: 3,
     enableReadyCheck: false,
-    enableOfflineQueue: false,
-    connectTimeout: 5e3,
-    commandTimeout: 4e3,
+    enableOfflineQueue: true,
+    connectTimeout: 1e4,
+    commandTimeout: 8e3,
     // Automatic TLS support for Upstash rediss:// or Cloud Redis
     tls: config.REDIS_URL?.startsWith("rediss://") ? { rejectUnauthorized: false } : void 0,
     retryStrategy(times) {
-      if (times > (config.IS_VERCEL ? 1 : 3)) {
-        connectionFailed = true;
+      if (times > 5) {
         return null;
       }
-      return Math.min(times * 100, 1e3);
+      return Math.min(times * 200, 2e3);
     }
   };
 }
 function getRedisClient() {
-  if (!isRedisConfigured() || connectionFailed) {
+  if (!isRedisConfigured()) {
     return null;
   }
   if (!globalThis.__ludo_redis_client) {
     try {
       const client = new Redis(config.REDIS_URL, getRedisConfig());
       client.on("connect", () => {
-        connectionFailed = false;
+        lastConnectionError = null;
         Logger.info("Redis / Upstash client connected successfully");
       });
+      client.on("ready", () => {
+        lastConnectionError = null;
+      });
       client.on("error", (err) => {
-        if (!connectionFailed) {
-          Logger.warn("Redis connection notice: operating in standalone mode until reachable", {
-            error: err?.message
-          });
-        }
-        connectionFailed = true;
+        lastConnectionError = err?.message || String(err);
+        Logger.warn("Redis client error notice", { error: lastConnectionError });
       });
       globalThis.__ludo_redis_client = client;
-    } catch {
-      connectionFailed = true;
+    } catch (err) {
+      lastConnectionError = err?.message || String(err);
       return null;
     }
   }
@@ -385,13 +383,24 @@ async function checkRedisHealth() {
   try {
     const client = getRedisClient();
     if (!client) {
-      return { status: "unconfigured", latencyMs: 0 };
+      return {
+        status: "unhealthy",
+        latencyMs: 0,
+        error: lastConnectionError || "Could not instantiate Redis client"
+      };
     }
-    if (client.status !== "ready" && client.status !== "connecting" && client.status !== "connect") {
-      await client.connect().catch(() => {
-      });
+    if (client.status !== "ready" && client.status !== "connect") {
+      try {
+        await client.connect();
+      } catch (connErr) {
+        if (!connErr?.message?.includes("already connecting") && !connErr?.message?.includes("ready")) {
+        }
+      }
     }
-    const pong = await client.ping();
+    const pong = await Promise.race([
+      client.ping(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Redis ping timeout (5s)")), 5e3))
+    ]);
     const latencyMs = Date.now() - start;
     return {
       status: pong === "PONG" ? "healthy" : "unhealthy",
