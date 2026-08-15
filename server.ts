@@ -1,38 +1,29 @@
-import express from 'express';
 import http from 'http';
 import path from 'path';
+import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import { config, Logger, getServicesStatusSummary } from './src/server/config/env';
-import { apiRouter } from './src/server/routes/api';
-import { adminRouter } from './src/server/routes/adminApi';
+import { app, initializeDatabaseOnce } from './src/server/app';
 import { wsServerInstance } from './src/server/websocket/wsServer';
-import { ensureDatabaseTables } from './src/server/db/migrator';
 import { closeDbPool } from './src/server/db/client';
 import { closeRedis } from './src/server/redis/client';
 import { BackgroundWorkerManager } from './src/server/queues/workerRunner';
 import { QueueRegistry } from './src/server/queues/queueManager';
 
 async function bootstrap() {
-  const app = express();
   const server = http.createServer(app);
   const PORT = config.PORT || 3000;
 
-  app.use(express.json());
-
   // 1. Initialize PostgreSQL Database Tables if configured
-  await ensureDatabaseTables();
+  await initializeDatabaseOnce();
 
   // 2. Initialize BullMQ Background Workers if Redis is configured
   BackgroundWorkerManager.initialize();
 
-  // 3. Mount API & Admin & Health routes
-  app.use(apiRouter);
-  app.use(adminRouter);
-
-  // 4. Attach WebSocket Server
+  // 3. Attach WebSocket Server
   wsServerInstance.initialize(server);
 
-  // 5. Mount Vite middleware for development, or static files in production
+  // 4. Mount Vite middleware for development, or static files in production
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -47,7 +38,7 @@ async function bootstrap() {
     });
   }
 
-  // 6. Start HTTP + WS listener on port 3000
+  // 5. Start HTTP + WS listener on port 3000
   server.listen(PORT, '0.0.0.0', () => {
     Logger.info(`🚀 Ludo World Master Server running on http://0.0.0.0:${PORT}`);
     const services = getServicesStatusSummary();

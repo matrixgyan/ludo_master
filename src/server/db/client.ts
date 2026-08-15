@@ -5,8 +5,13 @@ import { config, Logger } from '../config/env';
 
 const { Pool } = pg;
 
-let pool: pg.Pool | null = null;
-let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
+// Serverless-friendly global singleton caching across Vercel Lambda invocations
+declare global {
+  // eslint-disable-next-line no-var
+  var __ludo_pg_pool: pg.Pool | undefined;
+  // eslint-disable-next-line no-var
+  var __ludo_drizzle_db: ReturnType<typeof drizzle<typeof schema>> | undefined;
+}
 
 export function isPostgresConfigured(): boolean {
   return Boolean(config.DATABASE_URL && config.DATABASE_URL.trim().length > 0);
@@ -17,22 +22,22 @@ export function getDbPool(): pg.Pool | null {
     return null;
   }
 
-  if (!pool) {
+  if (!globalThis.__ludo_pg_pool) {
     const isLocal = config.DATABASE_URL?.includes('localhost') || config.DATABASE_URL?.includes('127.0.0.1');
 
-    pool = new Pool({
+    globalThis.__ludo_pg_pool = new Pool({
       connectionString: config.DATABASE_URL,
       ssl: isLocal ? false : { rejectUnauthorized: false },
       min: 0, // Serverless scale-to-zero friendly
-      max: 10,
+      max: config.IS_VERCEL ? 3 : 10,
       idleTimeoutMillis: 10000, // Reclaim idle clients before serverless gateway drops
-      connectionTimeoutMillis: 5000,
+      connectionTimeoutMillis: 8000,
       keepAlive: true,
       keepAliveInitialDelayMillis: 10000,
     });
 
     // Catch idle serverless disconnects gracefully without crashing
-    pool.on('error', (err: any) => {
+    globalThis.__ludo_pg_pool.on('error', (err: any) => {
       const errMsg = err?.message || String(err);
       if (errMsg.includes('Connection terminated unexpectedly') || err?.code === 'ECONNRESET') {
         Logger.info('Idle Neon PostgreSQL client socket recycled by server.');
@@ -41,17 +46,17 @@ export function getDbPool(): pg.Pool | null {
       Logger.warn('Neon PostgreSQL pool warning', { error: errMsg });
     });
   }
-  return pool;
+  return globalThis.__ludo_pg_pool;
 }
 
 export function getDb(): ReturnType<typeof drizzle<typeof schema>> | null {
-  if (!db) {
+  if (!globalThis.__ludo_drizzle_db) {
     const p = getDbPool();
     if (p) {
-      db = drizzle(p, { schema });
+      globalThis.__ludo_drizzle_db = drizzle(p, { schema });
     }
   }
-  return db;
+  return globalThis.__ludo_drizzle_db || null;
 }
 
 /**
@@ -123,10 +128,10 @@ export async function withTransaction<T>(callback: (client: pg.PoolClient) => Pr
  * Graceful shutdown of database connection pool
  */
 export async function closeDbPool(): Promise<void> {
-  if (pool) {
+  if (globalThis.__ludo_pg_pool) {
     Logger.info('Closing Neon PostgreSQL pool...');
-    await pool.end().catch(() => {});
-    pool = null;
-    db = null;
+    await globalThis.__ludo_pg_pool.end().catch(() => {});
+    globalThis.__ludo_pg_pool = undefined;
+    globalThis.__ludo_drizzle_db = undefined;
   }
 }

@@ -13,7 +13,11 @@ import { storageObjects } from '../db/schema';
 import { v4 as uuidv4 } from 'uuid';
 import { Readable } from 'stream';
 
-let s3Client: S3Client | null = null;
+// Serverless-friendly global singleton caching across Vercel Lambda invocations
+declare global {
+  // eslint-disable-next-line no-var
+  var __ludo_s3_client: S3Client | undefined;
+}
 
 export function isR2Configured(): boolean {
   return Boolean(
@@ -33,8 +37,8 @@ export function getR2Client(): S3Client | null {
     return null;
   }
 
-  if (!s3Client) {
-    s3Client = new S3Client({
+  if (!globalThis.__ludo_s3_client) {
+    globalThis.__ludo_s3_client = new S3Client({
       region: 'auto',
       endpoint: config.R2_ENDPOINT,
       credentials: {
@@ -46,7 +50,7 @@ export function getR2Client(): S3Client | null {
     });
   }
 
-  return s3Client;
+  return globalThis.__ludo_s3_client;
 }
 
 /**

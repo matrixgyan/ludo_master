@@ -7,6 +7,7 @@ dotenv.config();
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(3000),
+  IS_VERCEL: z.boolean().default(false),
 
   // 1. Neon PostgreSQL
   DATABASE_URL: z.string().optional(),
@@ -14,7 +15,7 @@ const envSchema = z.object({
   // 2. Redis / Upstash
   REDIS_URL: z.string().optional(),
 
-  // 3. Cloudflare R2 Object Storage
+  // 3. Cloudflare R2 Object Storage (supports R2_* and CLOUDFLARE_R2_*)
   R2_ENDPOINT: z.string().optional(),
   R2_ACCESS_KEY_ID: z.string().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
@@ -27,10 +28,45 @@ const envSchema = z.object({
 export type AppConfig = z.infer<typeof envSchema>;
 
 function parseEnv(): AppConfig {
-  const result = envSchema.safeParse(process.env);
+  const isVercel = Boolean(process.env.VERCEL || process.env.NOW_REGION);
+
+  const raw = {
+    NODE_ENV: process.env.NODE_ENV || 'development',
+    PORT: process.env.PORT ? parseInt(process.env.PORT, 10) : 3000,
+    IS_VERCEL: isVercel,
+
+    // Neon PostgreSQL resolution
+    DATABASE_URL: process.env.DATABASE_URL,
+
+    // Redis / Upstash resolution
+    REDIS_URL: process.env.REDIS_URL,
+
+    // Cloudflare R2 resolution
+    R2_ENDPOINT:
+      process.env.R2_ENDPOINT ||
+      process.env.CLOUDFLARE_R2_ENDPOINT ||
+      process.env.AWS_ENDPOINT_URL_S3,
+    R2_ACCESS_KEY_ID:
+      process.env.R2_ACCESS_KEY_ID ||
+      process.env.CLOUDFLARE_R2_ACCESS_KEY_ID ||
+      process.env.AWS_ACCESS_KEY_ID,
+    R2_SECRET_ACCESS_KEY:
+      process.env.R2_SECRET_ACCESS_KEY ||
+      process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY ||
+      process.env.AWS_SECRET_ACCESS_KEY,
+    R2_BUCKET_NAME:
+      process.env.R2_BUCKET_NAME ||
+      process.env.CLOUDFLARE_R2_BUCKET ||
+      process.env.R2_BUCKET ||
+      process.env.AWS_BUCKET_NAME,
+
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+  };
+
+  const result = envSchema.safeParse(raw);
   if (!result.success) {
-    console.error('❌ Environment configuration validation failed:', result.error.format());
-    return envSchema.parse({});
+    console.error('❌ Environment configuration validation warning:', result.error.format());
+    return envSchema.parse(raw);
   }
   return result.data;
 }

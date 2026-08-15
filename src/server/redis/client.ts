@@ -1,8 +1,14 @@
 import Redis, { RedisOptions } from 'ioredis';
 import { config, Logger } from '../config/env';
 
-let redisClient: Redis | null = null;
-let redisSubscriber: Redis | null = null;
+// Serverless-friendly global singleton caching across Vercel Lambda invocations
+declare global {
+  // eslint-disable-next-line no-var
+  var __ludo_redis_client: Redis | undefined;
+  // eslint-disable-next-line no-var
+  var __ludo_redis_sub: Redis | undefined;
+}
+
 let connectionFailed = false;
 
 export function isRedisConfigured(): boolean {
@@ -19,10 +25,12 @@ export function getRedisConfig(): RedisOptions {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
     enableOfflineQueue: false,
+    connectTimeout: 5000,
+    commandTimeout: 4000,
     // Automatic TLS support for Upstash rediss:// or Cloud Redis
     tls: config.REDIS_URL?.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
     retryStrategy(times) {
-      if (times > 3) {
+      if (times > (config.IS_VERCEL ? 1 : 3)) {
         connectionFailed = true;
         return null;
       }
@@ -36,16 +44,16 @@ export function getRedisClient(): Redis | null {
     return null;
   }
 
-  if (!redisClient) {
+  if (!globalThis.__ludo_redis_client) {
     try {
-      redisClient = new Redis(config.REDIS_URL!, getRedisConfig());
+      const client = new Redis(config.REDIS_URL!, getRedisConfig());
 
-      redisClient.on('connect', () => {
+      client.on('connect', () => {
         connectionFailed = false;
         Logger.info('Redis / Upstash client connected successfully');
       });
 
-      redisClient.on('error', (err: any) => {
+      client.on('error', (err: any) => {
         if (!connectionFailed) {
           Logger.warn('Redis connection notice: operating in standalone mode until reachable', {
             error: err?.message,
@@ -53,12 +61,14 @@ export function getRedisClient(): Redis | null {
         }
         connectionFailed = true;
       });
+
+      globalThis.__ludo_redis_client = client;
     } catch {
       connectionFailed = true;
       return null;
     }
   }
-  return redisClient;
+  return globalThis.__ludo_redis_client;
 }
 
 export function getRedisSubscriber(): Redis | null {
@@ -66,22 +76,24 @@ export function getRedisSubscriber(): Redis | null {
     return null;
   }
 
-  if (!redisSubscriber) {
+  if (!globalThis.__ludo_redis_sub) {
     try {
-      redisSubscriber = new Redis(config.REDIS_URL!, getRedisConfig());
+      const sub = new Redis(config.REDIS_URL!, getRedisConfig());
 
-      redisSubscriber.on('connect', () => {
+      sub.on('connect', () => {
         Logger.info('Redis subscriber connected successfully');
       });
 
-      redisSubscriber.on('error', () => {
+      sub.on('error', () => {
         // Silent error handler for pub/sub channel
       });
+
+      globalThis.__ludo_redis_sub = sub;
     } catch {
       return null;
     }
   }
-  return redisSubscriber;
+  return globalThis.__ludo_redis_sub;
 }
 
 /**
@@ -127,13 +139,13 @@ export async function checkRedisHealth(): Promise<{
  */
 export async function closeRedis(): Promise<void> {
   const promises: Promise<string>[] = [];
-  if (redisClient) {
-    promises.push(redisClient.quit().catch(() => 'OK'));
-    redisClient = null;
+  if (globalThis.__ludo_redis_client) {
+    promises.push(globalThis.__ludo_redis_client.quit().catch(() => 'OK'));
+    globalThis.__ludo_redis_client = undefined;
   }
-  if (redisSubscriber) {
-    promises.push(redisSubscriber.quit().catch(() => 'OK'));
-    redisSubscriber = null;
+  if (globalThis.__ludo_redis_sub) {
+    promises.push(globalThis.__ludo_redis_sub.quit().catch(() => 'OK'));
+    globalThis.__ludo_redis_sub = undefined;
   }
   await Promise.all(promises);
   connectionFailed = false;
