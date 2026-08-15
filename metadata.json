@@ -1,0 +1,6 @@
+{
+  "name": "Ludo World Master",
+  "description": "A premium Ludo game lobby with Ludo Supreme, Snake Ludo, Mega Cash Tournaments, 3D animated dice & pawns, decentralized USDT EVM Web3 gaming wallet for multi-chain game assets, and player HUDs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
