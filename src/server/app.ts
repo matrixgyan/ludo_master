@@ -19,7 +19,11 @@ export async function initializeDatabaseOnce(): Promise<void> {
         isDbSchemaInitialized = true;
       })
       .catch((err) => {
-        Logger.warn('Background database table initialization warning', { error: String(err) });
+        dbInitPromise = null;
+        const msg = err?.message || String(err);
+        if (!msg.includes('Connection terminated due to connection timeout') && !msg.includes('timeout')) {
+          Logger.warn('Database initialization status notice', { error: msg });
+        }
       });
   }
   return dbInitPromise;

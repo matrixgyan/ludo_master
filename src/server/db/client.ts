@@ -23,15 +23,29 @@ export function getDbPool(): pg.Pool | null {
   }
 
   if (!globalThis.__ludo_pg_pool) {
-    const isLocal = config.DATABASE_URL?.includes('localhost') || config.DATABASE_URL?.includes('127.0.0.1');
+    const rawUrl = config.DATABASE_URL || '';
+    const isLocal = rawUrl.includes('localhost') || rawUrl.includes('127.0.0.1');
+
+    // Clean connection string to prevent pg library SSL mode alias deprecation warnings
+    // We explicitly supply the SSL configuration object below.
+    let cleanConnectionString = rawUrl;
+    try {
+      const parsed = new URL(rawUrl);
+      if (parsed.searchParams.has('sslmode')) {
+        parsed.searchParams.delete('sslmode');
+      }
+      cleanConnectionString = parsed.toString();
+    } catch {
+      cleanConnectionString = rawUrl;
+    }
 
     globalThis.__ludo_pg_pool = new Pool({
-      connectionString: config.DATABASE_URL,
+      connectionString: cleanConnectionString,
       ssl: isLocal ? false : { rejectUnauthorized: false },
       min: 0, // Serverless scale-to-zero friendly
       max: config.IS_VERCEL ? 3 : 10,
       idleTimeoutMillis: 10000, // Reclaim idle clients before serverless gateway drops
-      connectionTimeoutMillis: 8000,
+      connectionTimeoutMillis: 10000,
       keepAlive: true,
       keepAliveInitialDelayMillis: 10000,
     });
@@ -39,11 +53,16 @@ export function getDbPool(): pg.Pool | null {
     // Catch idle serverless disconnects gracefully without crashing
     globalThis.__ludo_pg_pool.on('error', (err: any) => {
       const errMsg = err?.message || String(err);
-      if (errMsg.includes('Connection terminated unexpectedly') || err?.code === 'ECONNRESET') {
-        Logger.info('Idle Neon PostgreSQL client socket recycled by server.');
+      if (
+        errMsg.includes('Connection terminated unexpectedly') ||
+        errMsg.includes('Connection terminated due to connection timeout') ||
+        err?.code === 'ECONNRESET' ||
+        err?.code === '57P01'
+      ) {
+        Logger.info('Idle PostgreSQL client socket recycled cleanly by serverless gateway.');
         return;
       }
-      Logger.warn('Neon PostgreSQL pool warning', { error: errMsg });
+      Logger.warn('Neon PostgreSQL pool notice', { error: errMsg });
     });
   }
   return globalThis.__ludo_pg_pool;
