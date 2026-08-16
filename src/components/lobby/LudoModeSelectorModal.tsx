@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Crown, Zap, Check, Sparkles } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
+import ludo2pImg from '../../assets/images/ludo_2player_3d_1786853248900.jpg';
+import ludo3pImg from '../../assets/images/ludo_3player_3d_1786853262404.jpg';
+import ludo4pImg from '../../assets/images/ludo_4player_3d_1786853274712.jpg';
 
 export type PlayerModeOption = 2 | 3 | 4;
 
@@ -23,7 +26,7 @@ const MODE_TILES: Record<PlayerModeOption, {
 }> = {
   2: {
     label: '2 PLAYERS',
-    imageSrc: '/src/assets/images/ludo_2player_3d_1786853248900.jpg',
+    imageSrc: ludo2pImg,
     glowColor: 'rgba(56, 189, 248, 0.45)',
     activeBorder: 'border-cyan-400 ring-4 ring-cyan-400/40 shadow-[0_0_30px_rgba(56,189,248,0.6)]',
     bgGradient: 'from-blue-950/90 via-slate-900/90 to-cyan-950/80',
@@ -31,7 +34,7 @@ const MODE_TILES: Record<PlayerModeOption, {
   },
   3: {
     label: '3 PLAYERS',
-    imageSrc: '/src/assets/images/ludo_3player_3d_1786853262404.jpg',
+    imageSrc: ludo3pImg,
     glowColor: 'rgba(52, 211, 153, 0.45)',
     activeBorder: 'border-emerald-400 ring-4 ring-emerald-400/40 shadow-[0_0_30px_rgba(52,211,153,0.6)]',
     bgGradient: 'from-emerald-950/90 via-slate-900/90 to-teal-950/80',
@@ -39,7 +42,7 @@ const MODE_TILES: Record<PlayerModeOption, {
   },
   4: {
     label: '4 PLAYERS',
-    imageSrc: '/src/assets/images/ludo_4player_3d_1786853274712.jpg',
+    imageSrc: ludo4pImg,
     glowColor: 'rgba(251, 191, 36, 0.55)',
     activeBorder: 'border-amber-400 ring-4 ring-amber-400/40 shadow-[0_0_30px_rgba(251,191,36,0.7)]',
     bgGradient: 'from-amber-950/90 via-purple-950/90 to-slate-950/80',

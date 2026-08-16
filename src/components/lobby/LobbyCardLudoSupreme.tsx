@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Sparkles, Trophy } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
+import ludoSupremeHeroImg from '../../assets/images/ludo_supreme_3d_hero_1786855564744.jpg';
 
 interface LobbyCardLudoSupremeProps {
   onPlay: () => void;
@@ -25,7 +26,7 @@ export const LobbyCardLudoSupreme: React.FC<LobbyCardLudoSupremeProps> = ({
     >
       {/* 1. BACKGROUND 3D ARTWORK WITH DYNAMIC FLOATING ANIMATION */}
       <motion.img
-        src="/src/assets/images/ludo_supreme_3d_hero_1786855564744.jpg"
+        src={ludoSupremeHeroImg}
         alt="Ludo Supreme 3D Arena"
         referrerPolicy="no-referrer"
         className="absolute inset-0 w-full h-full object-cover select-none"

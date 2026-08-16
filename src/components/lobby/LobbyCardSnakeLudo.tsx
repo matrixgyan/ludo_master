@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Sparkles, Flame } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
+import snakeLudoHeroImg from '../../assets/images/snake_ludo_3d_hero_1786855315006.jpg';
 
 interface LobbyCardSnakeLudoProps {
   onPlay: () => void;
@@ -25,7 +26,7 @@ export const LobbyCardSnakeLudo: React.FC<LobbyCardSnakeLudoProps> = ({
     >
       {/* 1. BACKGROUND 3D ARTWORK WITH DYNAMIC FLOATING ANIMATION */}
       <motion.img
-        src="/src/assets/images/snake_ludo_3d_hero_1786855315006.jpg"
+        src={snakeLudoHeroImg}
         alt="Snake Ludo 3D Arena"
         referrerPolicy="no-referrer"
         className="absolute inset-0 w-full h-full object-cover select-none"

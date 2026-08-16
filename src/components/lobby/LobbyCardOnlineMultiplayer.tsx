@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Sparkles, Crown } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
+import ludoArenaHeroImg from '../../assets/images/ludo_arena_hero_3d_1786855007159.jpg';
 
 interface LobbyCardOnlineMultiplayerProps {
   onOpenModeSelect: () => void;
@@ -25,7 +26,7 @@ export const LobbyCardOnlineMultiplayer: React.FC<LobbyCardOnlineMultiplayerProp
     >
       {/* 1. BACKGROUND 3D ARTWORK WITH DYNAMIC FLOATING ANIMATION */}
       <motion.img
-        src="/src/assets/images/ludo_arena_hero_3d_1786855007159.jpg"
+        src={ludoArenaHeroImg}
         alt="Ludo Online Arena 3D"
         referrerPolicy="no-referrer"
         className="absolute inset-0 w-full h-full object-cover select-none"
