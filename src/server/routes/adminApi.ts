@@ -28,6 +28,17 @@ interface PlatformSettings {
   allowedOrigins: string[];
 }
 
+export interface ActiveThemeConfig {
+  activeBoardId: string;
+  activeDiceId: string;
+  activePawnId: string;
+  enabledBoards: string[];
+  enabledDice: string[];
+  enabledPawns: string[];
+  customThemes?: any[];
+  updatedAt: string;
+}
+
 let platformSettings: PlatformSettings = {
   adminUrlAlias: 'admin',
   maintenanceMode: false,
@@ -38,6 +49,17 @@ let platformSettings: PlatformSettings = {
   entryFeeSnakeLudo: 50,
   prizePoolPercentage: 85,
   allowedOrigins: ['https://ludo.omyra.org', 'http://localhost:3000'],
+};
+
+let activeThemeConfig: ActiveThemeConfig = {
+  activeBoardId: 'dubai_royal_sunset',
+  activeDiceId: 'golden_high_roller',
+  activePawnId: 'royal_crowned',
+  enabledBoards: ['dubai_royal_sunset', 'classic_emerald', 'cyber_neon', 'midnight_marble', 'candy_pastel', 'aztec_wood'],
+  enabledDice: ['golden_high_roller', 'classic_pearl', 'cyber_glass', 'ruby_royale', 'emerald_jade', 'dark_matter'],
+  enabledPawns: ['royal_crowned', 'classic_gloss', 'crystal_gem', 'cyber_mecha', 'golden_sovereign', 'dragon_shield'],
+  customThemes: [],
+  updatedAt: new Date().toISOString(),
 };
 
 // Admin authentication constants
@@ -180,6 +202,52 @@ adminRouter.post('/api/admin/settings', requireAdminAuth, (req: Request, res: Re
       currentAliasUrl: `https://ludo.omyra.org/${platformSettings.adminUrlAlias}`,
       currentSlug: platformSettings.adminUrlAlias,
     },
+  });
+});
+
+// -----------------------------------------------------------------------------
+// 2B. LUDO BOARD, DICE & PAWNS THEME ASSETS CUSTOMIZER
+// -----------------------------------------------------------------------------
+
+adminRouter.get('/api/admin/theme-assets', (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    themeConfig: activeThemeConfig,
+  });
+});
+
+adminRouter.post('/api/admin/theme-assets', requireAdminAuth, (req: Request, res: Response) => {
+  const {
+    activeBoardId,
+    activeDiceId,
+    activePawnId,
+    enabledBoards,
+    enabledDice,
+    enabledPawns,
+    customThemes,
+  } = req.body;
+
+  if (activeBoardId) activeThemeConfig.activeBoardId = activeBoardId;
+  if (activeDiceId) activeThemeConfig.activeDiceId = activeDiceId;
+  if (activePawnId) activeThemeConfig.activePawnId = activePawnId;
+  if (Array.isArray(enabledBoards)) activeThemeConfig.enabledBoards = enabledBoards;
+  if (Array.isArray(enabledDice)) activeThemeConfig.enabledDice = enabledDice;
+  if (Array.isArray(enabledPawns)) activeThemeConfig.enabledPawns = enabledPawns;
+  if (Array.isArray(customThemes)) activeThemeConfig.customThemes = customThemes;
+  activeThemeConfig.updatedAt = new Date().toISOString();
+
+  Logger.info(`Admin updated active theme assets: Board=${activeThemeConfig.activeBoardId}, Dice=${activeThemeConfig.activeDiceId}, Pawn=${activeThemeConfig.activePawnId}`);
+
+  // Broadcast theme change to active live games
+  wsServerInstance.broadcastToRoom('global', {
+    type: 'THEME_UPDATED',
+    themeConfig: activeThemeConfig,
+  });
+
+  res.json({
+    success: true,
+    message: 'Ludo boards, pawns & dice configuration deployed to live platform successfully!',
+    themeConfig: activeThemeConfig,
   });
 });
 

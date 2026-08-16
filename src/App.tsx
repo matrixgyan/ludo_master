@@ -16,10 +16,19 @@ import { SnakeLudoGame } from './components/lobby/SnakeLudoGame';
 import { AngelFlightData } from './components/ludo/effects/AngelFlightOverlay';
 import { AdminLayout } from './components/admin/AdminLayout';
 import { AdminLogin } from './components/admin/AdminLogin';
+import { PlayerModeOption } from './components/lobby/LudoModeSelectorModal';
+import { OnlineMatchmakingScreen, MatchedOpponent } from './components/lobby/OnlineMatchmakingScreen';
+import { VictoryModal } from './components/ludo/effects/VictoryModal';
 
-type ViewMode = 'lobby' | 'ludo_game' | 'snake_ludo' | 'admin';
+type ViewMode = 'lobby' | 'ludo_game' | 'snake_ludo' | 'admin' | 'matchmaking';
 
-const INITIAL_PLAYERS: Record<PlayerColor, Player> = {
+interface MatchConfig {
+  mode: PlayerModeOption;
+  entryFee: number;
+  prizePool: number;
+}
+
+const DEFAULT_PLAYERS: Record<PlayerColor, Player> = {
   blue: {
     id: 'p1',
     name: 'Player 1',
@@ -47,7 +56,7 @@ const INITIAL_PLAYERS: Record<PlayerColor, Player> = {
     isActive: true,
     isMuted: false,
     isSpeaking: false,
-    isHuman: true,
+    isHuman: false,
     score: 1850,
     pawns: [
       { id: 'red-0', playerId: 'p2', color: 'red', pawnIndex: 0, state: 'home', pathStep: -1, gridX: 10.5, gridY: 1.5 },
@@ -65,7 +74,7 @@ const INITIAL_PLAYERS: Record<PlayerColor, Player> = {
     isActive: true,
     isMuted: false,
     isSpeaking: false,
-    isHuman: true,
+    isHuman: false,
     score: 950,
     pawns: [
       { id: 'green-0', playerId: 'p3', color: 'green', pawnIndex: 0, state: 'home', pathStep: -1, gridX: 10.5, gridY: 10.5 },
@@ -83,7 +92,7 @@ const INITIAL_PLAYERS: Record<PlayerColor, Player> = {
     isActive: true,
     isMuted: false,
     isSpeaking: false,
-    isHuman: true,
+    isHuman: false,
     score: 2100,
     pawns: [
       { id: 'yellow-0', playerId: 'p4', color: 'yellow', pawnIndex: 0, state: 'home', pathStep: -1, gridX: 1.5, gridY: 10.5 },
@@ -94,11 +103,10 @@ const INITIAL_PLAYERS: Record<PlayerColor, Player> = {
   },
 };
 
-const NEXT_TURN: Record<PlayerColor, PlayerColor> = {
-  blue: 'red',
-  red: 'green',
-  green: 'yellow',
-  yellow: 'blue',
+const getNextTurnColor = (current: PlayerColor, activeCols: PlayerColor[]): PlayerColor => {
+  const idx = activeCols.indexOf(current);
+  if (idx === -1) return activeCols[0] || 'blue';
+  return activeCols[(idx + 1) % activeCols.length];
 };
 
 export default function App() {
@@ -117,14 +125,25 @@ export default function App() {
     }
     return 'lobby';
   });
+
   const [balance, setBalance] = useState<number>(0.50);
   const [adminToken, setAdminToken] = useState<string | null>(() => localStorage.getItem('ludo_admin_token'));
   const [adminData, setAdminData] = useState<any | null>(null);
   const [adminAlias, setAdminAlias] = useState<string>('admin');
 
-  // URL Path & Query Detection for Admin Portal (supports /admin, /custom, ?view=admin, etc.)
+  // Matchmaking & Dynamic Player Mode State
+  const [playerMode, setPlayerMode] = useState<PlayerModeOption>(4);
+  const [currentMatchConfig, setCurrentMatchConfig] = useState<MatchConfig | null>(null);
+
+  const activeColors: PlayerColor[] =
+    playerMode === 2
+      ? ['blue', 'red']
+      : playerMode === 3
+      ? ['blue', 'red', 'green']
+      : ['blue', 'red', 'green', 'yellow'];
+
+  // URL Path & Query Detection for Admin Portal
   useEffect(() => {
-    // 1. Fetch current platform settings to know the current admin alias (e.g. 'admin' or 'custom')
     fetch('/api/admin/settings')
       .then((res) => res.json())
       .then((data) => {
@@ -132,7 +151,6 @@ export default function App() {
           const slug = data.adminUrls.currentSlug;
           setAdminAlias(slug);
 
-          // Check if current URL matches /admin or /custom or currentSlug
           const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
           const searchParams = new URLSearchParams(window.location.search);
           const isHashAdmin = window.location.hash.includes('admin') || window.location.hash.includes(slug);
@@ -149,14 +167,12 @@ export default function App() {
         }
       })
       .catch(() => {
-        // Fallback check
         const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
         if (path === 'admin' || path === 'custom') {
           setViewMode('admin');
         }
       });
 
-    // 2. Verify cached admin token if available
     const cachedToken = localStorage.getItem('ludo_admin_token');
     if (cachedToken) {
       fetch('/api/admin/auth/me', {
@@ -189,7 +205,7 @@ export default function App() {
   }, [adminAlias]);
 
   const [gameState, setGameState] = useState<GameState>({
-    players: INITIAL_PLAYERS,
+    players: DEFAULT_PLAYERS,
     currentTurn: 'blue',
     dice: { value: 6, isRolling: false, hasRolled: false, canRoll: true },
     selectedPawnId: null,
@@ -210,11 +226,10 @@ export default function App() {
   const [turnTimeLeft, setTurnTimeLeft] = useState<number>(30);
   const [activeAngelFlight, setActiveAngelFlight] = useState<AngelFlightData | null>(null);
 
-  // 30-Second Turn Countdown Timer Effect
+  // 30-Second Turn Countdown Timer Effect (Strictly active only during ludo_game mode)
   useEffect(() => {
-    if (gameState.winner) return;
+    if (viewMode !== 'ludo_game' || gameState.winner) return;
 
-    // Reset turn timer to 30s whenever turn changes
     setTurnTimeLeft(30);
 
     const timerInterval = setInterval(() => {
@@ -227,23 +242,21 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(timerInterval);
-  }, [gameState.currentTurn, gameState.winner]);
+  }, [viewMode, gameState.currentTurn, gameState.winner]);
 
-  // Flatten all pawns for rendering
-  const allPawns = (Object.values(gameState.players) as Player[]).flatMap((p) => p.pawns);
+  // Flatten all pawns of active players for rendering
+  const allPawns = activeColors.flatMap((c) => gameState.players[c].pawns);
 
   // Find legal movable pawns for the rolled dice value
   const getMovablePawns = useCallback(
     (color: PlayerColor, diceVal: number): string[] => {
-      const playerPawns = gameState.players[color].pawns;
+      const playerPawns = gameState.players[color]?.pawns || [];
       const movables: string[] = [];
 
       playerPawns.forEach((p) => {
         if (p.pathStep === -1) {
-          // Pawn in home base: requires rolling a 6
           if (diceVal === 6) movables.push(p.id);
         } else if (p.pathStep < 56) {
-          // Pawn on path or home stretch: can move if doesn't overshoot goal (56)
           if (p.pathStep + diceVal <= 56) {
             movables.push(p.id);
           }
@@ -255,8 +268,115 @@ export default function App() {
     [gameState.players]
   );
 
+  // Handle Match Start from Lobby
+  const handleStartOnlineMatch = (mode: PlayerModeOption, entryFee: number, prizePool: number) => {
+    if (entryFee > 0) {
+      setBalance((b) => Math.max(0, Number((b - entryFee).toFixed(2))));
+    }
+    setPlayerMode(mode);
+    setCurrentMatchConfig({ mode, entryFee, prizePool });
+    setViewMode('matchmaking');
+  };
+
+  // Match Complete -> Prepare Board for 2P, 3P, or 4P
+  const handleMatchComplete = (matchedOpponents: MatchedOpponent[]) => {
+    const updatedPlayers: Record<PlayerColor, Player> = { ...DEFAULT_PLAYERS };
+
+    // Player 1 (Blue - Human)
+    updatedPlayers.blue = {
+      ...DEFAULT_PLAYERS.blue,
+      isActive: true,
+      isHuman: true,
+      pawns: [
+        { id: 'blue-0', playerId: 'p1', color: 'blue', pawnIndex: 0, state: 'home', pathStep: -1, gridX: 1.5, gridY: 1.5 },
+        { id: 'blue-1', playerId: 'p1', color: 'blue', pawnIndex: 1, state: 'home', pathStep: -1, gridX: 3.5, gridY: 1.5 },
+        { id: 'blue-2', playerId: 'p1', color: 'blue', pawnIndex: 2, state: 'home', pathStep: -1, gridX: 1.5, gridY: 3.5 },
+        { id: 'blue-3', playerId: 'p1', color: 'blue', pawnIndex: 3, state: 'home', pathStep: -1, gridX: 3.5, gridY: 3.5 },
+      ],
+    };
+
+    // Opponents configuration based on player count
+    if (matchedOpponents[0]) {
+      // Red
+      updatedPlayers.red = {
+        ...DEFAULT_PLAYERS.red,
+        name: matchedOpponents[0].name,
+        avatarUrl: matchedOpponents[0].avatarUrl,
+        isActive: true,
+        isHuman: false,
+        score: matchedOpponents[0].rating,
+        pawns: [
+          { id: 'red-0', playerId: 'p2', color: 'red', pawnIndex: 0, state: 'home', pathStep: -1, gridX: 10.5, gridY: 1.5 },
+          { id: 'red-1', playerId: 'p2', color: 'red', pawnIndex: 1, state: 'home', pathStep: -1, gridX: 12.5, gridY: 1.5 },
+          { id: 'red-2', playerId: 'p2', color: 'red', pawnIndex: 2, state: 'home', pathStep: -1, gridX: 10.5, gridY: 3.5 },
+          { id: 'red-3', playerId: 'p2', color: 'red', pawnIndex: 3, state: 'home', pathStep: -1, gridX: 12.5, gridY: 3.5 },
+        ],
+      };
+    } else {
+      updatedPlayers.red = { ...DEFAULT_PLAYERS.red, isActive: false, pawns: [] };
+    }
+
+    if (matchedOpponents[1] && playerMode >= 3) {
+      // Green
+      updatedPlayers.green = {
+        ...DEFAULT_PLAYERS.green,
+        name: matchedOpponents[1].name,
+        avatarUrl: matchedOpponents[1].avatarUrl,
+        isActive: true,
+        isHuman: false,
+        score: matchedOpponents[1].rating,
+        pawns: [
+          { id: 'green-0', playerId: 'p3', color: 'green', pawnIndex: 0, state: 'home', pathStep: -1, gridX: 10.5, gridY: 10.5 },
+          { id: 'green-1', playerId: 'p3', color: 'green', pawnIndex: 1, state: 'home', pathStep: -1, gridX: 12.5, gridY: 10.5 },
+          { id: 'green-2', playerId: 'p3', color: 'green', pawnIndex: 2, state: 'home', pathStep: -1, gridX: 10.5, gridY: 12.5 },
+          { id: 'green-3', playerId: 'p3', color: 'green', pawnIndex: 3, state: 'home', pathStep: -1, gridX: 12.5, gridY: 12.5 },
+        ],
+      };
+    } else {
+      updatedPlayers.green = { ...DEFAULT_PLAYERS.green, isActive: false, pawns: [] };
+    }
+
+    if (matchedOpponents[2] && playerMode === 4) {
+      // Yellow
+      updatedPlayers.yellow = {
+        ...DEFAULT_PLAYERS.yellow,
+        name: matchedOpponents[2].name,
+        avatarUrl: matchedOpponents[2].avatarUrl,
+        isActive: true,
+        isHuman: false,
+        score: matchedOpponents[2].rating,
+        pawns: [
+          { id: 'yellow-0', playerId: 'p4', color: 'yellow', pawnIndex: 0, state: 'home', pathStep: -1, gridX: 1.5, gridY: 10.5 },
+          { id: 'yellow-1', playerId: 'p4', color: 'yellow', pawnIndex: 1, state: 'home', pathStep: -1, gridX: 3.5, gridY: 10.5 },
+          { id: 'yellow-2', playerId: 'p4', color: 'yellow', pawnIndex: 2, state: 'home', pathStep: -1, gridX: 1.5, gridY: 12.5 },
+          { id: 'yellow-3', playerId: 'p4', color: 'yellow', pawnIndex: 3, state: 'home', pathStep: -1, gridX: 3.5, gridY: 12.5 },
+        ],
+      };
+    } else {
+      updatedPlayers.yellow = { ...DEFAULT_PLAYERS.yellow, isActive: false, pawns: [] };
+    }
+
+    setGameState({
+      players: updatedPlayers,
+      currentTurn: 'blue',
+      dice: { value: 6, isRolling: false, hasRolled: false, canRoll: true },
+      selectedPawnId: null,
+      movablePawnIds: [],
+      statusText: "PLAYER 1'S TURN — ROLL THE DICE!",
+      winner: null,
+      isAutoPlay: false,
+      isMuted: false,
+      theme: 'dubai_sunset',
+      consecutiveSixes: 0,
+    });
+
+    setChatMessages([]);
+    setViewMode('ludo_game');
+  };
+
   // Handle Dice Roll
   const handleRollDice = (forcedValue?: number) => {
+    if (viewMode !== 'ludo_game') return;
     const rolledVal = forcedValue ?? Math.floor(Math.random() * 6) + 1;
 
     setGameState((prev) => {
@@ -268,8 +388,7 @@ export default function App() {
         const nextSixes = prev.consecutiveSixes + 1;
 
         if (nextSixes === 3) {
-          // 3 CONSECUTIVE SIXES PENALTY! Turn forfeited to next player!
-          const nextTurn = NEXT_TURN[prev.currentTurn];
+          const nextTurn = getNextTurnColor(prev.currentTurn, activeColors);
           SoundManager.play('turn');
           return {
             ...prev,
@@ -281,7 +400,6 @@ export default function App() {
           };
         }
 
-        // 1st or 2nd six
         let statusMsg = `${activePlayerName} ROLLED A 6!`;
         if (movables.length === 0) {
           statusMsg += ' NO LEGAL MOVES. BONUS TURN GRANTED!';
@@ -303,7 +421,6 @@ export default function App() {
         };
       }
 
-      // Non-6 rolled (1, 2, 3, 4, 5) -> resets consecutive 6s
       let statusMsg = `${activePlayerName} ROLLED A ${rolledVal}!`;
       if (movables.length === 0) {
         statusMsg += ' NO LEGAL MOVES.';
@@ -325,7 +442,6 @@ export default function App() {
       };
     });
 
-    // Reset turn timer to 30 for pawn selection or extra turn
     setTurnTimeLeft(30);
 
     // Auto-resolve when no legal moves are available
@@ -333,7 +449,6 @@ export default function App() {
       setGameState((prev) => {
         if (prev.movablePawnIds.length === 0 && prev.dice.hasRolled) {
           if (prev.dice.value === 6 && prev.consecutiveSixes < 3) {
-            // Rolled a 6 with no legal moves -> gets extra turn automatically!
             SoundManager.play('turn');
             setTurnTimeLeft(30);
             return {
@@ -342,8 +457,7 @@ export default function App() {
               statusText: `${prev.players[prev.currentTurn].name} ROLLED 6 — BONUS TURN! ROLL AGAIN.`,
             };
           } else {
-            // Non-6 with no legal moves -> pass turn to next player
-            const nextTurn = NEXT_TURN[prev.currentTurn];
+            const nextTurn = getNextTurnColor(prev.currentTurn, activeColors);
             SoundManager.play('turn');
             setTurnTimeLeft(30);
             return {
@@ -380,7 +494,7 @@ export default function App() {
       if (finalStep >= 0 && finalStep <= 50) {
         const targetCoord = getPawnGridCoord(prev.currentTurn, clickedPawn.pawnIndex, finalStep);
         if (!isSafeCell(targetCoord)) {
-          (Object.keys(updatedPlayers) as PlayerColor[]).forEach((otherColor) => {
+          activeColors.forEach((otherColor) => {
             if (otherColor !== prev.currentTurn) {
               const otherPlayer = { ...updatedPlayers[otherColor] };
               let captured = false;
@@ -390,7 +504,6 @@ export default function App() {
                   if (opCoord.x === targetCoord.x && opCoord.y === targetCoord.y) {
                     didCapture = true;
                     captured = true;
-                    // Trigger Angelic Flight Animation cell-by-cell back to Home Nest!
                     const homeCoord = HOME_SLOTS[otherColor][op.pawnIndex];
                     const capturedStep = op.pathStep;
                     setActiveAngelFlight({
@@ -415,9 +528,27 @@ export default function App() {
         }
       }
 
+      // Check if current player has won the match
+      const allReachedGoal = curPlayer.pawns.length > 0 && curPlayer.pawns.every((p) => p.state === 'goal');
+      if (allReachedGoal) {
+        SoundManager.play('pawn-finish');
+        confetti({ particleCount: 150, spread: 100, origin: { y: 0.5 } });
+        if (curPlayer.isHuman && currentMatchConfig && currentMatchConfig.prizePool > 0) {
+          setBalance((b) => Number((b + currentMatchConfig.prizePool).toFixed(2)));
+        }
+        return {
+          ...prev,
+          players: updatedPlayers,
+          winner: prev.currentTurn,
+          statusText: `${curPlayer.name.toUpperCase()} WINS THE MATCH!`,
+        };
+      }
+
       // Extra Turn logic
       const getsExtraTurn = diceValue === 6 || didCapture || isGoalArrival;
-      const nextTurnColor = getsExtraTurn ? prev.currentTurn : NEXT_TURN[prev.currentTurn];
+      const nextTurnColor = getsExtraTurn
+        ? prev.currentTurn
+        : getNextTurnColor(prev.currentTurn, activeColors);
 
       if (!getsExtraTurn) {
         SoundManager.play('turn');
@@ -427,7 +558,6 @@ export default function App() {
         ? `${curPlayer.name} ${diceValue === 6 ? 'ROLLED 6' : didCapture ? 'CAPTURED PAWN' : 'REACHED HOME'} — BONUS TURN!`
         : `${updatedPlayers[nextTurnColor].name}'S TURN — ROLL THE DICE!`;
 
-      // Reset turn timer to 30 for the bonus or next turn
       setTurnTimeLeft(30);
 
       return {
@@ -446,8 +576,9 @@ export default function App() {
     setTimeout(() => setBouncingCellKey(null), 350);
   };
 
-  // Move Pawn Action (Animated Cell-by-Cell Hop with Jelly Cell Landing Bounces)
+  // Move Pawn Action (Animated Cell-by-Cell Hop)
   const handlePawnClick = (clickedPawn: Pawn) => {
+    if (viewMode !== 'ludo_game') return;
     if (steppingPawnId) return;
     if (clickedPawn.color !== gameState.currentTurn) return;
     if (!gameState.dice.hasRolled) return;
@@ -461,7 +592,6 @@ export default function App() {
     const color = clickedPawn.color;
     const pawnIndex = clickedPawn.pawnIndex;
 
-    // Lock selections immediately
     setGameState((prev) => ({
       ...prev,
       movablePawnIds: [],
@@ -476,7 +606,6 @@ export default function App() {
       stepCount++;
       const currentStep = startStep === -1 ? 0 : startStep + stepCount;
 
-      // 1. Begin pawn movement to target step cell
       setGameState((prev) => {
         const updatedPlayers = { ...prev.players };
         const player = { ...updatedPlayers[color] };
@@ -497,16 +626,13 @@ export default function App() {
         };
       });
 
-      // 2. Trigger landing sound and cell jelly bounce right as pawn impacts target cell
       setTimeout(() => {
         SoundManager.play('pawn-step');
-
         const coord = getPawnGridCoord(color, pawnIndex, currentStep);
         const cellKey = `${Math.round(coord.x)}-${Math.round(coord.y)}`;
         setBouncingCellKey(cellKey);
       }, 420);
 
-      // 3. Queue next step or finalize movement after landing
       if (stepCount < stepsToPerform) {
         setTimeout(doStep, STEP_DURATION_MS);
       } else {
@@ -519,17 +645,21 @@ export default function App() {
     doStep();
   };
 
-  // Bot Automation & Timer Expiration Effect
+  // Bot Automation & Timer Expiration Effect (Strictly active only in ludo_game view)
   useEffect(() => {
+    if (viewMode !== 'ludo_game') return;
+
     const curPlayer = gameState.players[gameState.currentTurn];
+    if (!curPlayer || !curPlayer.isActive) return;
+
     const isBot = !curPlayer.isHuman || gameState.isAutoPlay;
     const isTimerExpired = turnTimeLeft === 0;
 
     if (gameState.winner || steppingPawnId) return;
 
-    // Handle Timer Expiration (30s) -> FORFEIT TURN IMMEDIATELY
+    // Handle Timer Expiration -> Forfeit turn
     if (isTimerExpired) {
-      const nextTurn = NEXT_TURN[gameState.currentTurn];
+      const nextTurn = getNextTurnColor(gameState.currentTurn, activeColors);
       SoundManager.play('turn');
       setGameState((prev) => ({
         ...prev,
@@ -548,24 +678,29 @@ export default function App() {
     if (isBot) {
       if (gameState.dice.canRoll && !gameState.dice.isRolling) {
         const timer = setTimeout(() => {
-          handleRollDice();
+          if (viewMode === 'ludo_game') {
+            handleRollDice();
+          }
         }, 1100);
         return () => clearTimeout(timer);
       }
 
       if (gameState.dice.hasRolled && gameState.movablePawnIds.length > 0) {
         const timer = setTimeout(() => {
-          const movables = gameState.movablePawnIds;
-          const randomPawnId = movables[Math.floor(Math.random() * movables.length)];
-          const chosenPawn = curPlayer.pawns.find((p) => p.id === randomPawnId);
-          if (chosenPawn) {
-            handlePawnClick(chosenPawn);
+          if (viewMode === 'ludo_game') {
+            const movables = gameState.movablePawnIds;
+            const randomPawnId = movables[Math.floor(Math.random() * movables.length)];
+            const chosenPawn = curPlayer.pawns.find((p) => p.id === randomPawnId);
+            if (chosenPawn) {
+              handlePawnClick(chosenPawn);
+            }
           }
         }, 1100);
         return () => clearTimeout(timer);
       }
     }
   }, [
+    viewMode,
     gameState.currentTurn,
     gameState.dice.canRoll,
     gameState.dice.hasRolled,
@@ -573,9 +708,10 @@ export default function App() {
     steppingPawnId,
     turnTimeLeft,
     gameState.winner,
+    activeColors,
   ]);
 
-  // Handle Sending Chat / Emoji
+  // Chat
   const handleSendChat = (text: string, isEmoji = false) => {
     const newMessage: ChatMessage = {
       id: `chat-${Date.now()}`,
@@ -588,14 +724,12 @@ export default function App() {
     setChatMessages((prev) => [...prev, newMessage]);
   };
 
-  // Toggle Mute
   const handleToggleMute = () => {
     const newMuted = !gameState.isMuted;
     SoundManager.setMuted(newMuted);
     setGameState((prev) => ({ ...prev, isMuted: newMuted }));
   };
 
-  // Toggle Mic
   const handleToggleMic = (playerId?: string) => {
     const targetId = playerId ?? 'p1';
     setGameState((prev) => {
@@ -609,10 +743,9 @@ export default function App() {
     });
   };
 
-  // Reset Game
   const handleResetGame = () => {
     setGameState({
-      players: INITIAL_PLAYERS,
+      players: DEFAULT_PLAYERS,
       currentTurn: 'blue',
       dice: { value: 6, isRolling: false, hasRolled: false, canRoll: true },
       selectedPawnId: null,
@@ -622,13 +755,27 @@ export default function App() {
       isAutoPlay: false,
       isMuted: gameState.isMuted,
       theme: 'dubai_sunset',
+      consecutiveSixes: 0,
     });
+    setSteppingPawnId(null);
+    setActiveAngelFlight(null);
+    setBouncingCellKey(null);
+    setTurnTimeLeft(30);
     setChatMessages([]);
   };
 
-  // Test Angelic Flight Trigger
+  const handleReturnToLobby = () => {
+    SoundManager.play('click');
+    setSteppingPawnId(null);
+    setActiveAngelFlight(null);
+    setBouncingCellKey(null);
+    handleResetGame();
+    setViewMode('lobby');
+  };
+
   const handleTestAngelFlight = () => {
     const testPawn = gameState.players.red.pawns[1] || gameState.players.red.pawns[0];
+    if (!testPawn) return;
     const testStep = 18;
     const startCoord = getPawnGridCoord('red', 1, testStep);
     const homeCoord = HOME_SLOTS.red[1] || HOME_SLOTS.red[0];
@@ -692,20 +839,43 @@ export default function App() {
     return (
       <GameLobby
         balance={balance}
-        onAddFunds={(amt) => setBalance((prev) => prev + amt)}
+        onAddFunds={(amt) => setBalance((prev) => Number((prev + amt).toFixed(2)))}
         onPlayLudo={() => {
           SoundManager.play('click');
+          setPlayerMode(4);
           setViewMode('ludo_game');
         }}
         onPlaySnakeLudo={() => {
           SoundManager.play('click');
           setViewMode('snake_ludo');
         }}
+        onStartOnlineMatch={handleStartOnlineMatch}
       />
     );
   }
 
-  // 2. SNAKE LUDO MINI-GAME VIEW
+  // 2. LIVE ONLINE MATCHMAKING VIEW
+  if (viewMode === 'matchmaking') {
+    return (
+      <OnlineMatchmakingScreen
+        playerCount={playerMode}
+        entryFee={currentMatchConfig?.entryFee || 0}
+        prizePool={currentMatchConfig?.prizePool || 0}
+        userName={gameState.players.blue.name}
+        userAvatar={gameState.players.blue.avatarUrl}
+        onCancel={() => {
+          // Refund fee on cancel
+          if (currentMatchConfig && currentMatchConfig.entryFee > 0) {
+            setBalance((b) => Number((b + currentMatchConfig.entryFee).toFixed(2)));
+          }
+          setViewMode('lobby');
+        }}
+        onMatchComplete={handleMatchComplete}
+      />
+    );
+  }
+
+  // 3. SNAKE LUDO MINI-GAME VIEW
   if (viewMode === 'snake_ludo') {
     return (
       <SnakeLudoGame
@@ -719,7 +889,7 @@ export default function App() {
     );
   }
 
-  // 3. CLASSIC 3D LUDO SUPREME VIEW
+  // 4. CLASSIC & MULTI-PLAYER LUDO BOARD VIEW (2P, 3P, 4P DYNAMIC)
   return (
     <BoardEnvironment>
       {/* 1. TOP HUD HEADER */}
@@ -729,10 +899,10 @@ export default function App() {
         onToggleMute={handleToggleMute}
         gemsCount={1200}
         balance={balance}
-        onBackToLobby={() => setViewMode('lobby')}
+        onBackToLobby={handleReturnToLobby}
       />
 
-      {/* 2. TOP PLAYERS PROFILE HUDs (Top Left & Top Right) */}
+      {/* 2. TOP PLAYERS PROFILE HUDs (Blue Top-Left, Red Top-Right) */}
       <div className="w-full flex items-center justify-between px-2 pt-1 pb-1 z-20">
         <PlayerProfileHUD
           player={gameState.players.blue}
@@ -743,15 +913,17 @@ export default function App() {
           onRollDice={() => handleRollDice()}
           turnTimeLeft={turnTimeLeft}
         />
-        <PlayerProfileHUD
-          player={gameState.players.red}
-          isTurn={gameState.currentTurn === 'red' && !steppingPawnId}
-          position="top-right"
-          onToggleMic={handleToggleMic}
-          dice={gameState.dice}
-          onRollDice={() => handleRollDice()}
-          turnTimeLeft={turnTimeLeft}
-        />
+        {activeColors.includes('red') && (
+          <PlayerProfileHUD
+            player={gameState.players.red}
+            isTurn={gameState.currentTurn === 'red' && !steppingPawnId}
+            position="top-right"
+            onToggleMic={handleToggleMic}
+            dice={gameState.dice}
+            onRollDice={() => handleRollDice()}
+            turnTimeLeft={turnTimeLeft}
+          />
+        )}
       </div>
 
       {/* 3. CENTER HERO LUDO BOARD & 3D DICE */}
@@ -759,7 +931,7 @@ export default function App() {
         {/* Floating Chat Bubbles */}
         <ChatBubbleOverlay messages={chatMessages} />
 
-        {/* 3D Ludo Board Component */}
+        {/* 3D Ludo Board Component - Dynamic Active Colors */}
         <LudoBoard
           pawns={allPawns}
           currentTurn={gameState.currentTurn}
@@ -770,6 +942,7 @@ export default function App() {
           activeAngelFlight={activeAngelFlight}
           onAngelFlightComplete={handleAngelFlightComplete}
           onPawnClick={handlePawnClick}
+          activeColors={activeColors}
         />
 
         {/* Optional 15x15 Coordinate Overlay for Debugging */}
@@ -788,27 +961,35 @@ export default function App() {
 
       {/* 4. BOTTOM PLAYERS PROFILE HUDs */}
       <div className="w-full flex items-center justify-between px-2 py-1 z-20">
-        {/* Bottom Left Player 4 (Yellow) */}
-        <PlayerProfileHUD
-          player={gameState.players.yellow}
-          isTurn={gameState.currentTurn === 'yellow' && !steppingPawnId}
-          position="bottom-left"
-          onToggleMic={handleToggleMic}
-          dice={gameState.dice}
-          onRollDice={() => handleRollDice()}
-          turnTimeLeft={turnTimeLeft}
-        />
+        {/* Bottom Left Player 4 (Yellow) - Only visible if 4P mode */}
+        {activeColors.includes('yellow') ? (
+          <PlayerProfileHUD
+            player={gameState.players.yellow}
+            isTurn={gameState.currentTurn === 'yellow' && !steppingPawnId}
+            position="bottom-left"
+            onToggleMic={handleToggleMic}
+            dice={gameState.dice}
+            onRollDice={() => handleRollDice()}
+            turnTimeLeft={turnTimeLeft}
+          />
+        ) : (
+          <div className="w-10" />
+        )}
 
-        {/* Bottom Right Player 3 (Green) */}
-        <PlayerProfileHUD
-          player={gameState.players.green}
-          isTurn={gameState.currentTurn === 'green' && !steppingPawnId}
-          position="bottom-right"
-          onToggleMic={handleToggleMic}
-          dice={gameState.dice}
-          onRollDice={() => handleRollDice()}
-          turnTimeLeft={turnTimeLeft}
-        />
+        {/* Bottom Right Player 3 (Green) - Visible in 3P and 4P modes */}
+        {activeColors.includes('green') ? (
+          <PlayerProfileHUD
+            player={gameState.players.green}
+            isTurn={gameState.currentTurn === 'green' && !steppingPawnId}
+            position="bottom-right"
+            onToggleMic={handleToggleMic}
+            dice={gameState.dice}
+            onRollDice={() => handleRollDice()}
+            turnTimeLeft={turnTimeLeft}
+          />
+        ) : (
+          <div className="w-10" />
+        )}
       </div>
 
       {/* 5. BOTTOM CONTROLS & STATUS BANNER */}
@@ -833,6 +1014,26 @@ export default function App() {
           setGameState((prev) => ({ ...prev, isAutoPlay: !prev.isAutoPlay }))
         }
         onTestAngelFlight={handleTestAngelFlight}
+      />
+
+      {/* 7. MATCH VICTORY & PRIZE MODAL */}
+      <VictoryModal
+        isOpen={gameState.winner !== null}
+        winnerColor={gameState.winner}
+        players={gameState.players}
+        prizePool={currentMatchConfig?.prizePool || 0}
+        onRematch={() => {
+          if (currentMatchConfig) {
+            handleStartOnlineMatch(
+              currentMatchConfig.mode,
+              currentMatchConfig.entryFee,
+              currentMatchConfig.prizePool
+            );
+          } else {
+            handleResetGame();
+          }
+        }}
+        onBackToLobby={handleReturnToLobby}
       />
     </BoardEnvironment>
   );

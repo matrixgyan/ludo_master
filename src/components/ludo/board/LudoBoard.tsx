@@ -15,6 +15,7 @@ interface LudoBoardProps {
   activeAngelFlight?: AngelFlightData | null;
   onAngelFlightComplete?: (flightId: string) => void;
   onPawnClick: (pawn: Pawn) => void;
+  activeColors?: PlayerColor[];
 }
 
 export const LudoBoard: React.FC<LudoBoardProps> = ({
@@ -26,6 +27,7 @@ export const LudoBoard: React.FC<LudoBoardProps> = ({
   activeAngelFlight,
   onAngelFlightComplete,
   onPawnClick,
+  activeColors = ['blue', 'red', 'green', 'yellow'],
 }) => {
   // Render individual grid cell
   const renderCell = (x: number, y: number) => {
@@ -313,15 +315,26 @@ export const LudoBoard: React.FC<LudoBoardProps> = ({
               </g>
             </svg>
 
-            <div className="absolute inset-4 sm:inset-5 z-10 bg-[#15803d]/90 rounded-2xl p-2.5 sm:p-3 border-2 border-[#166534] shadow-xl flex items-center justify-center">
-              <div className="w-full h-full bg-[#f0fdf4] rounded-xl p-2 border border-[#bbf7d0] grid grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
-                {[0, 1, 2, 3].map((slot) => (
-                  <div
-                    key={`green-slot-${slot}`}
-                    className="rounded-full bg-[#15803d]/20 border-2 border-[#15803d]/40 shadow-[inset_0_2px_4px_rgba(0,0,0,0.25)] flex items-center justify-center"
-                  />
-                ))}
-              </div>
+            {/* Green Home Base Slot Tray */}
+            <div className={`absolute inset-4 sm:inset-5 z-10 rounded-2xl p-2.5 sm:p-3 border-2 shadow-xl flex items-center justify-center ${
+              activeColors.includes('green')
+                ? 'bg-[#15803d]/90 border-[#166534]'
+                : 'bg-slate-800/60 border-slate-600/40 grayscale opacity-40'
+            }`}>
+              {activeColors.includes('green') ? (
+                <div className="w-full h-full bg-[#f0fdf4] rounded-xl p-2 border border-[#bbf7d0] grid grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
+                  {[0, 1, 2, 3].map((slot) => (
+                    <div
+                      key={`green-slot-${slot}`}
+                      className="rounded-full bg-[#15803d]/20 border-2 border-[#15803d]/40 shadow-[inset_0_2px_4px_rgba(0,0,0,0.25)] flex items-center justify-center"
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                  <span>VACANT</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -355,15 +368,26 @@ export const LudoBoard: React.FC<LudoBoardProps> = ({
               </g>
             </svg>
 
-            <div className="absolute inset-4 sm:inset-5 z-10 bg-[#ea580c]/90 rounded-2xl p-2.5 sm:p-3 border-2 border-[#c2410c] shadow-xl flex items-center justify-center">
-              <div className="w-full h-full bg-[#fff7ed] rounded-xl p-2 border border-[#fed7aa] grid grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
-                {[0, 1, 2, 3].map((slot) => (
-                  <div
-                    key={`yellow-slot-${slot}`}
-                    className="rounded-full bg-[#ea580c]/20 border-2 border-[#ea580c]/40 shadow-[inset_0_2px_4px_rgba(0,0,0,0.25)] flex items-center justify-center"
-                  />
-                ))}
-              </div>
+            {/* Yellow Home Base Slot Tray */}
+            <div className={`absolute inset-4 sm:inset-5 z-10 rounded-2xl p-2.5 sm:p-3 border-2 shadow-xl flex items-center justify-center ${
+              activeColors.includes('yellow')
+                ? 'bg-[#ea580c]/90 border-[#c2410c]'
+                : 'bg-slate-800/60 border-slate-600/40 grayscale opacity-40'
+            }`}>
+              {activeColors.includes('yellow') ? (
+                <div className="w-full h-full bg-[#fff7ed] rounded-xl p-2 border border-[#fed7aa] grid grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
+                  {[0, 1, 2, 3].map((slot) => (
+                    <div
+                      key={`yellow-slot-${slot}`}
+                      className="rounded-full bg-[#ea580c]/20 border-2 border-[#ea580c]/40 shadow-[inset_0_2px_4px_rgba(0,0,0,0.25)] flex items-center justify-center"
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                  <span>VACANT</span>
+                </div>
+              )}
             </div>
           </div>
 

@@ -18,6 +18,7 @@ import {
   Radio,
   Zap,
   Database,
+  Palette,
 } from 'lucide-react';
 import { OverviewTab } from './tabs/OverviewTab';
 import { LiveMatchesTab } from './tabs/LiveMatchesTab';
@@ -26,6 +27,7 @@ import { LeaderboardsTab } from './tabs/LeaderboardsTab';
 import { R2StorageTab } from './tabs/R2StorageTab';
 import { SettingsTab } from './tabs/SettingsTab';
 import { InfrastructureTab } from './tabs/InfrastructureTab';
+import { BoardAssetsStudioTab } from './tabs/BoardAssetsStudioTab';
 
 interface AdminLayoutProps {
   token: string;
@@ -44,7 +46,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   onAdminAliasChange,
   onBackToGame,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'live_matches' | 'users' | 'leaderboards' | 'storage' | 'infrastructure' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'assets_studio' | 'live_matches' | 'users' | 'leaderboards' | 'storage' | 'infrastructure' | 'settings'>('overview');
   const [metrics, setMetrics] = useState<any | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [copiedAliasUrl, setCopiedAliasUrl] = useState(false);
@@ -80,6 +82,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 
   const navItems = [
     { id: 'overview', label: 'Dashboard Overview', icon: LayoutDashboard },
+    { id: 'assets_studio', label: 'Boards, Pawns & Dice', icon: Palette, badge: 'NEW' },
     { id: 'live_matches', label: 'Live Match Engine', icon: Gamepad2, badge: metrics?.overview?.activeGames },
     { id: 'users', label: 'User & Wallets', icon: Users },
     { id: 'leaderboards', label: 'Rankings & Tournaments', icon: Trophy },
@@ -286,6 +289,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
               onNavigateTab={(tab) => setActiveTab(tab as any)}
             />
           )}
+
+          {activeTab === 'assets_studio' && <BoardAssetsStudioTab token={token} />}
 
           {activeTab === 'live_matches' && <LiveMatchesTab token={token} />}
 

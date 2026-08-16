@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { LobbyHeader } from './LobbyHeader';
-import { LobbyCardLudo } from './LobbyCardLudo';
+import { LobbyCardOnlineMultiplayer } from './LobbyCardOnlineMultiplayer';
 import { LobbyCardSnakeLudo } from './LobbyCardSnakeLudo';
-import { LobbyCardTournament } from './LobbyCardTournament';
+import { LobbyCardLudoSupreme } from './LobbyCardLudoSupreme';
 import { FloatingRankWidget } from './FloatingRankWidget';
 import { BottomNav, NavTab } from './BottomNav';
 import { EvmWalletModal } from './EvmWalletModal';
@@ -11,12 +11,14 @@ import { StudioModal } from './StudioModal';
 import { ReferModal } from './ReferModal';
 import { ProfileModal } from './ProfileModal';
 import { NotificationsModal } from './NotificationsModal';
+import { PlayerModeOption, LudoModeSelectorModal } from './LudoModeSelectorModal';
 
 interface GameLobbyProps {
   balance: number;
   onAddFunds: (amount: number) => void;
   onPlayLudo: () => void;
   onPlaySnakeLudo: () => void;
+  onStartOnlineMatch: (mode: PlayerModeOption, entryFee: number, prizePool: number) => void;
 }
 
 export const GameLobby: React.FC<GameLobbyProps> = ({
@@ -24,6 +26,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   onAddFunds,
   onPlayLudo,
   onPlaySnakeLudo,
+  onStartOnlineMatch,
 }) => {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [isWalletOpen, setIsWalletOpen] = useState(false);
@@ -33,11 +36,19 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
+  // Mode Selection Modal State
+  const [isModeSelectorOpen, setIsModeSelectorOpen] = useState(false);
+
   const handleSelectTab = (tab: NavTab) => {
     setActiveTab(tab);
     if (tab === 'studio') setIsStudioOpen(true);
     if (tab === 'refer') setIsReferOpen(true);
     if (tab === 'wallet') setIsWalletOpen(true);
+  };
+
+  const handleSelectGameModeAndStart = (mode: PlayerModeOption, entryFee: number, prizePool: number) => {
+    setIsModeSelectorOpen(false);
+    onStartOnlineMatch(mode, entryFee, prizePool);
   };
 
   return (
@@ -53,16 +64,16 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
         />
       </div>
 
-      {/* 2. MAIN SCROLLABLE LOBBY CONTAINER (3 Main Cards) */}
+      {/* 2. MAIN SCROLLABLE LOBBY CONTAINER */}
       <main className="w-full max-w-lg px-3.5 pt-3.5 space-y-3.5 flex-1 flex flex-col items-center">
-        {/* CARD 1: LUDO SUPREME */}
-        <LobbyCardLudo onPlay={onPlayLudo} />
+        {/* CARD 1: LUDO ONLINE ARENA */}
+        <LobbyCardOnlineMultiplayer onOpenModeSelect={() => setIsModeSelectorOpen(true)} />
 
-        {/* CARD 2: SNAKE LUDO (Middle card customized for Snake Ludo game) */}
+        {/* CARD 2: SNAKE LUDO */}
         <LobbyCardSnakeLudo onPlay={onPlaySnakeLudo} />
 
-        {/* CARD 3: MEGA TOURNAMENT (Win up to $50K Cash!) */}
-        <LobbyCardTournament onPlay={onPlayLudo} />
+        {/* CARD 3: LUDO SUPREME */}
+        <LobbyCardLudoSupreme onPlay={() => setIsModeSelectorOpen(true)} />
       </main>
 
       {/* FLOATING STUCK RANK BADGE ON THE RIGHT DISPLAY */}
@@ -71,7 +82,14 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
       {/* 3. BOTTOM NAVIGATION BAR (Home, Studio, Refer & Earn, Assets) */}
       <BottomNav activeTab={activeTab} onSelectTab={handleSelectTab} />
 
-      {/* 4. MODALS & POPUPS */}
+      {/* 4. DEDICATED 3D GAME MODE SELECTION SECTION WITH 3 SEPARATE 3D TILES */}
+      <LudoModeSelectorModal
+        isOpen={isModeSelectorOpen}
+        onClose={() => setIsModeSelectorOpen(false)}
+        onSelectMode={handleSelectGameModeAndStart}
+        balance={balance}
+      />
+
       <EvmWalletModal
         isOpen={isWalletOpen}
         onClose={() => {

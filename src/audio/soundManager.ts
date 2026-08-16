@@ -23,7 +23,7 @@ class SoundEngine {
     return this.isMuted;
   }
 
-  public play(sound: 'dice-roll' | 'dice-land' | 'pawn-step' | 'pawn-land' | 'pawn-capture' | 'pawn-finish' | 'click' | 'turn' | 'mic-toggle' | 'angel-flight' | 'angel-land') {
+  public play(sound: 'dice-roll' | 'dice-land' | 'pawn-step' | 'pawn-land' | 'pawn-capture' | 'pawn-finish' | 'click' | 'turn' | 'mic-toggle' | 'angel-flight' | 'angel-land' | 'match-found' | 'radar-ping' | 'countdown-tick' | 'battle-horn') {
     if (this.isMuted) return;
     this.initContext();
     if (!this.ctx) return;
@@ -31,6 +31,72 @@ class SoundEngine {
     const now = this.ctx.currentTime;
 
     switch (sound) {
+      case 'radar-ping': {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, now);
+        osc.frequency.exponentialRampToValueAtTime(1760, now + 0.15);
+        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.3);
+        break;
+      }
+
+      case 'countdown-tick': {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(700, now);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.08);
+        break;
+      }
+
+      case 'match-found': {
+        // High energy harmonic chime
+        const freqs = [440, 554.37, 659.25, 880];
+        freqs.forEach((f, i) => {
+          const t = now + i * 0.06;
+          const osc = this.ctx!.createOscillator();
+          const gain = this.ctx!.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(f, t);
+          gain.gain.setValueAtTime(0.28, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+          osc.connect(gain);
+          gain.connect(this.ctx!.destination);
+          osc.start(t);
+          osc.stop(t + 0.35);
+        });
+        break;
+      }
+
+      case 'battle-horn': {
+        // Grand fanfare / trumpet sound
+        const chord = [330, 415.3, 493.88, 659.25];
+        chord.forEach((f) => {
+          const osc = this.ctx!.createOscillator();
+          const gain = this.ctx!.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(f, now);
+          osc.frequency.exponentialRampToValueAtTime(f * 1.05, now + 0.6);
+          gain.gain.setValueAtTime(0.12, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+          osc.connect(gain);
+          gain.connect(this.ctx!.destination);
+          osc.start(now);
+          osc.stop(now + 0.7);
+        });
+        break;
+      }
       case 'angel-flight': {
         // Celestial harp glissando + ethereal choir shimmer
         const harpNotes = [523.25, 659.25, 783.99, 1046.5, 1318.5, 1567.98, 2093.0]; // C5, E5, G5, C6, E6, G6, C7
