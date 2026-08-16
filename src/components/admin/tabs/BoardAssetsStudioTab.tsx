@@ -12,8 +12,14 @@ import {
   Play,
   RefreshCw,
   Gem,
+  LayoutGrid,
+  Layers,
+  Smartphone,
+  CheckCheck,
+  Flame,
 } from 'lucide-react';
 import {
+  LOBBY_THEMES,
   BOARD_THEMES,
   DICE_SKINS,
   PAWN_SKINS,
@@ -26,14 +32,16 @@ interface BoardAssetsStudioTabProps {
 }
 
 export const BoardAssetsStudioTab: React.FC<BoardAssetsStudioTabProps> = ({ token }) => {
-  const [activeCategory, setActiveCategory] = useState<'boards' | 'dice' | 'pawns' | 'sandbox'>('boards');
+  const [activeCategory, setActiveCategory] = useState<'lobbies' | 'boards' | 'dice' | 'pawns' | 'sandbox'>('lobbies');
 
   // Currently Selected / Active IDs
+  const [activeLobbyId, setActiveLobbyId] = useState<string>('dubai_prestige_gold');
   const [activeBoardId, setActiveBoardId] = useState<string>('dubai_royal_sunset');
   const [activeDiceId, setActiveDiceId] = useState<string>('golden_high_roller');
   const [activePawnId, setActivePawnId] = useState<string>('royal_crowned');
 
   // Enabled lists for platform
+  const [enabledLobbies, setEnabledLobbies] = useState<string[]>(LOBBY_THEMES.map((l) => l.id));
   const [enabledBoards, setEnabledBoards] = useState<string[]>(BOARD_THEMES.map((b) => b.id));
   const [enabledDice, setEnabledDice] = useState<string[]>(DICE_SKINS.map((d) => d.id));
   const [enabledPawns, setEnabledPawns] = useState<string[]>(PAWN_SKINS.map((p) => p.id));
@@ -55,9 +63,11 @@ export const BoardAssetsStudioTab: React.FC<BoardAssetsStudioTabProps> = ({ toke
         const res = await fetch('/api/admin/theme-assets');
         const data = await res.json();
         if (data.themeConfig) {
-          setActiveBoardId(data.themeConfig.activeBoardId || 'dubai_royal_sunset');
-          setActiveDiceId(data.themeConfig.activeDiceId || 'golden_high_roller');
-          setActivePawnId(data.themeConfig.activePawnId || 'royal_crowned');
+          if (data.themeConfig.activeLobbyId) setActiveLobbyId(data.themeConfig.activeLobbyId);
+          if (data.themeConfig.activeBoardId) setActiveBoardId(data.themeConfig.activeBoardId);
+          if (data.themeConfig.activeDiceId) setActiveDiceId(data.themeConfig.activeDiceId);
+          if (data.themeConfig.activePawnId) setActivePawnId(data.themeConfig.activePawnId);
+          if (data.themeConfig.enabledLobbies) setEnabledLobbies(data.themeConfig.enabledLobbies);
           if (data.themeConfig.enabledBoards) setEnabledBoards(data.themeConfig.enabledBoards);
           if (data.themeConfig.enabledDice) setEnabledDice(data.themeConfig.enabledDice);
           if (data.themeConfig.enabledPawns) setEnabledPawns(data.themeConfig.enabledPawns);
@@ -68,6 +78,7 @@ export const BoardAssetsStudioTab: React.FC<BoardAssetsStudioTabProps> = ({ toke
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
+            if (parsed.activeLobbyId) setActiveLobbyId(parsed.activeLobbyId);
             if (parsed.activeBoardId) setActiveBoardId(parsed.activeBoardId);
             if (parsed.activeDiceId) setActiveDiceId(parsed.activeDiceId);
             if (parsed.activePawnId) setActivePawnId(parsed.activePawnId);
@@ -79,6 +90,7 @@ export const BoardAssetsStudioTab: React.FC<BoardAssetsStudioTabProps> = ({ toke
     fetchThemeConfig();
   }, []);
 
+  const currentLobby = LOBBY_THEMES.find((l) => l.id === activeLobbyId) || LOBBY_THEMES[0];
   const currentBoard = BOARD_THEMES.find((b) => b.id === activeBoardId) || BOARD_THEMES[0];
   const currentDice = DICE_SKINS.find((d) => d.id === activeDiceId) || DICE_SKINS[0];
   const currentPawn = PAWN_SKINS.find((p) => p.id === activePawnId) || PAWN_SKINS[0];
@@ -89,17 +101,21 @@ export const BoardAssetsStudioTab: React.FC<BoardAssetsStudioTabProps> = ({ toke
     setSaveSuccess(null);
 
     const payload = {
+      activeLobbyId,
       activeBoardId,
       activeDiceId,
       activePawnId,
+      enabledLobbies,
       enabledBoards,
       enabledDice,
       enabledPawns,
+      updatedAt: new Date().toISOString(),
     };
 
     try {
-      // Save locally for instant preview sync
+      // Save locally for instant preview sync across all tabs
       localStorage.setItem('ludo_active_theme_config', JSON.stringify(payload));
+      window.dispatchEvent(new CustomEvent('ludo_theme_changed', { detail: payload }));
       window.dispatchEvent(new CustomEvent('ludo_theme_updated', { detail: payload }));
 
       const res = await fetch('/api/admin/theme-assets', {
@@ -112,7 +128,7 @@ export const BoardAssetsStudioTab: React.FC<BoardAssetsStudioTabProps> = ({ toke
       });
 
       if (res.ok) {
-        setSaveSuccess('Live Platform Theme & Assets deployed successfully!');
+        setSaveSuccess('Live Platform Lobby, Board & Assets deployed successfully!');
         SoundManager.play('battle-horn');
         setTimeout(() => setSaveSuccess(null), 4000);
       }
@@ -157,18 +173,19 @@ export const BoardAssetsStudioTab: React.FC<BoardAssetsStudioTabProps> = ({ toke
             <div className="flex items-center gap-2">
               <span className="px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-black text-xs uppercase tracking-wider shadow-[0_0_12px_rgba(251,191,36,0.6)] flex items-center gap-1">
                 <Crown className="w-3.5 h-3.5 fill-slate-950" />
-                <span>Executive Asset Studio</span>
+                <span>Modular Platform Studio</span>
               </span>
-              <span className="text-xs font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
-                ● Live Sync Ready
+              <span className="text-xs font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Live Broadcast Sync Active</span>
               </span>
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight">
-              Ludo Boards, Pawns & Dice Customizer
+              Lobby, Ludo Boards, Pawns & Dice Customizer
             </h1>
             <p className="text-sm text-slate-300 max-w-2xl leading-relaxed">
-              Visually inspect, curate, and configure official 3D Ludo boards, dice models, and character pawns for all players across the platform.
+              Visually inspect, curate, and deploy official platform lobby environments, 3D Ludo boards, dice sets, and character pawn figurines in real-time across all players.
             </p>
           </div>
 
@@ -204,15 +221,25 @@ export const BoardAssetsStudioTab: React.FC<BoardAssetsStudioTabProps> = ({ toke
           </div>
         </div>
 
-        {/* Live Active Pill Badges Bar */}
-        <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6 pt-5 border-t border-white/10">
+        {/* Live Active 4-Pill Badges Bar */}
+        <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-6 pt-5 border-t border-white/10">
+          <div className="flex items-center gap-3 bg-black/40 rounded-2xl p-3 border border-amber-500/30">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white font-black shadow-md">
+              <LayoutGrid className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Active Lobby</div>
+              <div className="text-sm font-black text-amber-300 truncate">{currentLobby.name}</div>
+            </div>
+          </div>
+
           <div className="flex items-center gap-3 bg-black/40 rounded-2xl p-3 border border-amber-500/30">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-yellow-600 flex items-center justify-center text-slate-950 font-black shadow-md">
               <Palette className="w-5 h-5" />
             </div>
-            <div>
-              <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Active Board Theme</div>
-              <div className="text-sm font-black text-amber-300">{currentBoard.name}</div>
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Active Board</div>
+              <div className="text-sm font-black text-amber-300 truncate">{currentBoard.name}</div>
             </div>
           </div>
 
@@ -220,9 +247,9 @@ export const BoardAssetsStudioTab: React.FC<BoardAssetsStudioTabProps> = ({ toke
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-amber-500 flex items-center justify-center text-slate-950 font-black shadow-md">
               <Zap className="w-5 h-5" />
             </div>
-            <div>
-              <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Active 3D Dice Skin</div>
-              <div className="text-sm font-black text-amber-300">{currentDice.name}</div>
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Active 3D Dice</div>
+              <div className="text-sm font-black text-amber-300 truncate">{currentDice.name}</div>
             </div>
           </div>
 
@@ -230,9 +257,9 @@ export const BoardAssetsStudioTab: React.FC<BoardAssetsStudioTabProps> = ({ toke
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-slate-950 font-black shadow-md">
               <Gem className="w-5 h-5" />
             </div>
-            <div>
-              <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Active Pawn Figurines</div>
-              <div className="text-sm font-black text-amber-300">{currentPawn.name}</div>
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Active Pawns</div>
+              <div className="text-sm font-black text-amber-300 truncate">{currentPawn.name}</div>
             </div>
           </div>
         </div>
@@ -253,6 +280,7 @@ export const BoardAssetsStudioTab: React.FC<BoardAssetsStudioTabProps> = ({ toke
       {/* 2. CATEGORY SWITCHER TABS */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
         {[
+          { id: 'lobbies', label: 'Lobby Environments', icon: LayoutGrid, count: LOBBY_THEMES.length },
           { id: 'boards', label: 'Ludo Boards', icon: Palette, count: BOARD_THEMES.length },
           { id: 'dice', label: 'Dice Sets', icon: Zap, count: DICE_SKINS.length },
           { id: 'pawns', label: 'Pawns & Figurines', icon: Gem, count: PAWN_SKINS.length },
@@ -295,7 +323,182 @@ export const BoardAssetsStudioTab: React.FC<BoardAssetsStudioTabProps> = ({ toke
       {/* 3. CATEGORY CONTENT VIEWS */}
 
       {/* =========================================================================
-          VIEW A: LUDO BOARDS CATALOG WITH RICH VISUAL PREVIEW CARDS
+          VIEW A: LOBBY THEMES CATALOG WITH RICH VISUAL MOCKUPS
+      ========================================================================= */}
+      {activeCategory === 'lobbies' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <span>Select Live Game Platform Lobby Environment</span>
+              <span className="text-xs text-slate-400 font-normal">({LOBBY_THEMES.length} Environments Available)</span>
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {LOBBY_THEMES.map((theme) => {
+              const isSelected = activeLobbyId === theme.id;
+
+              return (
+                <motion.div
+                  key={theme.id}
+                  whileHover={{ y: -4 }}
+                  className={`relative rounded-3xl overflow-hidden border-2 transition-all duration-300 flex flex-col justify-between ${
+                    isSelected
+                      ? 'bg-[#18112e] border-amber-400 shadow-[0_0_35px_rgba(251,191,36,0.4)] ring-2 ring-amber-400/30'
+                      : 'bg-[#0e1222] border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  {/* Top Badge Tag */}
+                  <div className="p-4 pb-2 flex items-center justify-between z-10">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/10 text-amber-300 border border-amber-400/20">
+                        {theme.category}
+                      </span>
+                      {theme.id === 'dubai_prestige_gold' && (
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          Current Default
+                        </span>
+                      )}
+                    </div>
+
+                    {isSelected && (
+                      <span className="px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 text-[10px] font-black uppercase flex items-center gap-1 shadow-sm">
+                        <Check className="w-3 h-3 stroke-[3]" /> Active Live
+                      </span>
+                    )}
+                  </div>
+
+                  {/* VISUAL LOBBY MINI MOCKUP CONTAINER */}
+                  <div className="px-4 py-2">
+                    <div
+                      className={`relative w-full aspect-[4/3] max-w-[280px] mx-auto rounded-2xl p-2.5 border-2 ${theme.bodyBgClass} border-slate-700/60 shadow-2xl flex flex-col justify-between overflow-hidden`}
+                      style={{ boxShadow: `0 8px 30px ${theme.accentGlow}` }}
+                    >
+                      {/* Atmosphere FX Overlay */}
+                      {theme.atmosphere === 'grid' && (
+                        <div className="absolute inset-0 pointer-events-none opacity-40 bg-[linear-gradient(to_right,#06b6d420_1px,transparent_1px),linear-gradient(to_bottom,#06b6d420_1px,transparent_1px)] bg-[size:12px_12px]" />
+                      )}
+                      {theme.atmosphere === 'aurora' && (
+                        <div className="absolute inset-0 pointer-events-none opacity-40 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-500/40 via-teal-900/20 to-transparent" />
+                      )}
+                      {theme.atmosphere === 'bokeh' && (
+                        <div className="absolute inset-0 pointer-events-none opacity-40 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-rose-500/30 via-amber-700/20 to-transparent" />
+                      )}
+
+                      {/* Mockup Mini Header */}
+                      <div
+                        className={`w-full py-1.5 px-2 rounded-xl ${theme.headerBorderClass} border flex items-center justify-between shadow-md z-10`}
+                        style={{ background: theme.headerBgGradient }}
+                      >
+                        <div className="flex items-center gap-1">
+                          <div className="w-4 h-4 rounded-md bg-gradient-to-tr from-amber-400 to-yellow-500 flex items-center justify-center text-[8px] font-black text-slate-950">
+                            🎁
+                          </div>
+                          <span className="text-[9px] font-black text-amber-300">OPEN</span>
+                        </div>
+                        <div className="px-2 py-0.5 rounded-full bg-amber-400/20 border border-amber-400/40 text-[9px] font-black text-amber-300">
+                          $1,250
+                        </div>
+                      </div>
+
+                      {/* Mockup Mini Lobby 3D Game Cards */}
+                      <div className="space-y-1.5 my-auto z-10">
+                        {/* Mini Card 1: Ludo Online Arena */}
+                        <div className="w-full h-8 rounded-xl bg-gradient-to-r from-[#200b47] to-[#12052b] border border-amber-400/40 p-1 flex items-center justify-between shadow-sm">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-6 h-6 rounded-lg bg-amber-400 flex items-center justify-center text-[10px] font-black text-slate-950">
+                              🎲
+                            </div>
+                            <div className="leading-none">
+                              <div className="text-[9px] font-black text-white">LUDO ONLINE</div>
+                              <div className="text-[7px] text-amber-400 font-semibold">PLAY FOR CASH</div>
+                            </div>
+                          </div>
+                          <div className="px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-400 to-yellow-500 text-[8px] font-black text-slate-950">
+                            PLAY
+                          </div>
+                        </div>
+
+                        {/* Mini Card 2: Snake Ludo */}
+                        <div className="w-full h-7 rounded-xl bg-gradient-to-r from-[#032b1d] to-[#01140e] border border-emerald-400/40 p-1 flex items-center justify-between shadow-sm">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-5 h-5 rounded-md bg-emerald-400 flex items-center justify-center text-[9px] font-black text-slate-950">
+                              🐍
+                            </div>
+                            <div className="leading-none">
+                              <div className="text-[8px] font-black text-white">SNAKE LUDO</div>
+                            </div>
+                          </div>
+                          <div className="px-2 py-0.5 rounded-md bg-emerald-400 text-[7px] font-black text-slate-950">
+                            ENTER
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Mockup Mini Curved Bottom Nav */}
+                      <div
+                        className={`w-full py-1 px-3 rounded-xl border ${theme.bottomNavBorder} flex items-center justify-around z-10`}
+                        style={{ background: theme.bottomNavGradient }}
+                      >
+                        <span className="text-[8px] font-bold" style={{ color: theme.bottomNavActiveColor }}>● Home</span>
+                        <span className="text-[8px] font-medium text-slate-400">Studio</span>
+                        <span className="text-[8px] font-medium text-slate-400">Refer</span>
+                        <span className="text-[8px] font-medium text-slate-400">Wallet</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* INFO & CONTROLS */}
+                  <div className="p-4 pt-2 space-y-3">
+                    <div>
+                      <h4 className="text-sm font-black text-white">{theme.name}</h4>
+                      <p className="text-xs text-slate-400 leading-snug mt-0.5">{theme.description}</p>
+                    </div>
+
+                    {/* Atmospheric Tag */}
+                    <div className="flex items-center gap-2 pt-1 border-t border-white/10 text-[11px] font-mono text-slate-300">
+                      <span className="text-slate-400">Atmosphere FX:</span>
+                      <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-amber-300 font-bold uppercase text-[9px]">
+                        {theme.atmosphere}
+                      </span>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        onClick={() => {
+                          SoundManager.play('click');
+                          setActiveLobbyId(theme.id);
+                        }}
+                        className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                          isSelected
+                            ? 'bg-amber-400 text-slate-950 font-black shadow-lg shadow-amber-400/30'
+                            : 'bg-white/10 hover:bg-white/20 text-white'
+                        }`}
+                      >
+                        {isSelected ? (
+                          <>
+                            <CheckCheck className="w-4 h-4 text-slate-950" />
+                            <span>Currently Active</span>
+                          </>
+                        ) : (
+                          <>
+                            <Crown className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Set as Active Lobby</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          VIEW B: LUDO BOARDS CATALOG WITH RICH VISUAL PREVIEW CARDS
       ========================================================================= */}
       {activeCategory === 'boards' && (
         <div className="space-y-4">
@@ -309,7 +512,6 @@ export const BoardAssetsStudioTab: React.FC<BoardAssetsStudioTabProps> = ({ toke
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {BOARD_THEMES.map((theme) => {
               const isSelected = activeBoardId === theme.id;
-              const isEnabled = enabledBoards.includes(theme.id);
 
               return (
                 <motion.div
@@ -446,54 +648,37 @@ export const BoardAssetsStudioTab: React.FC<BoardAssetsStudioTabProps> = ({ toke
                     </div>
                   </div>
 
-                  {/* Palette Swatches & Description */}
-                  <div className="p-4 space-y-2.5">
-                    <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
-                      {theme.description}
-                    </p>
-
-                    {/* 4 Player Stem Swatches */}
-                    <div className="flex items-center gap-1.5 pt-1">
-                      <span className="text-[10px] text-slate-400 uppercase font-mono mr-1">Palettes:</span>
-                      <span className="w-4 h-4 rounded-full border border-white/40 shadow" style={{ backgroundColor: theme.stemColors.blue.hex }} title="Blue Pathway" />
-                      <span className="w-4 h-4 rounded-full border border-white/40 shadow" style={{ backgroundColor: theme.stemColors.red.hex }} title="Red Pathway" />
-                      <span className="w-4 h-4 rounded-full border border-white/40 shadow" style={{ backgroundColor: theme.stemColors.green.hex }} title="Green Pathway" />
-                      <span className="w-4 h-4 rounded-full border border-white/40 shadow" style={{ backgroundColor: theme.stemColors.yellow.hex }} title="Yellow Pathway" />
+                  {/* INFO & CONTROLS */}
+                  <div className="p-4 pt-2 space-y-3">
+                    <div>
+                      <h4 className="text-sm font-black text-white">{theme.name}</h4>
+                      <p className="text-xs text-slate-400 leading-snug mt-0.5">{theme.description}</p>
                     </div>
 
-                    {/* Action Select & Test Button */}
-                    <div className="pt-2 flex items-center gap-2">
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 pt-1 border-t border-white/10">
                       <button
                         onClick={() => {
                           SoundManager.play('click');
                           setActiveBoardId(theme.id);
                         }}
-                        className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                           isSelected
-                            ? 'bg-amber-500 text-slate-950 font-black shadow-md'
-                            : 'bg-white/10 hover:bg-white/20 text-white border border-white/15'
+                            ? 'bg-amber-400 text-slate-950 font-black shadow-lg shadow-amber-400/30'
+                            : 'bg-white/10 hover:bg-white/20 text-white'
                         }`}
                       >
                         {isSelected ? (
                           <>
-                            <Check className="w-3.5 h-3.5 stroke-[3]" />
-                            <span>Active Default</span>
+                            <CheckCheck className="w-4 h-4 text-slate-950" />
+                            <span>Currently Active</span>
                           </>
                         ) : (
-                          <span>Set as Active Board</span>
+                          <>
+                            <Crown className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Set as Active Board</span>
+                          </>
                         )}
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          SoundManager.play('click');
-                          setActiveBoardId(theme.id);
-                          setActiveCategory('sandbox');
-                        }}
-                        className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 cursor-pointer"
-                        title="Test in 3D Live Sandbox"
-                      >
-                        <Play className="w-4 h-4 fill-current text-cyan-400" />
                       </button>
                     </div>
                   </div>
@@ -505,132 +690,97 @@ export const BoardAssetsStudioTab: React.FC<BoardAssetsStudioTabProps> = ({ toke
       )}
 
       {/* =========================================================================
-          VIEW B: DICE SKINS CATALOG WITH INTERACTIVE 3D ROLLING PREVIEWS
+          VIEW C: 3D DICE SKINS CATALOG WITH ROLLED PIP PREVIEWS
       ========================================================================= */}
       {activeCategory === 'dice' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <span>Select Official 3D Dice Set</span>
-              <span className="text-xs text-slate-400 font-normal">({DICE_SKINS.length} Dice Models Available)</span>
+              <span>Select Official 3D Dice Skin Model</span>
+              <span className="text-xs text-slate-400 font-normal">({DICE_SKINS.length} Models Available)</span>
             </h3>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-            {DICE_SKINS.map((dice) => {
-              const isSelected = activeDiceId === dice.id;
+            {DICE_SKINS.map((skin) => {
+              const isSelected = activeDiceId === skin.id;
 
               return (
                 <motion.div
-                  key={dice.id}
+                  key={skin.id}
                   whileHover={{ y: -4 }}
-                  className={`relative rounded-3xl overflow-hidden border-2 transition-all duration-300 flex flex-col justify-between p-5 ${
+                  className={`relative rounded-3xl overflow-hidden border-2 transition-all duration-300 flex flex-col justify-between ${
                     isSelected
                       ? 'bg-[#18112e] border-amber-400 shadow-[0_0_35px_rgba(251,191,36,0.4)] ring-2 ring-amber-400/30'
                       : 'bg-[#0e1222] border-slate-800 hover:border-slate-700'
                   }`}
                 >
-                  {/* Top Badge Row */}
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="p-4 pb-2 flex items-center justify-between z-10">
                     <div className="flex items-center gap-2">
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                          dice.rarity === 'Legendary'
-                            ? 'bg-amber-500/20 text-amber-300 border border-amber-400/40'
-                            : dice.rarity === 'Epic'
-                            ? 'bg-purple-500/20 text-purple-300 border border-purple-400/40'
-                            : dice.rarity === 'Rare'
-                            ? 'bg-blue-500/20 text-blue-300 border border-blue-400/40'
-                            : 'bg-slate-700/40 text-slate-300'
-                        }`}
-                      >
-                        {dice.rarity}
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/10 text-amber-300 border border-amber-400/20">
+                        {skin.rarity}
                       </span>
-                      <span className="text-xs text-slate-400 font-mono">{dice.material}</span>
+                      <span className="text-xs font-black text-white">{skin.name}</span>
                     </div>
 
                     {isSelected && (
-                      <span className="px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 text-[10px] font-black uppercase flex items-center gap-1">
+                      <span className="px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 text-[10px] font-black uppercase flex items-center gap-1 shadow-sm">
                         <Check className="w-3 h-3 stroke-[3]" /> Active
                       </span>
                     )}
                   </div>
 
-                  {/* INTERACTIVE 3D DICE RENDER BOX */}
-                  <div className="my-3 py-6 flex items-center justify-center bg-black/40 rounded-2xl border border-white/10 relative overflow-hidden">
+                  {/* 3D DICE VISUAL PREVIEW CUBE */}
+                  <div className="px-4 py-4 flex items-center justify-center">
                     <div
-                      className="absolute inset-0 blur-2xl pointer-events-none opacity-40"
-                      style={{ backgroundColor: dice.glowAura }}
-                    />
-
-                    {/* 3D Dice Face Preview (Face 6 representation) */}
-                    <motion.div
-                      whileHover={{ rotateY: 25, rotateX: -20, scale: 1.1 }}
-                      animate={{ y: [-2, 2, -2] }}
-                      transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-                      className="w-16 h-16 rounded-2xl border-2 flex items-center justify-center p-2.5 relative shadow-2xl cursor-pointer"
+                      className="relative w-24 h-24 rounded-2xl border-2 flex items-center justify-center p-3 shadow-2xl transition-transform hover:scale-105"
                       style={{
-                        background: dice.cubeBgGradient,
-                        borderColor: dice.cubeBorderColor,
-                        boxShadow: dice.cubeBoxShadow,
+                        background: skin.cubeBgGradient,
+                        borderColor: skin.cubeBorderColor,
+                        boxShadow: skin.cubeBoxShadow,
                       }}
-                      onClick={() => SoundManager.play('dice-roll')}
                     >
-                      {/* 6 pips arrangement */}
-                      <div className="grid grid-cols-2 grid-rows-3 gap-1.5 w-full h-full">
-                        {[0, 1, 2, 3, 4, 5].map((i) => (
-                          <div
-                            key={i}
-                            className="w-2.5 h-2.5 rounded-full mx-auto"
-                            style={{
-                              backgroundColor: dice.pipColor,
-                              boxShadow: dice.pipShadow,
-                            }}
-                          />
-                        ))}
+                      {/* Pips for face 5 */}
+                      <div className="grid grid-cols-3 grid-rows-3 gap-1.5 w-full h-full">
+                        <div className="col-start-1 row-start-1 w-3 h-3 rounded-full mx-auto" style={{ backgroundColor: skin.pipColor }} />
+                        <div className="col-start-3 row-start-1 w-3 h-3 rounded-full mx-auto" style={{ backgroundColor: skin.pipColor }} />
+                        <div className="col-start-2 row-start-2 w-3 h-3 rounded-full mx-auto" style={{ backgroundColor: skin.pipColor }} />
+                        <div className="col-start-1 row-start-3 w-3 h-3 rounded-full mx-auto" style={{ backgroundColor: skin.pipColor }} />
+                        <div className="col-start-3 row-start-3 w-3 h-3 rounded-full mx-auto" style={{ backgroundColor: skin.pipColor }} />
                       </div>
-                    </motion.div>
+                    </div>
                   </div>
 
-                  {/* Details & Actions */}
-                  <div className="space-y-3">
+                  {/* INFO & CONTROLS */}
+                  <div className="p-4 pt-2 space-y-3">
                     <div>
-                      <h4 className="text-sm font-black text-white">{dice.name}</h4>
-                      <p className="text-xs text-slate-300 line-clamp-2 mt-0.5">{dice.description}</p>
+                      <h4 className="text-sm font-black text-white">{skin.name}</h4>
+                      <p className="text-xs text-slate-400 leading-snug mt-0.5">{skin.description}</p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 pt-1 border-t border-white/10">
                       <button
                         onClick={() => {
                           SoundManager.play('click');
-                          setActiveDiceId(dice.id);
+                          setActiveDiceId(skin.id);
                         }}
-                        className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                           isSelected
-                            ? 'bg-amber-500 text-slate-950 font-black shadow-md'
-                            : 'bg-white/10 hover:bg-white/20 text-white border border-white/15'
+                            ? 'bg-amber-400 text-slate-950 font-black shadow-lg shadow-amber-400/30'
+                            : 'bg-white/10 hover:bg-white/20 text-white'
                         }`}
                       >
                         {isSelected ? (
                           <>
-                            <Check className="w-3.5 h-3.5 stroke-[3]" />
-                            <span>Active Default</span>
+                            <CheckCheck className="w-4 h-4 text-slate-950" />
+                            <span>Currently Active</span>
                           </>
                         ) : (
-                          <span>Set as Active Dice</span>
+                          <>
+                            <Zap className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Set as Active Dice</span>
+                          </>
                         )}
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          SoundManager.play('click');
-                          setActiveDiceId(dice.id);
-                          setActiveCategory('sandbox');
-                        }}
-                        className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 cursor-pointer"
-                        title="Roll Test in 3D Sandbox"
-                      >
-                        <Play className="w-4 h-4 fill-current text-cyan-400" />
                       </button>
                     </div>
                   </div>
@@ -642,141 +792,96 @@ export const BoardAssetsStudioTab: React.FC<BoardAssetsStudioTabProps> = ({ toke
       )}
 
       {/* =========================================================================
-          VIEW C: PAWNS & CHARACTERS CATALOG WITH ALL 4 PLAYER COLOR RAYS
+          VIEW D: PAWNS & FIGURINES CATALOG
       ========================================================================= */}
       {activeCategory === 'pawns' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <span>Select Official Character Pawns & Figurines</span>
-              <span className="text-xs text-slate-400 font-normal">({PAWN_SKINS.length} Pawn Sets Available)</span>
+              <span>Select Official Pawn Figurine Collection</span>
+              <span className="text-xs text-slate-400 font-normal">({PAWN_SKINS.length} Collections Available)</span>
             </h3>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-            {PAWN_SKINS.map((pawn) => {
-              const isSelected = activePawnId === pawn.id;
+            {PAWN_SKINS.map((skin) => {
+              const isSelected = activePawnId === skin.id;
 
               return (
                 <motion.div
-                  key={pawn.id}
+                  key={skin.id}
                   whileHover={{ y: -4 }}
-                  className={`relative rounded-3xl overflow-hidden border-2 transition-all duration-300 flex flex-col justify-between p-5 ${
+                  className={`relative rounded-3xl overflow-hidden border-2 transition-all duration-300 flex flex-col justify-between ${
                     isSelected
                       ? 'bg-[#18112e] border-amber-400 shadow-[0_0_35px_rgba(251,191,36,0.4)] ring-2 ring-amber-400/30'
                       : 'bg-[#0e1222] border-slate-800 hover:border-slate-700'
                   }`}
                 >
-                  {/* Top Badge */}
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="p-4 pb-2 flex items-center justify-between z-10">
                     <div className="flex items-center gap-2">
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                          pawn.rarity === 'Legendary'
-                            ? 'bg-amber-500/20 text-amber-300 border border-amber-400/40'
-                            : pawn.rarity === 'Epic'
-                            ? 'bg-purple-500/20 text-purple-300 border border-purple-400/40'
-                            : pawn.rarity === 'Rare'
-                            ? 'bg-blue-500/20 text-blue-300 border border-blue-400/40'
-                            : 'bg-slate-700/40 text-slate-300'
-                        }`}
-                      >
-                        {pawn.rarity}
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/10 text-amber-300 border border-amber-400/20">
+                        {skin.rarity}
                       </span>
-                      <span className="text-xs text-slate-400 font-mono uppercase">{pawn.styleType}</span>
+                      <span className="text-xs font-black text-white">{skin.name}</span>
                     </div>
 
                     {isSelected && (
-                      <span className="px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 text-[10px] font-black uppercase flex items-center gap-1">
+                      <span className="px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 text-[10px] font-black uppercase flex items-center gap-1 shadow-sm">
                         <Check className="w-3 h-3 stroke-[3]" /> Active
                       </span>
                     )}
                   </div>
 
-                  {/* 4 COLOR PAWNS PREVIEW BAR */}
-                  <div className="my-3 py-4 px-3 bg-black/40 rounded-2xl border border-white/10 flex items-center justify-around">
+                  {/* 4 COLOR PAWN FIGURINES DISPLAY */}
+                  <div className="px-4 py-3 flex items-center justify-center gap-3">
                     {(['blue', 'red', 'green', 'yellow'] as PlayerColor[]).map((c) => {
-                      const col = pawn.colors[c];
+                      const col = skin.colors[c];
                       return (
-                        <motion.div
-                          key={c}
-                          whileHover={{ scale: 1.25, y: -4 }}
-                          onClick={() => SoundManager.play('pawn-step')}
-                          className="flex flex-col items-center gap-1 cursor-pointer"
-                        >
-                          {/* 3D Pawn Figurine Shape */}
-                          <div className="relative w-8 h-10 flex flex-col items-center">
-                            {/* Crown / Top Topper */}
-                            {pawn.styleType === 'crowned' && (
-                              <Crown className="w-3 h-3 text-amber-300 absolute -top-2 z-20" />
-                            )}
-                            {pawn.styleType === 'crystal' && (
-                              <Gem className="w-2.5 h-2.5 text-white absolute -top-1.5 z-20" />
-                            )}
-
-                            {/* Head Sphere */}
-                            <div
-                              className={`w-4 h-4 rounded-full bg-gradient-to-tr ${col.primaryGradient} border border-white/40 shadow-sm relative z-10`}
-                            >
-                              <div className="absolute top-0.5 left-0.5 w-1.5 h-1.5 rounded-full bg-white/70" />
-                            </div>
-
-                            {/* Neck Collar */}
-                            <div className="w-2.5 h-1 bg-amber-400 rounded-xs -my-0.5 z-15 shadow-xs" />
-
-                            {/* Base Body Skirt */}
-                            <div
-                              className={`w-6 h-5 rounded-b-xl rounded-t-sm bg-gradient-to-b ${col.primaryGradient} border border-white/30 shadow-md relative`}
-                              style={{ boxShadow: `0 3px 10px ${col.glowColor}` }}
-                            >
-                              <div className="absolute inset-x-1 bottom-0.5 h-1 rounded-full bg-white/30" />
-                            </div>
+                        <div key={c} className="flex flex-col items-center gap-1">
+                          <div
+                            className={`w-9 h-11 rounded-t-full rounded-b-lg bg-gradient-to-t ${col.primaryGradient} border-2 shadow-lg flex items-center justify-center relative overflow-hidden`}
+                            style={{ borderColor: col.borderColor }}
+                          >
+                            {skin.styleType === 'crowned' && <Crown className="w-3.5 h-3.5 text-amber-300" />}
+                            {skin.styleType === 'crystal' && <Gem className="w-3 h-3 text-white" />}
+                            {skin.styleType === 'mecha' && <Zap className="w-3 h-3 text-cyan-300" />}
                           </div>
-                          <span className="text-[9px] font-mono text-slate-400 capitalize">{c}</span>
-                        </motion.div>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase">{c}</span>
+                        </div>
                       );
                     })}
                   </div>
 
-                  {/* Details & Actions */}
-                  <div className="space-y-3">
+                  {/* INFO & CONTROLS */}
+                  <div className="p-4 pt-2 space-y-3">
                     <div>
-                      <h4 className="text-sm font-black text-white">{pawn.name}</h4>
-                      <p className="text-xs text-slate-300 line-clamp-2 mt-0.5">{pawn.description}</p>
+                      <h4 className="text-sm font-black text-white">{skin.name}</h4>
+                      <p className="text-xs text-slate-400 leading-snug mt-0.5">{skin.description}</p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 pt-1 border-t border-white/10">
                       <button
                         onClick={() => {
                           SoundManager.play('click');
-                          setActivePawnId(pawn.id);
+                          setActivePawnId(skin.id);
                         }}
-                        className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                           isSelected
-                            ? 'bg-amber-500 text-slate-950 font-black shadow-md'
-                            : 'bg-white/10 hover:bg-white/20 text-white border border-white/15'
+                            ? 'bg-amber-400 text-slate-950 font-black shadow-lg shadow-amber-400/30'
+                            : 'bg-white/10 hover:bg-white/20 text-white'
                         }`}
                       >
                         {isSelected ? (
                           <>
-                            <Check className="w-3.5 h-3.5 stroke-[3]" />
-                            <span>Active Default</span>
+                            <CheckCheck className="w-4 h-4 text-slate-950" />
+                            <span>Currently Active</span>
                           </>
                         ) : (
-                          <span>Set as Active Pawn</span>
+                          <>
+                            <Gem className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Set as Active Pawns</span>
+                          </>
                         )}
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          SoundManager.play('click');
-                          setActivePawnId(pawn.id);
-                          setActiveCategory('sandbox');
-                        }}
-                        className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 cursor-pointer"
-                        title="Test in 3D Sandbox"
-                      >
-                        <Play className="w-4 h-4 fill-current text-cyan-400" />
                       </button>
                     </div>
                   </div>
@@ -788,18 +893,17 @@ export const BoardAssetsStudioTab: React.FC<BoardAssetsStudioTabProps> = ({ toke
       )}
 
       {/* =========================================================================
-          VIEW D: INTERACTIVE LIVE 3D ARENA SANDBOX TESTBED
+          VIEW E: LIVE INTERACTIVE 3D SANDBOX
       ========================================================================= */}
       {activeCategory === 'sandbox' && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-[#11162a] p-4 rounded-2xl border border-slate-800">
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <h3 className="text-base font-black text-white flex items-center gap-2">
-                <Eye className="w-5 h-5 text-cyan-400" />
-                <span>Real-Time 3D Arena Live Sandbox</span>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <span>Interactive Live Sandbox Environment</span>
               </h3>
               <p className="text-xs text-slate-400">
-                Interactive preview testing the active combination of Board: <strong className="text-amber-400">{currentBoard.name}</strong>, Dice: <strong className="text-amber-400">{currentDice.name}</strong>, Pawns: <strong className="text-amber-400">{currentPawn.name}</strong>.
+                Live simulation testing the deployed combination of Lobby: <strong className="text-amber-400">{currentLobby.name}</strong>, Board: <strong className="text-amber-400">{currentBoard.name}</strong>, Dice: <strong className="text-amber-400">{currentDice.name}</strong>, Pawns: <strong className="text-amber-400">{currentPawn.name}</strong>.
               </p>
             </div>
 

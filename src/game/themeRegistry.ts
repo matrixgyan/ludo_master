@@ -1,5 +1,28 @@
 import { PlayerColor } from '../types/game';
 
+export interface LobbyThemeDefinition {
+  id: string;
+  name: string;
+  category: 'Royal 3D' | 'Cyber' | 'Luxury Casino' | 'Tournament' | 'Festival';
+  description: string;
+  tag: string;
+  previewBgGradient: string;
+  previewAccentColor: string;
+  accentGlow: string;
+  atmosphere: 'particles' | 'grid' | 'aurora' | 'bokeh' | 'stars' | 'classic';
+  bodyBgClass: string;
+  containerClass: string;
+  headerBgGradient: string;
+  headerBorderClass: string;
+  headerTextClass: string;
+  cardBorderGlow: string;
+  floatingWidgetClass: string;
+  bottomNavGradient: string;
+  bottomNavBorder: string;
+  bottomNavActiveColor: string;
+  bannerBadgeStyle: string;
+}
+
 export interface BoardThemeDefinition {
   id: string;
   name: string;
@@ -59,6 +82,119 @@ export interface PawnSkinDefinition {
     highlight: string;
   }>;
 }
+
+export const LOBBY_THEMES: LobbyThemeDefinition[] = [
+  {
+    id: 'dubai_prestige_gold',
+    name: 'Dubai Royal 3D Arena',
+    category: 'Royal 3D',
+    tag: 'DEFAULT ACTIVE',
+    description: 'The flagship signature lobby featuring clean off-white canvas, golden highlights, 3D animated hero cards, luxury casino amber accents, and crisp typography.',
+    previewBgGradient: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #451a03 100%)',
+    previewAccentColor: '#f59e0b',
+    accentGlow: 'rgba(245, 158, 11, 0.4)',
+    atmosphere: 'particles',
+    bodyBgClass: 'bg-[#fcfaf7]',
+    containerClass: 'bg-white',
+    headerBgGradient: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 27, 75, 0.98) 100%)',
+    headerBorderClass: 'border-amber-500/30',
+    headerTextClass: 'text-amber-400',
+    cardBorderGlow: 'shadow-[0_8px_30px_rgba(245,158,11,0.18)] hover:shadow-[0_12px_40px_rgba(245,158,11,0.32)]',
+    floatingWidgetClass: 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-amber-400/50 shadow-[0_0_20px_rgba(16,185,129,0.5)]',
+    bottomNavGradient: 'linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, rgba(2, 6, 23, 0.99) 100%)',
+    bottomNavBorder: 'border-slate-800/90',
+    bottomNavActiveColor: '#fbbf24',
+    bannerBadgeStyle: 'bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 font-black',
+  },
+  {
+    id: 'cyberpunk_neon_tokyo',
+    name: 'Cyberpunk Hologram 2099',
+    category: 'Cyber',
+    tag: 'FUTURISTIC',
+    description: 'Dark obsidian matrix with animated cyan & fuchsia laser glow, holographic scanlines, neon digital grid, and electric futuristic energy.',
+    previewBgGradient: 'linear-gradient(135deg, #020617 0%, #083344 50%, #701a75 100%)',
+    previewAccentColor: '#22d3ee',
+    accentGlow: 'rgba(34, 211, 238, 0.6)',
+    atmosphere: 'grid',
+    bodyBgClass: 'bg-[#070913]',
+    containerClass: 'bg-[#0b0f1e]',
+    headerBgGradient: 'linear-gradient(135deg, rgba(8, 51, 68, 0.95) 0%, rgba(15, 23, 42, 0.98) 50%, rgba(112, 26, 117, 0.95) 100%)',
+    headerBorderClass: 'border-cyan-500/50',
+    headerTextClass: 'text-cyan-400',
+    cardBorderGlow: 'shadow-[0_0_30px_rgba(6,182,212,0.35)] hover:shadow-[0_0_45px_rgba(6,182,212,0.6)] border-cyan-500/40',
+    floatingWidgetClass: 'bg-gradient-to-r from-cyan-600 to-fuchsia-600 text-white border-cyan-300 shadow-[0_0_25px_rgba(34,211,238,0.7)]',
+    bottomNavGradient: 'linear-gradient(180deg, rgba(8, 14, 30, 0.98) 0%, rgba(3, 7, 18, 1) 100%)',
+    bottomNavBorder: 'border-cyan-900/60',
+    bottomNavActiveColor: '#22d3ee',
+    bannerBadgeStyle: 'bg-cyan-400 text-slate-950 font-black shadow-[0_0_15px_rgba(34,211,238,0.8)]',
+  },
+  {
+    id: 'monaco_vip_casino',
+    name: 'Monaco Royale VIP Club',
+    category: 'Luxury Casino',
+    tag: 'HIGH ROLLER',
+    description: 'Deep velvet crimson, brushed gold titanium, 24K gold foil trim, and exclusive Monte Carlo high-stakes casino luxury.',
+    previewBgGradient: 'linear-gradient(135deg, #1c050a 0%, #4c0519 50%, #78350f 100%)',
+    previewAccentColor: '#fb7185',
+    accentGlow: 'rgba(244, 63, 94, 0.55)',
+    atmosphere: 'bokeh',
+    bodyBgClass: 'bg-[#12070a]',
+    containerClass: 'bg-[#1a0c10]',
+    headerBgGradient: 'linear-gradient(135deg, rgba(76, 5, 25, 0.95) 0%, rgba(28, 5, 10, 0.98) 50%, rgba(69, 26, 3, 0.95) 100%)',
+    headerBorderClass: 'border-amber-500/50',
+    headerTextClass: 'text-amber-300',
+    cardBorderGlow: 'shadow-[0_0_30px_rgba(225,29,72,0.35)] hover:shadow-[0_0_45px_rgba(244,63,94,0.55)] border-amber-500/40',
+    floatingWidgetClass: 'bg-gradient-to-r from-rose-600 to-amber-600 text-white border-amber-300 shadow-[0_0_25px_rgba(244,63,94,0.7)]',
+    bottomNavGradient: 'linear-gradient(180deg, rgba(28, 5, 10, 0.98) 0%, rgba(15, 2, 5, 1) 100%)',
+    bottomNavBorder: 'border-rose-950/80',
+    bottomNavActiveColor: '#fbbf24',
+    bannerBadgeStyle: 'bg-gradient-to-r from-rose-500 to-amber-500 text-white font-black shadow-[0_0_15px_rgba(244,63,94,0.7)]',
+  },
+  {
+    id: 'emerald_palace_tournament',
+    name: 'Emerald Palace Esports Arena',
+    category: 'Tournament',
+    tag: 'PRO ESPORTS',
+    description: 'Imperial forest emerald, brass championship badges, tournament ranking status rings, and ultra-crisp competitive sports polish.',
+    previewBgGradient: 'linear-gradient(135deg, #022c22 0%, #064e3b 50%, #0f172a 100%)',
+    previewAccentColor: '#34d399',
+    accentGlow: 'rgba(52, 211, 153, 0.55)',
+    atmosphere: 'aurora',
+    bodyBgClass: 'bg-[#03140e]',
+    containerClass: 'bg-[#071f16]',
+    headerBgGradient: 'linear-gradient(135deg, rgba(6, 78, 59, 0.95) 0%, rgba(2, 44, 34, 0.98) 50%, rgba(15, 23, 42, 0.95) 100%)',
+    headerBorderClass: 'border-emerald-500/50',
+    headerTextClass: 'text-emerald-300',
+    cardBorderGlow: 'shadow-[0_0_30px_rgba(16,185,129,0.35)] hover:shadow-[0_0_45px_rgba(52,211,153,0.55)] border-emerald-500/40',
+    floatingWidgetClass: 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-300 shadow-[0_0_25px_rgba(16,185,129,0.7)]',
+    bottomNavGradient: 'linear-gradient(180deg, rgba(4, 30, 22, 0.98) 0%, rgba(2, 18, 13, 1) 100%)',
+    bottomNavBorder: 'border-emerald-950/80',
+    bottomNavActiveColor: '#34d399',
+    bannerBadgeStyle: 'bg-gradient-to-r from-emerald-400 to-teal-500 text-slate-950 font-black shadow-[0_0_15px_rgba(52,211,153,0.7)]',
+  },
+  {
+    id: 'sunset_oasis_carnival',
+    name: 'Sunset Oasis Carnival',
+    category: 'Festival',
+    tag: 'FESTIVAL VIP',
+    description: 'Vibrant sunset magenta, electric violet, warm dusk peach, and sparkling festival illumination with festive celebration effects.',
+    previewBgGradient: 'linear-gradient(135deg, #3b0764 0%, #701a75 50%, #831843 100%)',
+    previewAccentColor: '#f472b6',
+    accentGlow: 'rgba(244, 114, 182, 0.55)',
+    atmosphere: 'stars',
+    bodyBgClass: 'bg-[#14081c]',
+    containerClass: 'bg-[#1c0c26]',
+    headerBgGradient: 'linear-gradient(135deg, rgba(88, 28, 135, 0.95) 0%, rgba(59, 7, 100, 0.98) 50%, rgba(131, 24, 67, 0.95) 100%)',
+    headerBorderClass: 'border-pink-500/50',
+    headerTextClass: 'text-pink-300',
+    cardBorderGlow: 'shadow-[0_0_30px_rgba(236,72,153,0.35)] hover:shadow-[0_0_45px_rgba(244,114,182,0.55)] border-pink-500/40',
+    floatingWidgetClass: 'bg-gradient-to-r from-fuchsia-600 to-pink-600 text-white border-pink-300 shadow-[0_0_25px_rgba(244,114,182,0.7)]',
+    bottomNavGradient: 'linear-gradient(180deg, rgba(28, 12, 38, 0.98) 0%, rgba(15, 6, 22, 1) 100%)',
+    bottomNavBorder: 'border-purple-950/80',
+    bottomNavActiveColor: '#f472b6',
+    bannerBadgeStyle: 'bg-gradient-to-r from-pink-400 to-rose-500 text-white font-black shadow-[0_0_15px_rgba(244,114,182,0.7)]',
+  },
+];
 
 export const BOARD_THEMES: BoardThemeDefinition[] = [
   {
@@ -411,11 +547,19 @@ export const PAWN_SKINS: PawnSkinDefinition[] = [
   },
 ];
 
-export function getActiveThemeConfig(): {
+export interface CompleteThemeConfig {
+  activeLobbyId: string;
+  activeBoardId: string;
+  activeDiceId: string;
+  activePawnId: string;
+  lobby: LobbyThemeDefinition;
   board: BoardThemeDefinition;
   dice: DiceSkinDefinition;
   pawn: PawnSkinDefinition;
-} {
+}
+
+export function getActiveThemeConfig(): CompleteThemeConfig {
+  let activeLobbyId = 'dubai_prestige_gold';
   let activeBoardId = 'dubai_royal_sunset';
   let activeDiceId = 'golden_high_roller';
   let activePawnId = 'royal_crowned';
@@ -425,6 +569,7 @@ export function getActiveThemeConfig(): {
       const saved = localStorage.getItem('ludo_active_theme_config');
       if (saved) {
         const parsed = JSON.parse(saved);
+        if (parsed.activeLobbyId) activeLobbyId = parsed.activeLobbyId;
         if (parsed.activeBoardId) activeBoardId = parsed.activeBoardId;
         if (parsed.activeDiceId) activeDiceId = parsed.activeDiceId;
         if (parsed.activePawnId) activePawnId = parsed.activePawnId;
@@ -432,9 +577,40 @@ export function getActiveThemeConfig(): {
     } catch {}
   }
 
+  const lobby = LOBBY_THEMES.find((l) => l.id === activeLobbyId) || LOBBY_THEMES[0];
   const board = BOARD_THEMES.find((b) => b.id === activeBoardId) || BOARD_THEMES[0];
   const dice = DICE_SKINS.find((d) => d.id === activeDiceId) || DICE_SKINS[0];
   const pawn = PAWN_SKINS.find((p) => p.id === activePawnId) || PAWN_SKINS[0];
 
-  return { board, dice, pawn };
+  return {
+    activeLobbyId,
+    activeBoardId,
+    activeDiceId,
+    activePawnId,
+    lobby,
+    board,
+    dice,
+    pawn,
+  };
+}
+
+export function saveLocalThemeConfig(config: {
+  activeLobbyId?: string;
+  activeBoardId?: string;
+  activeDiceId?: string;
+  activePawnId?: string;
+}) {
+  if (typeof window === 'undefined') return;
+  try {
+    const current = getActiveThemeConfig();
+    const toSave = {
+      activeLobbyId: config.activeLobbyId || current.activeLobbyId,
+      activeBoardId: config.activeBoardId || current.activeBoardId,
+      activeDiceId: config.activeDiceId || current.activeDiceId,
+      activePawnId: config.activePawnId || current.activePawnId,
+      updatedAt: new Date().toISOString(),
+    };
+    localStorage.setItem('ludo_active_theme_config', JSON.stringify(toSave));
+    window.dispatchEvent(new CustomEvent('ludo_theme_changed', { detail: toSave }));
+  } catch {}
 }

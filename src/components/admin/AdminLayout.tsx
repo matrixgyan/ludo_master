@@ -82,7 +82,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 
   const navItems = [
     { id: 'overview', label: 'Dashboard Overview', icon: LayoutDashboard },
-    { id: 'assets_studio', label: 'Boards, Pawns & Dice', icon: Palette, badge: 'NEW' },
+    { id: 'assets_studio', label: 'Lobby, Boards & Assets', icon: Palette, badge: 'PRO' },
     { id: 'live_matches', label: 'Live Match Engine', icon: Gamepad2, badge: metrics?.overview?.activeGames },
     { id: 'users', label: 'User & Wallets', icon: Users },
     { id: 'leaderboards', label: 'Rankings & Tournaments', icon: Trophy },

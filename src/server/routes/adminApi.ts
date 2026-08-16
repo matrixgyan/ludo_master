@@ -29,14 +29,17 @@ interface PlatformSettings {
 }
 
 export interface ActiveThemeConfig {
+  activeLobbyId: string;
   activeBoardId: string;
   activeDiceId: string;
   activePawnId: string;
+  enabledLobbies: string[];
   enabledBoards: string[];
   enabledDice: string[];
   enabledPawns: string[];
   customThemes?: any[];
   updatedAt: string;
+  deployedBy?: string;
 }
 
 let platformSettings: PlatformSettings = {
@@ -52,14 +55,17 @@ let platformSettings: PlatformSettings = {
 };
 
 let activeThemeConfig: ActiveThemeConfig = {
+  activeLobbyId: 'dubai_prestige_gold',
   activeBoardId: 'dubai_royal_sunset',
   activeDiceId: 'golden_high_roller',
   activePawnId: 'royal_crowned',
+  enabledLobbies: ['dubai_prestige_gold', 'cyberpunk_neon_tokyo', 'monaco_vip_casino', 'emerald_palace_tournament', 'sunset_oasis_carnival'],
   enabledBoards: ['dubai_royal_sunset', 'classic_emerald', 'cyber_neon', 'midnight_marble', 'candy_pastel', 'aztec_wood'],
   enabledDice: ['golden_high_roller', 'classic_pearl', 'cyber_glass', 'ruby_royale', 'emerald_jade', 'dark_matter'],
   enabledPawns: ['royal_crowned', 'classic_gloss', 'crystal_gem', 'cyber_mecha', 'golden_sovereign', 'dragon_shield'],
   customThemes: [],
   updatedAt: new Date().toISOString(),
+  deployedBy: 'SuperAdmin',
 };
 
 // Admin authentication constants
@@ -206,8 +212,16 @@ adminRouter.post('/api/admin/settings', requireAdminAuth, (req: Request, res: Re
 });
 
 // -----------------------------------------------------------------------------
-// 2B. LUDO BOARD, DICE & PAWNS THEME ASSETS CUSTOMIZER
+// 2B. LUDO LOBBY, BOARD, DICE & PAWNS THEME ASSETS CUSTOMIZER (PUBLIC & ADMIN)
 // -----------------------------------------------------------------------------
+
+// Public endpoint for all players/clients to get the live active deployed theme configuration
+adminRouter.get('/api/theme-config', (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    themeConfig: activeThemeConfig,
+  });
+});
 
 adminRouter.get('/api/admin/theme-assets', (req: Request, res: Response) => {
   res.json({
@@ -218,27 +232,33 @@ adminRouter.get('/api/admin/theme-assets', (req: Request, res: Response) => {
 
 adminRouter.post('/api/admin/theme-assets', requireAdminAuth, (req: Request, res: Response) => {
   const {
+    activeLobbyId,
     activeBoardId,
     activeDiceId,
     activePawnId,
+    enabledLobbies,
     enabledBoards,
     enabledDice,
     enabledPawns,
     customThemes,
+    deployedBy,
   } = req.body;
 
+  if (activeLobbyId) activeThemeConfig.activeLobbyId = activeLobbyId;
   if (activeBoardId) activeThemeConfig.activeBoardId = activeBoardId;
   if (activeDiceId) activeThemeConfig.activeDiceId = activeDiceId;
   if (activePawnId) activeThemeConfig.activePawnId = activePawnId;
+  if (Array.isArray(enabledLobbies)) activeThemeConfig.enabledLobbies = enabledLobbies;
   if (Array.isArray(enabledBoards)) activeThemeConfig.enabledBoards = enabledBoards;
   if (Array.isArray(enabledDice)) activeThemeConfig.enabledDice = enabledDice;
   if (Array.isArray(enabledPawns)) activeThemeConfig.enabledPawns = enabledPawns;
   if (Array.isArray(customThemes)) activeThemeConfig.customThemes = customThemes;
+  if (deployedBy) activeThemeConfig.deployedBy = deployedBy;
   activeThemeConfig.updatedAt = new Date().toISOString();
 
-  Logger.info(`Admin updated active theme assets: Board=${activeThemeConfig.activeBoardId}, Dice=${activeThemeConfig.activeDiceId}, Pawn=${activeThemeConfig.activePawnId}`);
+  Logger.info(`Admin deployed live platform theme: Lobby=${activeThemeConfig.activeLobbyId}, Board=${activeThemeConfig.activeBoardId}, Dice=${activeThemeConfig.activeDiceId}, Pawn=${activeThemeConfig.activePawnId}`);
 
-  // Broadcast theme change to active live games
+  // Broadcast theme change to active live games and lobbies
   wsServerInstance.broadcastToRoom('global', {
     type: 'THEME_UPDATED',
     themeConfig: activeThemeConfig,
@@ -246,7 +266,7 @@ adminRouter.post('/api/admin/theme-assets', requireAdminAuth, (req: Request, res
 
   res.json({
     success: true,
-    message: 'Ludo boards, pawns & dice configuration deployed to live platform successfully!',
+    message: 'Platform lobby, ludo boards, pawns & dice configuration deployed to live platform successfully!',
     themeConfig: activeThemeConfig,
   });
 });

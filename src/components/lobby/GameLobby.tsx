@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion } from 'motion/react';
 import { LobbyHeader } from './LobbyHeader';
 import { LobbyCardOnlineMultiplayer } from './LobbyCardOnlineMultiplayer';
 import { LobbyCardSnakeLudo } from './LobbyCardSnakeLudo';
@@ -12,6 +13,8 @@ import { ReferModal } from './ReferModal';
 import { ProfileModal } from './ProfileModal';
 import { NotificationsModal } from './NotificationsModal';
 import { PlayerModeOption, LudoModeSelectorModal } from './LudoModeSelectorModal';
+import { useLiveTheme } from '../../hooks/useLiveTheme';
+import { Sparkles, Shield, Crown } from 'lucide-react';
 
 interface GameLobbyProps {
   balance: number;
@@ -36,6 +39,9 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
+  // Dynamic Theme state
+  const { lobbyTheme } = useLiveTheme();
+
   // Mode Selection Modal State
   const [isModeSelectorOpen, setIsModeSelectorOpen] = useState(false);
 
@@ -52,9 +58,25 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   };
 
   return (
-    <div className="relative min-h-screen w-full bg-white flex flex-col items-center justify-start text-slate-900 pb-24 select-none">
+    <div
+      className={`relative min-h-screen w-full ${lobbyTheme.bodyBgClass} flex flex-col items-center justify-start text-slate-900 pb-24 select-none transition-colors duration-500 overflow-x-hidden`}
+    >
+      {/* ATMOSPHERIC BACKGROUND EFFECTS BASED ON ACTIVE LOBBY THEME */}
+      {lobbyTheme.atmosphere === 'grid' && (
+        <div className="absolute inset-0 pointer-events-none opacity-25 z-0 bg-[linear-gradient(to_right,#06b6d415_1px,transparent_1px),linear-gradient(to_bottom,#06b6d415_1px,transparent_1px)] bg-[size:24px_24px]" />
+      )}
+      {lobbyTheme.atmosphere === 'aurora' && (
+        <div className="absolute inset-0 pointer-events-none opacity-30 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-500/20 via-teal-900/10 to-transparent" />
+      )}
+      {lobbyTheme.atmosphere === 'bokeh' && (
+        <div className="absolute inset-0 pointer-events-none opacity-30 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-rose-600/20 via-amber-700/10 to-transparent" />
+      )}
+      {lobbyTheme.atmosphere === 'stars' && (
+        <div className="absolute inset-0 pointer-events-none opacity-30 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-purple-500/20 via-pink-700/10 to-transparent" />
+      )}
+
       {/* 1. TOP HEADER (Gift Box "Open" | Bell | Balance in $ | Profile) */}
-      <div className="w-full max-w-lg">
+      <div className="w-full max-w-lg z-10">
         <LobbyHeader
           balance={balance}
           onOpenMysteryBox={() => setIsMysteryBoxOpen(true)}
@@ -65,7 +87,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
       </div>
 
       {/* 2. MAIN SCROLLABLE LOBBY CONTAINER */}
-      <main className="w-full max-w-lg px-3.5 pt-3.5 space-y-3.5 flex-1 flex flex-col items-center">
+      <main className="w-full max-w-lg px-3.5 pt-3.5 space-y-3.5 flex-1 flex flex-col items-center z-10">
         {/* CARD 1: LUDO ONLINE ARENA */}
         <LobbyCardOnlineMultiplayer onOpenModeSelect={() => setIsModeSelectorOpen(true)} />
 
