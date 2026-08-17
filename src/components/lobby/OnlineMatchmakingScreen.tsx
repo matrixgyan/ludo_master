@@ -78,7 +78,7 @@ const ONLINE_PLAYERS_POOL: Omit<MatchedOpponent, 'color' | 'isReady'>[] = [
 ];
 
 const COLOR_MAP: Record<number, PlayerColor[]> = {
-  2: ['blue', 'red'],
+  2: ['blue', 'green'],
   3: ['blue', 'red', 'green'],
   4: ['blue', 'red', 'green', 'yellow'],
 };

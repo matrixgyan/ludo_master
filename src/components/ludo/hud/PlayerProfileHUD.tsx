@@ -13,6 +13,8 @@ interface PlayerProfileHUDProps {
   dice: DiceState;
   onRollDice: () => void;
   turnTimeLeft?: number;
+  isSupreme?: boolean;
+  scoreRank?: number;
 }
 
 const RING_COLORS: Record<PlayerColor, string> = {
@@ -30,6 +32,8 @@ export const PlayerProfileHUD: React.FC<PlayerProfileHUDProps> = ({
   dice,
   onRollDice,
   turnTimeLeft = 30,
+  isSupreme = true,
+  scoreRank,
 }) => {
   const isRight = position === 'top-right' || position === 'bottom-right';
 
@@ -44,51 +48,64 @@ export const PlayerProfileHUD: React.FC<PlayerProfileHUDProps> = ({
         isRight ? 'flex-row-reverse text-right' : 'flex-row text-left'
       }`}
     >
-      {/* Avatar Circle Container with Active Turn Indicator */}
-      <div className="relative">
-        {isTurn && (
-          <div className="absolute inset-[-3px] rounded-full border-2 border-amber-400 animate-pulse pointer-events-none z-0" />
-        )}
+      {/* Avatar Circle Container with Active Turn Indicator & Live Score */}
+      <div className="flex flex-col items-center gap-0.5">
+        <div className="relative">
+          {isTurn && (
+            <div className="absolute inset-[-3px] rounded-full border-2 border-amber-400 animate-pulse pointer-events-none z-0" />
+          )}
 
-        {/* Circular Avatar Frame - Clean Profile Picture Only */}
-        <div
-          className={`relative z-10 w-9 h-9 sm:w-10 sm:h-10 rounded-full p-0.5 bg-gradient-to-tr ${
-            RING_COLORS[player.color]
-          } shadow-lg border-2 overflow-hidden flex items-center justify-center`}
-        >
-          <img
-            src={player.avatarUrl}
-            alt={player.color}
-            className="w-full h-full object-cover rounded-full bg-slate-800"
-            referrerPolicy="no-referrer"
-            onError={(e) => {
-              // Fallback avatar URL if image fails to load
-              (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/bottts/svg?seed=${player.color}`;
-            }}
-          />
+          {/* Circular Avatar Frame - Clean Profile Picture Only */}
+          <div
+            className={`relative z-10 w-9 h-9 sm:w-10 sm:h-10 rounded-full p-0.5 bg-gradient-to-tr ${
+              RING_COLORS[player.color]
+            } shadow-lg border-2 overflow-hidden flex items-center justify-center`}
+          >
+            <img
+              src={player.avatarUrl}
+              alt={player.color}
+              className="w-full h-full object-cover rounded-full bg-slate-800"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                // Fallback avatar URL if image fails to load
+                (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/bottts/svg?seed=${player.color}`;
+              }}
+            />
+          </div>
+
+          {/* Mic / Voice Toggle Badge */}
+          <button
+            onClick={handleMicClick}
+            className={`absolute -bottom-1 -right-1 z-20 w-4.5 h-4.5 sm:w-5 sm:h-5 rounded-full flex items-center justify-center border border-white shadow-md transition-transform active:scale-90 ${
+              player.isMuted ? 'bg-slate-700 text-slate-300' : 'bg-green-500 text-white'
+            }`}
+            title={player.isMuted ? 'Unmute' : 'Mute'}
+          >
+            {player.isMuted ? <MicOff className="w-2.5 h-2.5" /> : <Mic className="w-2.5 h-2.5" />}
+          </button>
+
+          {/* Active Speaking Soundwave Indicator */}
+          {player.isSpeaking && (
+            <motion.div
+              animate={{ scale: [0.8, 1.4, 0.8], opacity: [0.3, 0.9, 0.3] }}
+              transition={{ duration: 0.8, repeat: Infinity }}
+              className="absolute -top-1 -right-1 z-20 w-3.5 h-3.5 rounded-full bg-cyan-400 border border-white"
+            >
+              <Volume2 className="w-2.5 h-2.5 text-slate-900" />
+            </motion.div>
+          )}
         </div>
 
-        {/* Mic / Voice Toggle Badge */}
-        <button
-          onClick={handleMicClick}
-          className={`absolute -bottom-1 -right-1 z-20 w-4.5 h-4.5 sm:w-5 sm:h-5 rounded-full flex items-center justify-center border border-white shadow-md transition-transform active:scale-90 ${
-            player.isMuted ? 'bg-slate-700 text-slate-300' : 'bg-green-500 text-white'
+        {/* Live Score Tag Pill */}
+        <div
+          className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-black border shadow-md ${
+            scoreRank === 1
+              ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 border-yellow-200'
+              : 'bg-black/75 text-amber-300 border-white/20'
           }`}
-          title={player.isMuted ? 'Unmute' : 'Mute'}
         >
-          {player.isMuted ? <MicOff className="w-2.5 h-2.5" /> : <Mic className="w-2.5 h-2.5" />}
-        </button>
-
-        {/* Active Speaking Soundwave Indicator */}
-        {player.isSpeaking && (
-          <motion.div
-            animate={{ scale: [0.8, 1.4, 0.8], opacity: [0.3, 0.9, 0.3] }}
-            transition={{ duration: 0.8, repeat: Infinity }}
-            className="absolute -top-1 -right-1 z-20 w-3.5 h-3.5 rounded-full bg-cyan-400 border border-white"
-          >
-            <Volume2 className="w-2.5 h-2.5 text-slate-900" />
-          </motion.div>
-        )}
+          <span>⭐ {player.score ?? 0}</span>
+        </div>
       </div>
 
       {/* Integrated Profile 3D Dice with Turn Timer */}

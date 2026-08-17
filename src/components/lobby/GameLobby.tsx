@@ -21,7 +21,7 @@ interface GameLobbyProps {
   onAddFunds: (amount: number) => void;
   onPlayLudo: () => void;
   onPlaySnakeLudo: () => void;
-  onStartOnlineMatch: (mode: PlayerModeOption, entryFee: number, prizePool: number) => void;
+  onStartOnlineMatch: (mode: PlayerModeOption, entryFee: number, prizePool: number, gameType?: 'classic' | 'supreme') => void;
 }
 
 export const GameLobby: React.FC<GameLobbyProps> = ({
@@ -44,6 +44,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
 
   // Mode Selection Modal State
   const [isModeSelectorOpen, setIsModeSelectorOpen] = useState(false);
+  const [modalGameType, setModalGameType] = useState<'classic' | 'supreme'>('supreme');
 
   const handleSelectTab = (tab: NavTab) => {
     setActiveTab(tab);
@@ -52,9 +53,14 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     if (tab === 'wallet') setIsWalletOpen(true);
   };
 
-  const handleSelectGameModeAndStart = (mode: PlayerModeOption, entryFee: number, prizePool: number) => {
+  const handleOpenModeSelect = (gameType: 'classic' | 'supreme') => {
+    setModalGameType(gameType);
+    setIsModeSelectorOpen(true);
+  };
+
+  const handleSelectGameModeAndStart = (mode: PlayerModeOption, entryFee: number, prizePool: number, gameType: 'classic' | 'supreme') => {
     setIsModeSelectorOpen(false);
-    onStartOnlineMatch(mode, entryFee, prizePool);
+    onStartOnlineMatch(mode, entryFee, prizePool, gameType);
   };
 
   return (
@@ -89,13 +95,13 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
       {/* 2. MAIN SCROLLABLE LOBBY CONTAINER */}
       <main className="w-full max-w-lg px-3.5 pt-3.5 space-y-3.5 flex-1 flex flex-col items-center z-10">
         {/* CARD 1: LUDO ONLINE ARENA */}
-        <LobbyCardOnlineMultiplayer onOpenModeSelect={() => setIsModeSelectorOpen(true)} />
+        <LobbyCardOnlineMultiplayer onOpenModeSelect={() => handleOpenModeSelect('classic')} />
 
         {/* CARD 2: SNAKE LUDO */}
         <LobbyCardSnakeLudo onPlay={onPlaySnakeLudo} />
 
         {/* CARD 3: LUDO SUPREME */}
-        <LobbyCardLudoSupreme onPlay={() => setIsModeSelectorOpen(true)} />
+        <LobbyCardLudoSupreme onPlay={() => handleOpenModeSelect('supreme')} />
       </main>
 
       {/* FLOATING STUCK RANK BADGE ON THE RIGHT DISPLAY */}
@@ -110,6 +116,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
         onClose={() => setIsModeSelectorOpen(false)}
         onSelectMode={handleSelectGameModeAndStart}
         balance={balance}
+        gameType={modalGameType}
       />
 
       <EvmWalletModal

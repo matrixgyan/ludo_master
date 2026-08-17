@@ -46,6 +46,8 @@ export interface GameState {
   isMuted: boolean;
   theme: 'dubai_sunset' | 'classic_emerald' | 'royal_gold';
   consecutiveSixes: number;
+  gameType?: 'classic' | 'supreme';
+  homesCount?: Record<PlayerColor, number>;
 }
 
 export interface ChatMessage {

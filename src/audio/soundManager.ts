@@ -2,6 +2,21 @@
 class SoundEngine {
   private ctx: AudioContext | null = null;
   private isMuted: boolean = false;
+  private sfxVolume: number = 0.8;
+  private musicVolume: number = 0.6;
+  private bgmInterval: any = null;
+  private isMusicPlaying: boolean = false;
+
+  constructor() {
+    if (typeof window !== 'undefined') {
+      const savedSfx = localStorage.getItem('ludo_sfx_vol');
+      if (savedSfx !== null) this.sfxVolume = parseFloat(savedSfx);
+      const savedMusic = localStorage.getItem('ludo_music_vol');
+      if (savedMusic !== null) this.musicVolume = parseFloat(savedMusic);
+      const savedMute = localStorage.getItem('ludo_is_muted');
+      if (savedMute !== null) this.isMuted = savedMute === 'true';
+    }
+  }
 
   private initContext() {
     if (!this.ctx && typeof window !== 'undefined') {
@@ -17,20 +32,83 @@ class SoundEngine {
 
   public setMuted(muted: boolean) {
     this.isMuted = muted;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('ludo_is_muted', String(muted));
+    }
   }
 
   public getMuted(): boolean {
     return this.isMuted;
   }
 
-  public play(sound: 'dice-roll' | 'dice-land' | 'pawn-step' | 'pawn-land' | 'pawn-capture' | 'pawn-finish' | 'click' | 'turn' | 'mic-toggle' | 'angel-flight' | 'angel-land' | 'match-found' | 'radar-ping' | 'countdown-tick' | 'battle-horn') {
-    if (this.isMuted) return;
+  public setSfxVolume(vol: number) {
+    this.sfxVolume = Math.max(0, Math.min(1, vol));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('ludo_sfx_vol', String(this.sfxVolume));
+    }
+  }
+
+  public getSfxVolume(): number {
+    return this.sfxVolume;
+  }
+
+  public setMusicVolume(vol: number) {
+    this.musicVolume = Math.max(0, Math.min(1, vol));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('ludo_music_vol', String(this.musicVolume));
+    }
+  }
+
+  public getMusicVolume(): number {
+    return this.musicVolume;
+  }
+
+  public play(sound: 'dice-roll' | 'dice-land' | 'pawn-step' | 'pawn-land' | 'pawn-capture' | 'pawn-finish' | 'click' | 'turn' | 'mic-toggle' | 'angel-flight' | 'angel-land' | 'match-found' | 'radar-ping' | 'countdown-tick' | 'battle-horn' | 'score-double' | 'score-minus') {
+    if (this.isMuted || this.sfxVolume <= 0) return;
     this.initContext();
     if (!this.ctx) return;
 
     const now = this.ctx.currentTime;
+    const masterGain = this.ctx.createGain();
+    masterGain.gain.setValueAtTime(this.sfxVolume, now);
+    masterGain.connect(this.ctx.destination);
 
     switch (sound) {
+      case 'score-double': {
+        // High rising golden fanfare chime for 2X multiplier
+        const notes = [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98];
+        notes.forEach((f, idx) => {
+          const t = now + idx * 0.07;
+          const osc = this.ctx!.createOscillator();
+          const gain = this.ctx!.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(f, t);
+          osc.frequency.exponentialRampToValueAtTime(f * 1.05, t + 0.3);
+          gain.gain.setValueAtTime(0.3, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+          osc.connect(gain);
+          gain.connect(masterGain);
+          osc.start(t);
+          osc.stop(t + 0.4);
+        });
+        break;
+      }
+
+      case 'score-minus': {
+        // Low downward buzz thud for pawn capture point deduction
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(320, now);
+        osc.frequency.exponentialRampToValueAtTime(110, now + 0.35);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+        osc.connect(gain);
+        gain.connect(masterGain);
+        osc.start(now);
+        osc.stop(now + 0.35);
+        break;
+      }
       case 'radar-ping': {
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
@@ -40,7 +118,7 @@ class SoundEngine {
         gain.gain.setValueAtTime(0.18, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(masterGain);
         osc.start(now);
         osc.stop(now + 0.3);
         break;
@@ -54,7 +132,7 @@ class SoundEngine {
         gain.gain.setValueAtTime(0.2, now);
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(masterGain);
         osc.start(now);
         osc.stop(now + 0.08);
         break;
@@ -72,7 +150,7 @@ class SoundEngine {
           gain.gain.setValueAtTime(0.28, t);
           gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
           osc.connect(gain);
-          gain.connect(this.ctx!.destination);
+          gain.connect(masterGain);
           osc.start(t);
           osc.stop(t + 0.35);
         });
@@ -91,7 +169,7 @@ class SoundEngine {
           gain.gain.setValueAtTime(0.12, now);
           gain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
           osc.connect(gain);
-          gain.connect(this.ctx!.destination);
+          gain.connect(masterGain);
           osc.start(now);
           osc.stop(now + 0.7);
         });
@@ -110,7 +188,7 @@ class SoundEngine {
           gain.gain.setValueAtTime(0.22, t);
           gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
           osc.connect(gain);
-          gain.connect(this.ctx!.destination);
+          gain.connect(masterGain);
           osc.start(t);
           osc.stop(t + 0.45);
         });
@@ -124,7 +202,7 @@ class SoundEngine {
         padGain.gain.setValueAtTime(0.15, now);
         padGain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
         padOsc.connect(padGain);
-        padGain.connect(this.ctx.destination);
+        padGain.connect(masterGain);
         padOsc.start(now);
         padOsc.stop(now + 1.5);
         break;
@@ -142,7 +220,7 @@ class SoundEngine {
           gain.gain.setValueAtTime(0.25, t);
           gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
           osc.connect(gain);
-          gain.connect(this.ctx!.destination);
+          gain.connect(masterGain);
           osc.start(t);
           osc.stop(t + 0.5);
         });
@@ -157,7 +235,7 @@ class SoundEngine {
         gain.gain.setValueAtTime(0.3, now);
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(masterGain);
         osc.start(now);
         osc.stop(now + 0.05);
         break;
@@ -174,7 +252,7 @@ class SoundEngine {
           gain.gain.setValueAtTime(0.2, t);
           gain.gain.exponentialRampToValueAtTime(0.01, t + 0.04);
           osc.connect(gain);
-          gain.connect(this.ctx.destination);
+          gain.connect(masterGain);
           osc.start(t);
           osc.stop(t + 0.04);
         }
@@ -191,7 +269,7 @@ class SoundEngine {
         gain.gain.setValueAtTime(0.4, now);
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(masterGain);
         osc.start(now);
         osc.stop(now + 0.12);
         break;
@@ -207,7 +285,7 @@ class SoundEngine {
         gain.gain.setValueAtTime(0.3, now);
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.07);
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(masterGain);
         osc.start(now);
         osc.stop(now + 0.07);
         break;
@@ -223,7 +301,7 @@ class SoundEngine {
         gain.gain.setValueAtTime(0.3, now);
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(masterGain);
         osc.start(now);
         osc.stop(now + 0.08);
         break;
@@ -239,7 +317,7 @@ class SoundEngine {
         gain.gain.setValueAtTime(0.35, now);
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(masterGain);
         osc.start(now);
         osc.stop(now + 0.25);
         break;
@@ -257,7 +335,7 @@ class SoundEngine {
           gain.gain.setValueAtTime(0.3, t);
           gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
           osc.connect(gain);
-          gain.connect(this.ctx!.destination);
+          gain.connect(masterGain);
           osc.start(t);
           osc.stop(t + 0.2);
         });
@@ -277,7 +355,7 @@ class SoundEngine {
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
         osc1.connect(gain);
         osc2.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(masterGain);
         osc1.start(now);
         osc1.stop(now + 0.3);
         osc2.start(now + 0.08);
@@ -294,12 +372,33 @@ class SoundEngine {
         gain.gain.setValueAtTime(0.2, now);
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(masterGain);
         osc.start(now);
         osc.stop(now + 0.08);
         break;
       }
     }
+  }
+
+  public previewMusicVolume(vol: number) {
+    this.setMusicVolume(vol);
+    if (this.isMuted || vol <= 0) return;
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const notes = [261.63, 329.63, 392.00, 523.25]; // C E G C chord
+    notes.forEach((freq, idx) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+      gain.gain.setValueAtTime(vol * 0.18, now + idx * 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.3);
+      osc.connect(gain);
+      gain.connect(this.ctx!.destination);
+      osc.start(now + idx * 0.06);
+      osc.stop(now + idx * 0.06 + 0.35);
+    });
   }
 }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { PlayerColor, Pawn, Player, GameState, ChatMessage } from './types/game';
 import { BoardEnvironment } from './components/ludo/environment/BoardEnvironment';
 import { LudoBoard } from './components/ludo/board/LudoBoard';
@@ -19,6 +19,7 @@ import { AdminLogin } from './components/admin/AdminLogin';
 import { PlayerModeOption } from './components/lobby/LudoModeSelectorModal';
 import { OnlineMatchmakingScreen, MatchedOpponent } from './components/lobby/OnlineMatchmakingScreen';
 import { VictoryModal } from './components/ludo/effects/VictoryModal';
+import { GameSettingsModal } from './components/lobby/GameSettingsModal';
 
 type ViewMode = 'lobby' | 'ludo_game' | 'snake_ludo' | 'admin' | 'matchmaking';
 
@@ -26,6 +27,7 @@ interface MatchConfig {
   mode: PlayerModeOption;
   entryFee: number;
   prizePool: number;
+  gameType?: 'classic' | 'supreme';
 }
 
 const DEFAULT_PLAYERS: Record<PlayerColor, Player> = {
@@ -137,7 +139,7 @@ export default function App() {
 
   const activeColors: PlayerColor[] =
     playerMode === 2
-      ? ['blue', 'red']
+      ? ['blue', 'green']
       : playerMode === 3
       ? ['blue', 'red', 'green']
       : ['blue', 'red', 'green', 'yellow'];
@@ -224,11 +226,20 @@ export default function App() {
   const [steppingPawnId, setSteppingPawnId] = useState<string | null>(null);
   const [bouncingCellKey, setBouncingCellKey] = useState<string | null>(null);
   const [turnTimeLeft, setTurnTimeLeft] = useState<number>(30);
+  const [matchTimeLeft, setMatchTimeLeft] = useState<number>(180); // 2 min 60 sec (180s)
   const [activeAngelFlight, setActiveAngelFlight] = useState<AngelFlightData | null>(null);
+
+  // Keep mutable refs for interval access without re-triggering timer effects
+  const gameStateRef = useRef(gameState);
+  gameStateRef.current = gameState;
+  const currentMatchConfigRef = useRef(currentMatchConfig);
+  currentMatchConfigRef.current = currentMatchConfig;
+  const activeColorsRef = useRef(activeColors);
+  activeColorsRef.current = activeColors;
 
   // 30-Second Turn Countdown Timer Effect (Strictly active only during ludo_game mode)
   useEffect(() => {
-    if (viewMode !== 'ludo_game' || gameState.winner) return;
+    if (viewMode !== 'ludo_game' || Boolean(gameState.winner)) return;
 
     setTurnTimeLeft(30);
 
@@ -242,10 +253,60 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(timerInterval);
-  }, [viewMode, gameState.currentTurn, gameState.winner]);
+  }, [viewMode, gameState.currentTurn, Boolean(gameState.winner)]);
+
+  // 2 Minutes 60 Seconds (180s) Supreme Match Countdown Timer Effect (Continuously running)
+  useEffect(() => {
+    if (viewMode !== 'ludo_game' || Boolean(gameState.winner) || currentMatchConfig?.gameType === 'classic') return;
+
+    const matchInterval = setInterval(() => {
+      setMatchTimeLeft((prev) => {
+        if (prev <= 1) {
+          // Timer finished -> Calculate top scorer using current refs
+          const gs = gameStateRef.current;
+          const cfg = currentMatchConfigRef.current;
+          const cols = activeColorsRef.current;
+          const activeList = cols.map((c) => gs.players[c]).filter(Boolean);
+          const sorted = [...activeList].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+          const topPlayer = sorted[0];
+
+          if (topPlayer) {
+            SoundManager.play('pawn-finish');
+            confetti({ particleCount: 120, spread: 90, origin: { y: 0.5 } });
+
+            if (topPlayer.isHuman && cfg && cfg.prizePool > 0) {
+              setBalance((b) => Number((b + cfg.prizePool).toFixed(2)));
+            }
+
+            setGameState((g) => ({
+              ...g,
+              winner: topPlayer.color,
+              statusText: `⏱️ TIME OVER! ${topPlayer.name.toUpperCase()} WINS WITH ${topPlayer.score ?? 0} PTS!`,
+            }));
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(matchInterval);
+  }, [viewMode, Boolean(gameState.winner), currentMatchConfig?.gameType]);
 
   // Flatten all pawns of active players for rendering
   const allPawns = activeColors.flatMap((c) => gameState.players[c].pawns);
+
+  // Compute active players ranking for Supreme mode
+  const playerRankMap = useMemo(() => {
+    const sorted = (Object.keys(gameState.players) as PlayerColor[])
+      .filter((c) => gameState.players[c]?.isActive)
+      .sort((a, b) => (gameState.players[b]?.score ?? 0) - (gameState.players[a]?.score ?? 0));
+    const ranks: Partial<Record<PlayerColor, number>> = {};
+    sorted.forEach((c, idx) => {
+      ranks[c] = idx + 1;
+    });
+    return ranks;
+  }, [gameState.players]);
 
   // Find legal movable pawns for the rolled dice value
   const getMovablePawns = useCallback(
@@ -269,91 +330,153 @@ export default function App() {
   );
 
   // Handle Match Start from Lobby
-  const handleStartOnlineMatch = (mode: PlayerModeOption, entryFee: number, prizePool: number) => {
+  const handleStartOnlineMatch = (
+    mode: PlayerModeOption,
+    entryFee: number,
+    prizePool: number,
+    gameType: 'classic' | 'supreme' = 'supreme'
+  ) => {
     if (entryFee > 0) {
       setBalance((b) => Math.max(0, Number((b - entryFee).toFixed(2))));
     }
     setPlayerMode(mode);
-    setCurrentMatchConfig({ mode, entryFee, prizePool });
+    setCurrentMatchConfig({ mode, entryFee, prizePool, gameType });
     setViewMode('matchmaking');
   };
 
   // Match Complete -> Prepare Board for 2P, 3P, or 4P
   const handleMatchComplete = (matchedOpponents: MatchedOpponent[]) => {
+    const isSupreme = currentMatchConfig?.gameType !== 'classic';
     const updatedPlayers: Record<PlayerColor, Player> = { ...DEFAULT_PLAYERS };
+
+    // Helper to generate pawns - starting OUTSIDE at pathStep: 0 for Supreme mode!
+    const createPawnsForColor = (color: PlayerColor, playerId: string): Pawn[] => {
+      return [0, 1, 2, 3].map((idx) => {
+        if (isSupreme) {
+          const coord = getPawnGridCoord(color, idx, 0);
+          return {
+            id: `${color}-${idx}`,
+            playerId,
+            color,
+            pawnIndex: idx,
+            state: 'path' as Pawn['state'],
+            pathStep: 0,
+            gridX: coord.x,
+            gridY: coord.y,
+          };
+        } else {
+          const homeCoords = HOME_SLOTS[color][idx];
+          return {
+            id: `${color}-${idx}`,
+            playerId,
+            color,
+            pawnIndex: idx,
+            state: 'home' as Pawn['state'],
+            pathStep: -1,
+            gridX: homeCoords.x,
+            gridY: homeCoords.y,
+          };
+        }
+      });
+    };
 
     // Player 1 (Blue - Human)
     updatedPlayers.blue = {
       ...DEFAULT_PLAYERS.blue,
       isActive: true,
       isHuman: true,
-      pawns: [
-        { id: 'blue-0', playerId: 'p1', color: 'blue', pawnIndex: 0, state: 'home', pathStep: -1, gridX: 1.5, gridY: 1.5 },
-        { id: 'blue-1', playerId: 'p1', color: 'blue', pawnIndex: 1, state: 'home', pathStep: -1, gridX: 3.5, gridY: 1.5 },
-        { id: 'blue-2', playerId: 'p1', color: 'blue', pawnIndex: 2, state: 'home', pathStep: -1, gridX: 1.5, gridY: 3.5 },
-        { id: 'blue-3', playerId: 'p1', color: 'blue', pawnIndex: 3, state: 'home', pathStep: -1, gridX: 3.5, gridY: 3.5 },
-      ],
+      score: 0,
+      pawns: createPawnsForColor('blue', 'p1'),
     };
 
     // Opponents configuration based on player count
-    if (matchedOpponents[0]) {
-      // Red
-      updatedPlayers.red = {
-        ...DEFAULT_PLAYERS.red,
-        name: matchedOpponents[0].name,
-        avatarUrl: matchedOpponents[0].avatarUrl,
-        isActive: true,
-        isHuman: false,
-        score: matchedOpponents[0].rating,
-        pawns: [
-          { id: 'red-0', playerId: 'p2', color: 'red', pawnIndex: 0, state: 'home', pathStep: -1, gridX: 10.5, gridY: 1.5 },
-          { id: 'red-1', playerId: 'p2', color: 'red', pawnIndex: 1, state: 'home', pathStep: -1, gridX: 12.5, gridY: 1.5 },
-          { id: 'red-2', playerId: 'p2', color: 'red', pawnIndex: 2, state: 'home', pathStep: -1, gridX: 10.5, gridY: 3.5 },
-          { id: 'red-3', playerId: 'p2', color: 'red', pawnIndex: 3, state: 'home', pathStep: -1, gridX: 12.5, gridY: 3.5 },
-        ],
-      };
-    } else {
+    if (playerMode === 2) {
+      // 2 Players: Blue (Top-Left) vs Green (Bottom-Right, Front Opposite Corner)
       updatedPlayers.red = { ...DEFAULT_PLAYERS.red, isActive: false, pawns: [] };
-    }
-
-    if (matchedOpponents[1] && playerMode >= 3) {
-      // Green
-      updatedPlayers.green = {
-        ...DEFAULT_PLAYERS.green,
-        name: matchedOpponents[1].name,
-        avatarUrl: matchedOpponents[1].avatarUrl,
-        isActive: true,
-        isHuman: false,
-        score: matchedOpponents[1].rating,
-        pawns: [
-          { id: 'green-0', playerId: 'p3', color: 'green', pawnIndex: 0, state: 'home', pathStep: -1, gridX: 10.5, gridY: 10.5 },
-          { id: 'green-1', playerId: 'p3', color: 'green', pawnIndex: 1, state: 'home', pathStep: -1, gridX: 12.5, gridY: 10.5 },
-          { id: 'green-2', playerId: 'p3', color: 'green', pawnIndex: 2, state: 'home', pathStep: -1, gridX: 10.5, gridY: 12.5 },
-          { id: 'green-3', playerId: 'p3', color: 'green', pawnIndex: 3, state: 'home', pathStep: -1, gridX: 12.5, gridY: 12.5 },
-        ],
-      };
-    } else {
-      updatedPlayers.green = { ...DEFAULT_PLAYERS.green, isActive: false, pawns: [] };
-    }
-
-    if (matchedOpponents[2] && playerMode === 4) {
-      // Yellow
-      updatedPlayers.yellow = {
-        ...DEFAULT_PLAYERS.yellow,
-        name: matchedOpponents[2].name,
-        avatarUrl: matchedOpponents[2].avatarUrl,
-        isActive: true,
-        isHuman: false,
-        score: matchedOpponents[2].rating,
-        pawns: [
-          { id: 'yellow-0', playerId: 'p4', color: 'yellow', pawnIndex: 0, state: 'home', pathStep: -1, gridX: 1.5, gridY: 10.5 },
-          { id: 'yellow-1', playerId: 'p4', color: 'yellow', pawnIndex: 1, state: 'home', pathStep: -1, gridX: 3.5, gridY: 10.5 },
-          { id: 'yellow-2', playerId: 'p4', color: 'yellow', pawnIndex: 2, state: 'home', pathStep: -1, gridX: 1.5, gridY: 12.5 },
-          { id: 'yellow-3', playerId: 'p4', color: 'yellow', pawnIndex: 3, state: 'home', pathStep: -1, gridX: 3.5, gridY: 12.5 },
-        ],
-      };
-    } else {
       updatedPlayers.yellow = { ...DEFAULT_PLAYERS.yellow, isActive: false, pawns: [] };
+      if (matchedOpponents[0]) {
+        updatedPlayers.green = {
+          ...DEFAULT_PLAYERS.green,
+          name: matchedOpponents[0].name,
+          avatarUrl: matchedOpponents[0].avatarUrl,
+          isActive: true,
+          isHuman: false,
+          score: 0,
+          pawns: createPawnsForColor('green', 'p2'),
+        };
+      } else {
+        updatedPlayers.green = { ...DEFAULT_PLAYERS.green, isActive: false, pawns: [] };
+      }
+    } else if (playerMode === 3) {
+      // 3 Players: Blue, Red, Green
+      updatedPlayers.yellow = { ...DEFAULT_PLAYERS.yellow, isActive: false, pawns: [] };
+      if (matchedOpponents[0]) {
+        updatedPlayers.red = {
+          ...DEFAULT_PLAYERS.red,
+          name: matchedOpponents[0].name,
+          avatarUrl: matchedOpponents[0].avatarUrl,
+          isActive: true,
+          isHuman: false,
+          score: 0,
+          pawns: createPawnsForColor('red', 'p2'),
+        };
+      } else {
+        updatedPlayers.red = { ...DEFAULT_PLAYERS.red, isActive: false, pawns: [] };
+      }
+      if (matchedOpponents[1]) {
+        updatedPlayers.green = {
+          ...DEFAULT_PLAYERS.green,
+          name: matchedOpponents[1].name,
+          avatarUrl: matchedOpponents[1].avatarUrl,
+          isActive: true,
+          isHuman: false,
+          score: 0,
+          pawns: createPawnsForColor('green', 'p3'),
+        };
+      } else {
+        updatedPlayers.green = { ...DEFAULT_PLAYERS.green, isActive: false, pawns: [] };
+      }
+    } else {
+      // 4 Players: Blue, Red, Green, Yellow
+      if (matchedOpponents[0]) {
+        updatedPlayers.red = {
+          ...DEFAULT_PLAYERS.red,
+          name: matchedOpponents[0].name,
+          avatarUrl: matchedOpponents[0].avatarUrl,
+          isActive: true,
+          isHuman: false,
+          score: 0,
+          pawns: createPawnsForColor('red', 'p2'),
+        };
+      } else {
+        updatedPlayers.red = { ...DEFAULT_PLAYERS.red, isActive: false, pawns: [] };
+      }
+      if (matchedOpponents[1]) {
+        updatedPlayers.green = {
+          ...DEFAULT_PLAYERS.green,
+          name: matchedOpponents[1].name,
+          avatarUrl: matchedOpponents[1].avatarUrl,
+          isActive: true,
+          isHuman: false,
+          score: 0,
+          pawns: createPawnsForColor('green', 'p3'),
+        };
+      } else {
+        updatedPlayers.green = { ...DEFAULT_PLAYERS.green, isActive: false, pawns: [] };
+      }
+      if (matchedOpponents[2]) {
+        updatedPlayers.yellow = {
+          ...DEFAULT_PLAYERS.yellow,
+          name: matchedOpponents[2].name,
+          avatarUrl: matchedOpponents[2].avatarUrl,
+          isActive: true,
+          isHuman: false,
+          score: 0,
+          pawns: createPawnsForColor('yellow', 'p4'),
+        };
+      } else {
+        updatedPlayers.yellow = { ...DEFAULT_PLAYERS.yellow, isActive: false, pawns: [] };
+      }
     }
 
     setGameState({
@@ -362,14 +485,19 @@ export default function App() {
       dice: { value: 6, isRolling: false, hasRolled: false, canRoll: true },
       selectedPawnId: null,
       movablePawnIds: [],
-      statusText: "PLAYER 1'S TURN — ROLL THE DICE!",
+      statusText: isSupreme
+        ? "⚡ LUDO SUPREME SPEED MATCH! ALL PAWNS OPEN — ROLL ANY NUMBER TO MOVE!"
+        : "PLAYER 1'S TURN — ROLL THE DICE!",
       winner: null,
       isAutoPlay: false,
       isMuted: false,
       theme: 'dubai_sunset',
       consecutiveSixes: 0,
+      gameType: currentMatchConfig?.gameType || 'supreme',
+      homesCount: { blue: 0, red: 0, green: 0, yellow: 0 },
     });
 
+    setMatchTimeLeft(180);
     setChatMessages([]);
     setViewMode('ludo_game');
   };
@@ -442,8 +570,6 @@ export default function App() {
       };
     });
 
-    setTurnTimeLeft(30);
-
     // Auto-resolve when no legal moves are available
     setTimeout(() => {
       setGameState((prev) => {
@@ -477,10 +603,11 @@ export default function App() {
   // Finalize Pawn Move & Turn Progression
   const finalizeMove = (clickedPawn: Pawn, finalStep: number, diceValue: number) => {
     const isGoalArrival = finalStep === 56;
+    const isSupreme = currentMatchConfig?.gameType !== 'classic';
 
     if (isGoalArrival) {
-      SoundManager.play('pawn-finish');
-      confetti({ particleCount: 75, spread: 80, origin: { y: 0.6 } });
+      SoundManager.play('score-double');
+      confetti({ particleCount: 85, spread: 85, origin: { y: 0.6 } });
     } else {
       SoundManager.play('pawn-land');
     }
@@ -488,8 +615,25 @@ export default function App() {
     setGameState((prev) => {
       const updatedPlayers = { ...prev.players };
       const curPlayer = { ...updatedPlayers[prev.currentTurn] };
+      const updatedHomes = { ...(prev.homesCount || { blue: 0, red: 0, green: 0, yellow: 0 }) };
 
-      // Check Captures on target tile (if not in safe cell or home stretch)
+      // 1. Scoring - Base tile movement points (+1 pt per tile)
+      let basePoints = diceValue;
+      let newScore = (curPlayer.score ?? 0) + basePoints;
+      let scoreDoubleMsg = '';
+      let captureMsg = '';
+
+      // 2. Check Home Arrival & Double Score Multiplier
+      if (isGoalArrival) {
+        const homeNum = (updatedHomes[prev.currentTurn] || 0) + 1;
+        updatedHomes[prev.currentTurn] = homeNum;
+        newScore = newScore * 2; // Double total score upon reaching home!
+        scoreDoubleMsg = ` — 🌟 ${homeNum === 1 ? '1ST' : homeNum === 2 ? '2ND' : `${homeNum}TH`} HOME! 2X SCORE (${newScore} PTS)!`;
+      }
+      curPlayer.score = newScore;
+      updatedPlayers[prev.currentTurn] = curPlayer;
+
+      // 3. Check Captures on target tile (if not in safe cell or home stretch)
       let didCapture = false;
       if (finalStep >= 0 && finalStep <= 50) {
         const targetCoord = getPawnGridCoord(prev.currentTurn, clickedPawn.pawnIndex, finalStep);
@@ -504,18 +648,36 @@ export default function App() {
                   if (opCoord.x === targetCoord.x && opCoord.y === targetCoord.y) {
                     didCapture = true;
                     captured = true;
-                    const homeCoord = HOME_SLOTS[otherColor][op.pawnIndex];
                     const capturedStep = op.pathStep;
+                    const startCoord = isSupreme
+                      ? getPawnGridCoord(otherColor, op.pawnIndex, 0)
+                      : HOME_SLOTS[otherColor][op.pawnIndex];
+
+                    // Score deduction for cut pawn
+                    const scorePenalty = Math.min(otherPlayer.score ?? 0, capturedStep);
+                    otherPlayer.score = Math.max(0, (otherPlayer.score ?? 0) - capturedStep);
+                    SoundManager.play('score-minus');
+
+                    captureMsg = ` — ⚔️ CUT ${otherPlayer.name}'S PAWN (-${scorePenalty} PTS)!`;
+
                     setActiveAngelFlight({
                       id: `flight-${op.id}-${Date.now()}`,
                       pawn: { ...op },
                       fromPathStep: capturedStep,
                       fromCoord: { ...opCoord },
-                      toCoord: { ...homeCoord },
+                      toCoord: { ...startCoord },
                       capturedByColor: prev.currentTurn,
                       capturedByName: curPlayer.name,
                     });
-                    return { ...op, pathStep: -1, state: 'home' as Pawn['state'] };
+
+                    // In Supreme mode, returned pawns stay outside at step 0 ready to roll!
+                    return {
+                      ...op,
+                      pathStep: isSupreme ? 0 : -1,
+                      state: (isSupreme ? 'path' : 'home') as Pawn['state'],
+                      gridX: startCoord.x,
+                      gridY: startCoord.y,
+                    };
                   }
                 }
                 return op;
@@ -528,7 +690,7 @@ export default function App() {
         }
       }
 
-      // Check if current player has won the match
+      // Check if current player has won by getting all pawns home
       const allReachedGoal = curPlayer.pawns.length > 0 && curPlayer.pawns.every((p) => p.state === 'goal');
       if (allReachedGoal) {
         SoundManager.play('pawn-finish');
@@ -539,8 +701,9 @@ export default function App() {
         return {
           ...prev,
           players: updatedPlayers,
+          homesCount: updatedHomes,
           winner: prev.currentTurn,
-          statusText: `${curPlayer.name.toUpperCase()} WINS THE MATCH!`,
+          statusText: `${curPlayer.name.toUpperCase()} CONQUERED ALL HOMES & WINS!`,
         };
       }
 
@@ -555,14 +718,15 @@ export default function App() {
       }
 
       const statusMsg = getsExtraTurn
-        ? `${curPlayer.name} ${diceValue === 6 ? 'ROLLED 6' : didCapture ? 'CAPTURED PAWN' : 'REACHED HOME'} — BONUS TURN!`
-        : `${updatedPlayers[nextTurnColor].name}'S TURN — ROLL THE DICE!`;
+        ? `${curPlayer.name} ${diceValue === 6 ? 'ROLLED 6' : didCapture ? 'CAPTURED PAWN' : 'REACHED HOME'}${scoreDoubleMsg}${captureMsg} — BONUS TURN!`
+        : `${updatedPlayers[nextTurnColor].name}'S TURN${scoreDoubleMsg}${captureMsg} — ROLL THE DICE!`;
 
       setTurnTimeLeft(30);
 
       return {
         ...prev,
         players: updatedPlayers,
+        homesCount: updatedHomes,
         currentTurn: nextTurnColor,
         consecutiveSixes: getsExtraTurn && diceValue === 6 ? prev.consecutiveSixes : 0,
         dice: { value: prev.dice.value, isRolling: false, hasRolled: false, canRoll: true },
@@ -573,7 +737,7 @@ export default function App() {
     });
 
     setSteppingPawnId(null);
-    setTimeout(() => setBouncingCellKey(null), 350);
+    setTimeout(() => setBouncingCellKey(null), 300);
   };
 
   // Move Pawn Action (Animated Cell-by-Cell Hop)
@@ -600,7 +764,7 @@ export default function App() {
 
     let stepCount = 0;
     const stepsToPerform = startStep === -1 ? 1 : diceValue;
-    const STEP_DURATION_MS = 600;
+    const STEP_DURATION_MS = 320; // Snappy, responsive hops for speed gameplay
 
     const doStep = () => {
       stepCount++;
@@ -631,14 +795,14 @@ export default function App() {
         const coord = getPawnGridCoord(color, pawnIndex, currentStep);
         const cellKey = `${Math.round(coord.x)}-${Math.round(coord.y)}`;
         setBouncingCellKey(cellKey);
-      }, 420);
+      }, 180);
 
       if (stepCount < stepsToPerform) {
         setTimeout(doStep, STEP_DURATION_MS);
       } else {
         setTimeout(() => {
           finalizeMove(clickedPawn, targetStep, diceValue);
-        }, STEP_DURATION_MS + 250);
+        }, STEP_DURATION_MS + 180);
       }
     };
 
@@ -900,6 +1064,9 @@ export default function App() {
         gemsCount={1200}
         balance={balance}
         onBackToLobby={handleReturnToLobby}
+        gameType={currentMatchConfig?.gameType || 'supreme'}
+        matchTimeLeft={matchTimeLeft}
+        prizePool={currentMatchConfig?.prizePool || 0}
       />
 
       {/* 2. TOP PLAYERS PROFILE HUDs (Blue Top-Left, Red Top-Right) */}
@@ -912,8 +1079,9 @@ export default function App() {
           dice={gameState.dice}
           onRollDice={() => handleRollDice()}
           turnTimeLeft={turnTimeLeft}
+          scoreRank={playerRankMap.blue}
         />
-        {activeColors.includes('red') && (
+        {activeColors.includes('red') ? (
           <PlayerProfileHUD
             player={gameState.players.red}
             isTurn={gameState.currentTurn === 'red' && !steppingPawnId}
@@ -922,7 +1090,10 @@ export default function App() {
             dice={gameState.dice}
             onRollDice={() => handleRollDice()}
             turnTimeLeft={turnTimeLeft}
+            scoreRank={playerRankMap.red}
           />
+        ) : (
+          <div className="w-10" />
         )}
       </div>
 
@@ -971,6 +1142,7 @@ export default function App() {
             dice={gameState.dice}
             onRollDice={() => handleRollDice()}
             turnTimeLeft={turnTimeLeft}
+            scoreRank={playerRankMap.yellow}
           />
         ) : (
           <div className="w-10" />
@@ -986,6 +1158,7 @@ export default function App() {
             dice={gameState.dice}
             onRollDice={() => handleRollDice()}
             turnTimeLeft={turnTimeLeft}
+            scoreRank={playerRankMap.green}
           />
         ) : (
           <div className="w-10" />
@@ -1001,19 +1174,13 @@ export default function App() {
         statusText={gameState.statusText}
       />
 
-      {/* 6. DEBUG & MENU MODAL */}
-      <DebugOverlay
+      {/* 6. SETTINGS & MENU MODAL */}
+      <GameSettingsModal
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
-        onForceDiceRoll={(val) => handleRollDice(val)}
-        onResetGame={handleResetGame}
-        isDebugGridVisible={isDebugGridVisible}
-        onToggleDebugGrid={() => setIsDebugGridVisible(!isDebugGridVisible)}
-        isAutoPlay={gameState.isAutoPlay}
-        onToggleAutoPlay={() =>
-          setGameState((prev) => ({ ...prev, isAutoPlay: !prev.isAutoPlay }))
-        }
-        onTestAngelFlight={handleTestAngelFlight}
+        balance={balance}
+        userName={gameState.players.blue.name}
+        userAvatar={gameState.players.blue.avatarUrl}
       />
 
       {/* 7. MATCH VICTORY & PRIZE MODAL */}
@@ -1022,12 +1189,14 @@ export default function App() {
         winnerColor={gameState.winner}
         players={gameState.players}
         prizePool={currentMatchConfig?.prizePool || 0}
+        gameType={currentMatchConfig?.gameType || 'supreme'}
         onRematch={() => {
           if (currentMatchConfig) {
             handleStartOnlineMatch(
               currentMatchConfig.mode,
               currentMatchConfig.entryFee,
-              currentMatchConfig.prizePool
+              currentMatchConfig.prizePool,
+              currentMatchConfig.gameType || 'supreme'
             );
           } else {
             handleResetGame();
