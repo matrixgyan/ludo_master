@@ -4,6 +4,8 @@ import { LobbyHeader } from './LobbyHeader';
 import { LobbyCardOnlineMultiplayer } from './LobbyCardOnlineMultiplayer';
 import { LobbyCardSnakeLudo } from './LobbyCardSnakeLudo';
 import { LobbyCardLudoSupreme } from './LobbyCardLudoSupreme';
+import { LobbyCardBigRewards } from './LobbyCardBigRewards';
+import { SupremeLeagueModal } from './SupremeLeagueModal';
 import { FloatingRankWidget } from './FloatingRankWidget';
 import { BottomNav, NavTab } from './BottomNav';
 import { EvmWalletModal } from './EvmWalletModal';
@@ -38,6 +40,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   const [isReferOpen, setIsReferOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isLeagueModalOpen, setIsLeagueModalOpen] = useState(false);
 
   // Dynamic Theme state
   const { lobbyTheme } = useLiveTheme();
@@ -102,6 +105,9 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
 
         {/* CARD 3: LUDO SUPREME */}
         <LobbyCardLudoSupreme onPlay={() => handleOpenModeSelect('supreme')} />
+
+        {/* CARD 4: BIG REWARDS - LUDO SUPREME LEAGUE (DIRECTLY AT THE BOTTOM OF LUDO SUPREME) */}
+        <LobbyCardBigRewards onOpenLeague={() => setIsLeagueModalOpen(true)} />
       </main>
 
       {/* FLOATING STUCK RANK BADGE ON THE RIGHT DISPLAY */}
@@ -117,6 +123,16 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
         onSelectMode={handleSelectGameModeAndStart}
         balance={balance}
         gameType={modalGameType}
+      />
+
+      <SupremeLeagueModal
+        isOpen={isLeagueModalOpen}
+        onClose={() => setIsLeagueModalOpen(false)}
+        onJoinLeague={() => {
+          setIsLeagueModalOpen(false);
+          onStartOnlineMatch(4, 0, 50, 'supreme');
+        }}
+        balance={balance}
       />
 
       <EvmWalletModal
