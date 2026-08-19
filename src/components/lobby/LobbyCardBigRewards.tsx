@@ -54,50 +54,50 @@ export const LobbyCardBigRewards: React.FC<LobbyCardBigRewardsProps> = ({
         id="lobby-card-big-rewards"
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        whileHover={{ scale: 1.015, y: -2 }}
-        whileTap={{ scale: 0.985 }}
+        whileHover={{ scale: 1.02, y: -3 }}
+        whileTap={{ scale: 0.98 }}
         onClick={() => {
           SoundManager.play('click');
           onOpenLeague();
         }}
-        className="relative w-full rounded-[24px] overflow-hidden shadow-[0_12px_36px_rgba(30,10,60,0.18)] border border-slate-200/80 bg-white cursor-pointer group flex items-stretch transition-all duration-300 min-h-[170px]"
+        className="relative w-full rounded-3xl overflow-hidden shadow-[0_16px_40px_rgba(20,4,45,0.65)] hover:shadow-[0_20px_45px_rgba(245,158,11,0.3)] border-2 border-amber-400/80 bg-white cursor-pointer group flex items-stretch transition-all duration-300 min-h-[175px] select-none"
       >
         {/* ================= LEFT SECTION: ROYAL BLUE GRADIENT & 3D ARTWORK ================= */}
-        <div className="relative w-[56%] bg-gradient-to-br from-[#1e1458] via-[#1a0f44] to-[#120a30] p-4 flex flex-col justify-between overflow-hidden text-white">
-          {/* 3D Background Artwork with soft blend */}
+        <div className="relative w-[56%] bg-[#170c38] p-4 flex flex-col justify-between overflow-hidden text-white">
+          {/* 3D Background Artwork - Crisp and Sharp */}
           <img
             src={leagueBgImg}
             alt="Ludo Supreme League 3D"
             referrerPolicy="no-referrer"
-            className="absolute inset-0 w-full h-full object-cover opacity-75 group-hover:scale-105 transition-transform duration-700 ease-out"
+            className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-500 ease-out select-none"
           />
 
-          {/* Radial Lighting / Glass Overlays */}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#140b36]/90 via-[#180d3e]/40 to-transparent pointer-events-none" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#12092e]/80 via-transparent to-[#180d3e]/60 pointer-events-none" />
+          {/* Vignette Overlays for perfect legibility */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0f0726]/90 via-transparent to-[#180d3e]/50 pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0f0726]/75 via-transparent to-transparent pointer-events-none" />
 
           {/* Shimmer sweep effect on hover */}
           <motion.div
-            className="absolute -inset-full w-[200%] h-full bg-gradient-to-r from-transparent via-white/15 to-transparent skew-x-12 pointer-events-none"
+            className="absolute -inset-full w-[200%] h-full bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12 pointer-events-none"
             animate={{ x: ['-100%', '200%'] }}
             transition={{ duration: 4, repeat: Infinity, repeatDelay: 2, ease: 'easeInOut' }}
           />
 
           {/* Top Title with Underline */}
           <div className="relative z-10">
-            <h3 className="text-lg sm:text-xl font-extrabold leading-tight text-white tracking-tight drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
+            <h3 className="text-lg sm:text-xl font-black leading-tight text-white tracking-tight drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
               Ludo<br />Supreme League
             </h3>
             {/* Accent Underline */}
-            <div className="w-10 h-1 bg-white/90 rounded-full mt-1.5 shadow-[0_1px_4px_rgba(255,255,255,0.6)]" />
+            <div className="w-10 h-1 bg-amber-400 rounded-full mt-1.5 shadow-[0_1px_4px_rgba(245,158,11,0.8)]" />
           </div>
 
           {/* Bottom First Prize Block */}
           <div className="relative z-10 mt-3">
-            <div className="text-[10px] sm:text-[11px] font-extrabold tracking-wider text-purple-200/90 uppercase">
+            <div className="text-[10px] sm:text-[11px] font-extrabold tracking-wider text-amber-300 uppercase">
               FIRST PRIZE
             </div>
-            <div className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)] flex items-center leading-none mt-0.5">
+            <div className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)] flex items-center leading-none mt-0.5">
               <span>₹50</span>
               <span className="text-[11px] font-bold text-amber-300 ml-1.5 opacity-90">($500)</span>
             </div>
@@ -109,7 +109,7 @@ export const LobbyCardBigRewards: React.FC<LobbyCardBigRewardsProps> = ({
           {/* Top Ticket Punch Hole */}
           <div className="w-4 h-4 rounded-full bg-slate-100 border-b border-slate-300/60 -mt-2 shadow-inner" />
 
-          {/* Perforated Zigzag Teeth Line (SVG) */}
+          {/* Perforated Zigzag Teeth Line */}
           <div className="flex-1 w-full flex flex-col items-center justify-around py-1 opacity-90">
             {Array.from({ length: 12 }).map((_, i) => (
               <div
@@ -127,7 +127,7 @@ export const LobbyCardBigRewards: React.FC<LobbyCardBigRewardsProps> = ({
         <div className="relative flex-1 bg-gradient-to-b from-white via-slate-50 to-slate-100 p-3 sm:p-4 flex flex-col justify-between items-center text-center">
           {/* Top Closes-in Pill Badge */}
           <div className="w-full flex justify-end -mt-0.5">
-            <div className="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 rounded-full text-emerald-700 text-[10.5px] font-extrabold shadow-sm">
+            <div className="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-300 px-2.5 py-0.5 rounded-full text-emerald-700 text-[10.5px] font-black shadow-sm">
               <Clock className="w-3 h-3 text-emerald-600 animate-pulse" />
               <span>
                 Closes in {formattedHours}h {formattedMinutes}m
@@ -158,7 +158,7 @@ export const LobbyCardBigRewards: React.FC<LobbyCardBigRewardsProps> = ({
                 SoundManager.play('click');
                 onOpenLeague();
               }}
-              className="w-full max-w-[130px] py-1.5 px-4 rounded-full bg-[#22c55e] hover:bg-[#16a34a] text-white font-black text-sm sm:text-base shadow-[0_4px_14px_rgba(34,197,94,0.4)] border border-emerald-400 active:brightness-95 transition-all flex items-center justify-center gap-1.5"
+              className="w-full max-w-[130px] py-1.5 px-4 rounded-full bg-[#22c55e] hover:bg-[#16a34a] text-white font-black text-sm sm:text-base shadow-[0_4px_14px_rgba(34,197,94,0.45)] border border-emerald-400 active:brightness-95 transition-all flex items-center justify-center gap-1.5"
             >
               <Sparkles className="w-3.5 h-3.5 fill-white text-white" />
               <span>Free</span>

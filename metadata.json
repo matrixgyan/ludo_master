@@ -1,6 +1,6 @@
 {
   "name": "Ludo World Master",
-  "description": "A production Ludo game platform featuring Neon PostgreSQL, Redis real-time presence & locks, Cloudflare R2 asset storage, BullMQ background queues, full-featured Admin Control Center (/admin & /custom alias), and real-time multiplayer.",
+  "description": "A production Ludo gaming platform featuring real-time multiplayer, double-entry financial ledger, BullMQ background workers, Neon PostgreSQL, Upstash Redis, and a production-grade multi-chain custodial USDT wallet subsystem across 7 EVM networks (Ethereum Sepolia, Arbitrum Sepolia, BSC Testnet, Polygon Amoy, Base Sepolia, OP Sepolia, Avalanche Fuji).",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

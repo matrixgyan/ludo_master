@@ -1,22 +1,26 @@
 import React from 'react';
-import { Bell, CreditCard, User, Sparkles } from 'lucide-react';
+import { Bell, User, Sparkles, Coins } from 'lucide-react';
 import { motion } from 'motion/react';
 import { SoundManager } from '../../audio/soundManager';
 
 interface LobbyHeaderProps {
   balance: number;
+  usdtBalance?: string;
   onOpenMysteryBox: () => void;
-  onOpenWallet: () => void;
+  onOpenShop?: () => void;
   onOpenNotifications: () => void;
   onOpenProfile: () => void;
+  onOpenWallet?: () => void;
 }
 
 export const LobbyHeader: React.FC<LobbyHeaderProps> = ({
   balance,
+  usdtBalance = '$0.00',
   onOpenMysteryBox,
-  onOpenWallet,
+  onOpenShop,
   onOpenNotifications,
   onOpenProfile,
+  onOpenWallet,
 }) => {
   return (
     <header className="sticky top-0 z-30 w-full bg-[#0a0d24]/95 backdrop-blur-md px-3.5 py-2.5 border-b border-white/10 flex items-center justify-between shadow-lg select-none">
@@ -29,7 +33,7 @@ export const LobbyHeader: React.FC<LobbyHeaderProps> = ({
           SoundManager.play('click');
           onOpenMysteryBox();
         }}
-        className="flex items-center gap-2 bg-gradient-to-b from-[#1a1c4b] to-[#0d0f2f] hover:from-[#242766] hover:to-[#141740] border border-amber-400/40 rounded-xl px-3 py-1.5 shadow-[0_2px_10px_rgba(251,191,36,0.15)] group transition-all"
+        className="flex items-center gap-2 bg-gradient-to-b from-[#1a1c4b] to-[#0d0f2f] hover:from-[#242766] hover:to-[#141740] border border-amber-400/40 rounded-xl px-3 py-1.5 shadow-[0_2px_10px_rgba(251,191,36,0.15)] group transition-all cursor-pointer"
       >
         {/* Animated 3D Gift Box Cube Icon */}
         <div className="relative w-7 h-7 flex items-center justify-center">
@@ -55,7 +59,7 @@ export const LobbyHeader: React.FC<LobbyHeaderProps> = ({
         </div>
       </motion.button>
 
-      {/* Right Controls: Notifications, Dollar Balance Pill, Profile Avatar */}
+      {/* Right Controls: Notifications, Coins Pill, Profile Avatar */}
       <div className="flex items-center gap-2 sm:gap-3">
         {/* Notifications Bell */}
         <motion.button
@@ -65,38 +69,57 @@ export const LobbyHeader: React.FC<LobbyHeaderProps> = ({
             SoundManager.play('click');
             onOpenNotifications();
           }}
-          className="relative w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-slate-300 hover:text-white transition-colors"
+          className="relative w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-slate-300 hover:text-white transition-colors cursor-pointer"
           title="Notifications"
         >
           <Bell className="w-4 h-4" />
           <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-[#0a0d24]" />
         </motion.button>
 
-        {/* Balance Pill with USDT Tether symbol */}
+        {/* USDT Vault Pill */}
         <motion.button
-          id="lobby-wallet-btn"
+          id="lobby-usdt-vault-btn"
           whileTap={{ scale: 0.95 }}
           whileHover={{ scale: 1.03 }}
           onClick={() => {
             SoundManager.play('click');
-            onOpenWallet();
+            if (onOpenWallet) onOpenWallet();
           }}
-          className="flex items-center gap-1.5 bg-gradient-to-r from-[#0d2a20] via-[#093527] to-[#122838] hover:from-[#13382c] hover:to-[#173448] border border-teal-400/50 rounded-full pl-2 pr-2.5 py-1 shadow-[0_2px_12px_rgba(20,184,166,0.3)] transition-all group cursor-pointer"
-          title="Decentralized USDT EVM Wallet"
+          className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/70 hover:from-emerald-900 hover:to-teal-900 border border-emerald-500/50 rounded-full pl-2 pr-2.5 py-1 shadow-[0_2px_12px_rgba(16,185,129,0.25)] transition-all group cursor-pointer"
+          title="Unified USDT Multi-Chain Vault"
         >
-          {/* Tether USDT Badge */}
-          <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 border border-emerald-200/50 flex items-center justify-center text-slate-950 font-black text-[11px] shadow-sm">
+          {/* Emerald USDT Icon */}
+          <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-emerald-400 to-teal-300 border border-emerald-200 flex items-center justify-center text-slate-950 font-black text-[10px] shadow-sm">
             ₮
           </div>
 
-          {/* USDT Balance */}
-          <span className="text-white font-black text-xs sm:text-sm tracking-tight flex items-center">
-            {balance.toFixed(2)} <span className="text-[10px] text-teal-300 font-extrabold ml-1">USDT</span>
+          {/* USDT Amount */}
+          <span className="text-emerald-300 font-black text-xs sm:text-sm tracking-tight flex items-center">
+            {usdtBalance} <span className="text-[10px] text-emerald-400/90 font-extrabold ml-1">USDT</span>
           </span>
+        </motion.button>
 
-          {/* Plus Add Badge */}
-          <span className="w-4 h-4 rounded-full bg-teal-500 text-slate-950 flex items-center justify-center text-[10px] font-black ml-0.5 shadow-sm group-hover:scale-110 transition-transform">
-            +
+        {/* Game Coins Pill */}
+        <motion.button
+          id="lobby-coins-btn"
+          whileTap={{ scale: 0.95 }}
+          whileHover={{ scale: 1.03 }}
+          onClick={() => {
+            SoundManager.play('click');
+            if (onOpenShop) onOpenShop();
+            else onOpenMysteryBox();
+          }}
+          className="flex items-center gap-1.5 bg-gradient-to-r from-amber-950/60 via-amber-900/40 to-yellow-950/50 hover:from-amber-900/80 hover:to-yellow-900/70 border border-amber-400/40 rounded-full pl-2 pr-2.5 py-1 shadow-[0_2px_12px_rgba(245,158,11,0.2)] transition-all group cursor-pointer"
+          title="Game Coins"
+        >
+          {/* Gold Coin Icon */}
+          <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-300 border border-yellow-200 flex items-center justify-center text-slate-950 font-black text-[11px] shadow-sm">
+            🪙
+          </div>
+
+          {/* Coins Amount */}
+          <span className="text-amber-200 font-black text-xs sm:text-sm tracking-tight flex items-center">
+            {balance.toFixed(0)} <span className="text-[10px] text-amber-400/90 font-extrabold ml-1">COINS</span>
           </span>
         </motion.button>
 
@@ -108,7 +131,7 @@ export const LobbyHeader: React.FC<LobbyHeaderProps> = ({
             SoundManager.play('click');
             onOpenProfile();
           }}
-          className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-500 border-2 border-purple-300/60 p-0.5 flex items-center justify-center shadow-md overflow-hidden"
+          className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-500 border-2 border-purple-300/60 p-0.5 flex items-center justify-center shadow-md overflow-hidden cursor-pointer"
           title="Player Profile"
         >
           <img

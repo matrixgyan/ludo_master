@@ -77,7 +77,7 @@ export const SupremeLeagueModal: React.FC<SupremeLeagueModalProps> = ({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.92, y: 20 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="relative w-full max-w-md bg-gradient-to-b from-[#180b33] via-[#0f0724] to-[#090317] rounded-3xl border border-purple-500/30 shadow-[0_20px_60px_rgba(0,0,0,0.9)] overflow-hidden text-white flex flex-col max-h-[90vh]"
+          className="relative w-full max-w-md bg-gradient-to-b from-[#180b33] via-[#0f0724] to-[#090317] rounded-3xl border border-amber-400/40 shadow-[0_20px_60px_rgba(0,0,0,0.9)] overflow-hidden text-white flex flex-col max-h-[90vh]"
         >
           {/* TOP CLOSE BUTTON */}
           <button

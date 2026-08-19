@@ -28,6 +28,7 @@ import { R2StorageTab } from './tabs/R2StorageTab';
 import { SettingsTab } from './tabs/SettingsTab';
 import { InfrastructureTab } from './tabs/InfrastructureTab';
 import { BoardAssetsStudioTab } from './tabs/BoardAssetsStudioTab';
+import { UsdtTreasuryCustodyTab } from './tabs/UsdtTreasuryCustodyTab';
 
 interface AdminLayoutProps {
   token: string;
@@ -46,7 +47,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   onAdminAliasChange,
   onBackToGame,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'assets_studio' | 'live_matches' | 'users' | 'leaderboards' | 'storage' | 'infrastructure' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'usdt_custody' | 'assets_studio' | 'live_matches' | 'users' | 'leaderboards' | 'storage' | 'infrastructure' | 'settings'>('overview');
   const [metrics, setMetrics] = useState<any | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [copiedAliasUrl, setCopiedAliasUrl] = useState(false);
@@ -82,6 +83,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 
   const navItems = [
     { id: 'overview', label: 'Dashboard Overview', icon: LayoutDashboard },
+    { id: 'usdt_custody', label: 'USDT Vault & Custody', icon: Shield, badge: 'TESTNET' },
     { id: 'assets_studio', label: 'Lobby, Boards & Assets', icon: Palette, badge: 'PRO' },
     { id: 'live_matches', label: 'Live Match Engine', icon: Gamepad2, badge: metrics?.overview?.activeGames },
     { id: 'users', label: 'User & Wallets', icon: Users },
@@ -289,6 +291,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
               onNavigateTab={(tab) => setActiveTab(tab as any)}
             />
           )}
+
+          {activeTab === 'usdt_custody' && <UsdtTreasuryCustodyTab token={token} />}
 
           {activeTab === 'assets_studio' && <BoardAssetsStudioTab token={token} />}
 

@@ -20,20 +20,42 @@ export function isRedisConfigured(): boolean {
 }
 
 export function getRedisConfig(): RedisOptions {
+  if (isRedisConfigured() && config.REDIS_URL) {
+    try {
+      const url = new URL(config.REDIS_URL);
+      return {
+        host: url.hostname,
+        port: Number(url.port) || (url.protocol === 'rediss:' ? 6379 : 6379),
+        password: url.password ? decodeURIComponent(url.password) : undefined,
+        username: url.username ? decodeURIComponent(url.username) : undefined,
+        lazyConnect: true,
+        maxRetriesPerRequest: null,
+        enableReadyCheck: false,
+        enableOfflineQueue: false,
+        connectTimeout: 10000,
+        commandTimeout: 8000,
+        tls: url.protocol === 'rediss:' || config.REDIS_URL.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
+        retryStrategy(times) {
+          if (times > 3) {
+            return null;
+          }
+          return Math.min(times * 300, 2000);
+        },
+      };
+    } catch {
+      // Fallback below
+    }
+  }
+
   return {
     lazyConnect: true,
-    maxRetriesPerRequest: 3,
+    maxRetriesPerRequest: null,
     enableReadyCheck: false,
-    enableOfflineQueue: true,
-    connectTimeout: 10000,
-    commandTimeout: 8000,
-    // Automatic TLS support for Upstash rediss:// or Cloud Redis
-    tls: config.REDIS_URL?.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
-    retryStrategy(times) {
-      if (times > 5) {
-        return null;
-      }
-      return Math.min(times * 200, 2000);
+    enableOfflineQueue: false,
+    connectTimeout: 5000,
+    commandTimeout: 5000,
+    retryStrategy() {
+      return null;
     },
   };
 }

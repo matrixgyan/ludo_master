@@ -128,7 +128,18 @@ export default function App() {
     return 'lobby';
   });
 
-  const [balance, setBalance] = useState<number>(0.50);
+  const [balance, setBalance] = useState<number>(() => {
+    const saved = localStorage.getItem('evm_testnet_user_balance');
+    return saved ? parseFloat(saved) : 0.0;
+  });
+
+  const handleUpdateBalance = useCallback((amountChange: number) => {
+    setBalance((prev) => {
+      const next = Math.max(0, prev + amountChange);
+      localStorage.setItem('evm_testnet_user_balance', next.toString());
+      return next;
+    });
+  }, []);
   const [adminToken, setAdminToken] = useState<string | null>(() => localStorage.getItem('ludo_admin_token'));
   const [adminData, setAdminData] = useState<any | null>(null);
   const [adminAlias, setAdminAlias] = useState<string>('admin');
@@ -1003,7 +1014,7 @@ export default function App() {
     return (
       <GameLobby
         balance={balance}
-        onAddFunds={(amt) => setBalance((prev) => Number((prev + amt).toFixed(2)))}
+        onAddFunds={handleUpdateBalance}
         onPlayLudo={() => {
           SoundManager.play('click');
           setPlayerMode(4);
