@@ -56,7 +56,7 @@ export const SupremeLeagueModal: React.FC<SupremeLeagueModalProps> = ({
     { rank: '# 2', prize: '₹20', tag: 'Runner Up', highlight: false, color: 'text-slate-200' },
     { rank: '# 3 - 10', prize: '₹10', tag: 'Top Tier', highlight: false, color: 'text-amber-400' },
     { rank: '# 11 - 100', prize: '₹5', tag: 'Champion Club', highlight: false, color: 'text-emerald-300' },
-    { rank: '# 101 - 65,000', prize: '₹2 + 50 Gems', tag: 'Assured Winner', highlight: false, color: 'text-cyan-300' },
+    { rank: '# 101 - 65,000', prize: '₹2', tag: 'Assured Winner', highlight: false, color: 'text-cyan-300' },
   ];
 
   const sampleLeaderboard = [

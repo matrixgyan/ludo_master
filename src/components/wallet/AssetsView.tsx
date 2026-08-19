@@ -21,10 +21,10 @@ import {
   ChevronRight,
   Zap,
   Globe,
-  Coins,
   Send
 } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
+import { NetworkLogo } from './NetworkLogo';
 import {
   UnifiedWalletService,
   UserWalletData,
@@ -362,7 +362,7 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
         <div className="relative z-10 bg-black/40 backdrop-blur-md rounded-2xl border border-amber-400/30 p-3.5 sm:p-4 my-1">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-amber-400/90 uppercase tracking-widest flex items-center gap-1">
-              <Coins className="w-3.5 h-3.5 text-amber-400" />
+              <Wallet className="w-3.5 h-3.5 text-amber-400" />
               Available USDT Balance
             </span>
             <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 border border-emerald-500/30 px-2 py-0.5 rounded-md font-bold">
@@ -396,9 +396,10 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
           {networks.map((net) => (
             <span
               key={net.networkKey}
-              className="px-2.5 py-0.5 text-[10px] font-bold bg-[#1d0a3d] text-amber-200 border border-amber-400/30 rounded-lg shrink-0 shadow-sm"
+              className="px-2.5 py-1 text-[10px] font-bold bg-[#1d0a3d] text-amber-200 border border-amber-400/30 rounded-xl shrink-0 shadow-sm flex items-center gap-1.5"
             >
-              {getNetworkDisplayName(net.networkKey, net.name)}
+              <NetworkLogo networkKey={net.networkKey} size="xs" />
+              <span>{getNetworkDisplayName(net.networkKey, net.name)}</span>
             </span>
           ))}
         </div>
@@ -504,15 +505,19 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
                           : 'bg-[#1b0a38]/80 border-white/10 text-slate-400 hover:border-amber-400/40 hover:text-slate-200'
                       }`}
                     >
-                      <div className="flex items-center justify-between w-full">
-                        <span className="text-xs font-black truncate text-white">
-                          {getNetworkDisplayName(net.networkKey, net.name)}
-                        </span>
-                        {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />}
-                      </div>
-                      <div className="flex items-center justify-between mt-1 text-[9.5px] text-amber-300/80 font-mono">
-                        <span className="truncate">{getNetworkFullName(net.networkKey, net.name).replace(' Testnet', '')}</span>
-                        <span className="text-emerald-400 font-bold ml-1">USDT</span>
+                      <div className="flex items-center gap-2">
+                        <NetworkLogo networkKey={net.networkKey} size="sm" showGlow={isSelected} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black truncate text-white">
+                              {getNetworkDisplayName(net.networkKey, net.name)}
+                            </span>
+                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0 ml-1" />}
+                          </div>
+                          <div className="flex items-center justify-between text-[9.5px] text-amber-300/80 font-mono mt-0.5">
+                            <span className="truncate">{getNetworkFullName(net.networkKey, net.name).replace(' Testnet', '')}</span>
+                          </div>
+                        </div>
                       </div>
                     </motion.button>
                   );
@@ -524,13 +529,18 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
             {depositInfo && (
               <div className="w-full bg-[#120426]/95 border-2 border-amber-400/60 rounded-3xl p-4 sm:p-5 shadow-[0_12px_30px_rgba(20,4,45,0.7)] space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <Zap className="w-4 h-4 text-amber-400" />
-                    2. Custodial Deposit Address
-                  </span>
-                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                    Auto-Credited
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <NetworkLogo networkKey={selectedDepositNet} size="sm" showGlow />
+                    <span className="text-xs font-black text-amber-300 uppercase tracking-wider">
+                      2. Custodial Deposit Address ({getNetworkDisplayName(selectedDepositNet, selectedNetObj?.name)})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 bg-emerald-950/80 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                    <NetworkLogo networkKey="usdt" size="xs" />
+                    <span className="text-[10px] font-bold text-emerald-400">
+                      Auto-Credited
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center gap-4 bg-black/40 rounded-2xl border border-amber-400/30 p-4">
@@ -658,9 +668,17 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
               <form onSubmit={handleWithdrawSubmit} className="space-y-4">
                 {/* Network Selection */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                    Destination Network
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                      Destination Network
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <NetworkLogo networkKey={selectedWithdrawNet} size="xs" showGlow />
+                      <span className="text-[10px] font-bold text-amber-400 font-mono">
+                        {getNetworkDisplayName(selectedWithdrawNet)}
+                      </span>
+                    </div>
+                  </div>
                   <select
                     value={selectedWithdrawNet}
                     onChange={(e) => setSelectedWithdrawNet(e.target.value)}
@@ -854,9 +872,10 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
                               {item.status}
                             </span>
                           </div>
-                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                            {getNetworkFullName(item.networkKey)} • {new Date(item.createdAt).toLocaleTimeString()}
-                          </p>
+                          <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-mono mt-0.5">
+                            <NetworkLogo networkKey={item.networkKey} size="xs" />
+                            <span>{getNetworkFullName(item.networkKey)} • {new Date(item.createdAt).toLocaleTimeString()}</span>
+                          </div>
                         </div>
                       </div>
 

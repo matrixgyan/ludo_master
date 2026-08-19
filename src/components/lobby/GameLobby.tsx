@@ -9,12 +9,11 @@ import { LobbyCardFeaturedTrio } from './LobbyCardFeaturedTrio';
 import { SupremeLeagueModal } from './SupremeLeagueModal';
 import { FloatingRankWidget } from './FloatingRankWidget';
 import { BottomNav, NavTab } from './BottomNav';
-import { MysteryBoxModal } from './MysteryBoxModal';
 import { StudioModal } from './StudioModal';
 import { ReferModal } from './ReferModal';
 import { ProfileModal } from './ProfileModal';
 import { NotificationsModal } from './NotificationsModal';
-import { PlayerModeOption, LudoModeSelectorModal } from './LudoModeSelectorModal';
+import { PlayerModeOption, LudoModeSelectorModal, GameVariation, PlayerConfig } from './LudoModeSelectorModal';
 import { AssetsView } from '../wallet/AssetsView';
 import { useLiveTheme } from '../../hooks/useLiveTheme';
 import { Sparkles, Shield, Crown } from 'lucide-react';
@@ -24,7 +23,14 @@ interface GameLobbyProps {
   onAddFunds: (amount: number) => void;
   onPlayLudo: () => void;
   onPlaySnakeLudo: () => void;
-  onStartOnlineMatch: (mode: PlayerModeOption, entryFee: number, prizePool: number, gameType?: 'classic' | 'supreme') => void;
+  onStartOnlineMatch: (
+    mode: PlayerModeOption,
+    entryFee: number,
+    prizePool: number,
+    gameType?: 'classic' | 'supreme',
+    variation?: GameVariation,
+    playersConfig?: PlayerConfig[]
+  ) => void;
 }
 
 export const GameLobby: React.FC<GameLobbyProps> = ({
@@ -35,7 +41,6 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   onStartOnlineMatch,
 }) => {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
-  const [isMysteryBoxOpen, setIsMysteryBoxOpen] = useState(false);
   const [isStudioOpen, setIsStudioOpen] = useState(false);
   const [isReferOpen, setIsReferOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -61,9 +66,16 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     setIsModeSelectorOpen(true);
   };
 
-  const handleSelectGameModeAndStart = (mode: PlayerModeOption, entryFee: number, prizePool: number, gameType: 'classic' | 'supreme') => {
+  const handleSelectGameModeAndStart = (
+    mode: PlayerModeOption,
+    entryFee: number,
+    prizePool: number,
+    gameType: 'classic' | 'supreme',
+    variation?: GameVariation,
+    playersConfig?: PlayerConfig[]
+  ) => {
     setIsModeSelectorOpen(false);
-    onStartOnlineMatch(mode, entryFee, prizePool, gameType);
+    onStartOnlineMatch(mode, entryFee, prizePool, gameType, variation, playersConfig);
   };
 
   return (
@@ -93,13 +105,10 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
         />
       ) : (
         <>
-          {/* 1. TOP HEADER (Gift Box "Open" | Bell | USDT Vault | Game Coins | Profile) */}
+          {/* 1. TOP HEADER (Brand | Bell | USDT Vault | Profile) */}
           <div className="w-full max-w-lg z-10">
             <LobbyHeader
-              balance={balance}
               usdtBalance={usdtBalance}
-              onOpenMysteryBox={() => setIsMysteryBoxOpen(true)}
-              onOpenShop={() => setIsLeagueModalOpen(true)}
               onOpenNotifications={() => setIsNotificationsOpen(true)}
               onOpenProfile={() => setIsProfileOpen(true)}
               onOpenWallet={() => setActiveTab('assets')}
@@ -157,12 +166,6 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
           onStartOnlineMatch(4, 0, 50, 'supreme');
         }}
         balance={balance}
-      />
-
-      <MysteryBoxModal
-        isOpen={isMysteryBoxOpen}
-        onClose={() => setIsMysteryBoxOpen(false)}
-        onClaimReward={onAddFunds}
       />
 
       <StudioModal

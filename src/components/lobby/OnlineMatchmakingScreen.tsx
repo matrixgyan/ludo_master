@@ -21,6 +21,8 @@ interface OnlineMatchmakingScreenProps {
   prizePool: number;
   userName: string;
   userAvatar: string;
+  userColor?: PlayerColor;
+  customOpponents?: { name: string; avatarUrl: string; color: PlayerColor }[];
   onCancel: () => void;
   onMatchComplete: (matchedOpponents: MatchedOpponent[]) => void;
 }
@@ -77,18 +79,14 @@ const ONLINE_PLAYERS_POOL: Omit<MatchedOpponent, 'color' | 'isReady'>[] = [
   },
 ];
 
-const COLOR_MAP: Record<number, PlayerColor[]> = {
-  2: ['blue', 'green'],
-  3: ['blue', 'red', 'green'],
-  4: ['blue', 'red', 'green', 'yellow'],
-};
-
 export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = ({
   playerCount,
   entryFee,
   prizePool,
   userName,
   userAvatar,
+  userColor = 'red',
+  customOpponents,
   onCancel,
   onMatchComplete,
 }) => {
@@ -96,6 +94,12 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
   const [statusMessage, setStatusMessage] = useState('SEARCHING MATCHING QUEUE...');
   const [countdown, setCountdown] = useState<number | null>(null);
   const [searchTime, setSearchTime] = useState(0);
+
+  // Determine opponent colors
+  const allColors: PlayerColor[] = ['red', 'yellow', 'green', 'blue'];
+  const remainingColors: PlayerColor[] = customOpponents && customOpponents.length >= playerCount - 1
+    ? customOpponents.map((o) => o.color)
+    : allColors.filter((c) => c !== userColor);
 
   // Search Timer
   useEffect(() => {
@@ -116,25 +120,36 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
 
   // Matchmaking Sequence
   useEffect(() => {
-    const colors = COLOR_MAP[playerCount];
     const opponentsNeeded = playerCount - 1;
 
-    // Pick random unique opponents from pool
+    // Pick random unique opponents from pool or custom list
     const shuffledPool = [...ONLINE_PLAYERS_POOL].sort(() => Math.random() - 0.5);
-    const chosenOpponents = shuffledPool.slice(0, opponentsNeeded);
+    const chosenOpponents = Array.from({ length: opponentsNeeded }).map((_, idx) => {
+      const custom = customOpponents?.[idx];
+      const fallback = shuffledPool[idx % shuffledPool.length];
+      return {
+        id: custom ? `p_custom_${idx}` : fallback.id,
+        name: custom?.name || fallback.name,
+        avatarUrl: custom?.avatarUrl || fallback.avatarUrl,
+        country: fallback.country || 'AE',
+        rating: fallback.rating || 1850,
+        ping: fallback.ping || 24,
+        color: custom?.color || remainingColors[idx] || 'green',
+        isReady: false,
+      };
+    });
 
     const timeouts: NodeJS.Timeout[] = [];
 
     // Progressive Matchmaking Lock-in
     chosenOpponents.forEach((opp, idx) => {
-      const delay = 1400 + idx * 1200; // sequential lock-in
+      const delay = 1000 + idx * 900;
       const t = setTimeout(() => {
         SoundManager.play('match-found');
         setMatchedPlayers((prev) => [
           ...prev,
           {
             ...opp,
-            color: colors[idx + 1],
             isReady: true,
           },
         ]);
@@ -143,7 +158,7 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
     });
 
     // When all opponents are locked in, start countdown
-    const allFoundDelay = 1400 + (opponentsNeeded - 1) * 1200 + 700;
+    const allFoundDelay = 1000 + (opponentsNeeded - 1) * 900 + 600;
     const tAll = setTimeout(() => {
       setStatusMessage('ALL PLAYERS LOCKED IN! GET READY!');
       SoundManager.play('battle-horn');
@@ -154,7 +169,7 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
     return () => {
       timeouts.forEach((t) => clearTimeout(t));
     };
-  }, [playerCount]);
+  }, [playerCount, userColor]);
 
   // Countdown timer logic
   useEffect(() => {
@@ -284,20 +299,40 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
 
         {/* Matched Slots Grid */}
         <div className={`grid gap-2 ${playerCount === 2 ? 'grid-cols-2' : playerCount === 3 ? 'grid-cols-3' : 'grid-cols-4'}`}>
-          {/* SLOT 1: YOU (Player 1 - Blue) */}
-          <div className="p-2.5 rounded-2xl bg-gradient-to-b from-blue-950/80 to-cyan-950/80 border-2 border-cyan-400/80 shadow-[0_0_15px_rgba(56,189,248,0.3)] flex flex-col items-center text-center">
+          {/* SLOT 1: YOU (Player 1) */}
+          <div
+            className={`p-2.5 rounded-2xl border-2 flex flex-col items-center text-center shadow-[0_0_15px_rgba(0,0,0,0.5)] ${
+              userColor === 'red'
+                ? 'bg-gradient-to-b from-rose-950/90 to-red-950/90 border-rose-400 shadow-rose-900/50'
+                : userColor === 'yellow'
+                ? 'bg-gradient-to-b from-amber-950/90 to-yellow-950/90 border-amber-400 shadow-amber-900/50'
+                : userColor === 'green'
+                ? 'bg-gradient-to-b from-emerald-950/90 to-teal-950/90 border-emerald-400 shadow-emerald-900/50'
+                : 'bg-gradient-to-b from-blue-950/90 to-cyan-950/90 border-cyan-400 shadow-cyan-900/50'
+            }`}
+          >
             <div className="relative">
               <img
                 src={userAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                 alt={userName}
-                className="w-11 h-11 rounded-full object-cover border-2 border-cyan-400"
+                className="w-11 h-11 rounded-full object-cover border-2 border-white"
               />
-              <span className="absolute -bottom-1 -right-1 text-[10px] px-1 bg-blue-600 rounded-full font-bold">
+              <span
+                className={`absolute -bottom-1 -right-1 text-[10px] px-1 rounded-full font-black text-white ${
+                  userColor === 'red'
+                    ? 'bg-red-600'
+                    : userColor === 'yellow'
+                    ? 'bg-amber-600'
+                    : userColor === 'green'
+                    ? 'bg-emerald-600'
+                    : 'bg-blue-600'
+                }`}
+              >
                 P1
               </span>
             </div>
             <span className="text-xs font-black text-white mt-1 truncate max-w-full">{userName} (You)</span>
-            <span className="text-[10px] text-cyan-300 font-bold flex items-center gap-0.5">
+            <span className="text-[10px] text-amber-300 font-bold flex items-center gap-0.5">
               <Zap className="w-2.5 h-2.5 text-amber-300 fill-amber-300" /> READY
             </span>
           </div>
@@ -305,7 +340,7 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
           {/* SLOTS 2..N: OPPONENTS */}
           {opponentSlots.map((_, idx) => {
             const opp = matchedPlayers[idx];
-            const color = COLOR_MAP[playerCount][idx + 1];
+            const color = opp?.color || remainingColors[idx] || 'green';
 
             return (
               <AnimatePresence key={idx} mode="wait">
@@ -316,9 +351,11 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
                     className={`p-2.5 rounded-2xl border-2 flex flex-col items-center text-center shadow-lg ${
                       color === 'red'
                         ? 'bg-rose-950/80 border-rose-500 shadow-rose-900/40'
+                        : color === 'yellow'
+                        ? 'bg-amber-950/80 border-amber-500 shadow-amber-900/40'
                         : color === 'green'
                         ? 'bg-emerald-950/80 border-emerald-500 shadow-emerald-900/40'
-                        : 'bg-amber-950/80 border-amber-500 shadow-amber-900/40'
+                        : 'bg-blue-950/80 border-blue-500 shadow-blue-900/40'
                     }`}
                   >
                     <div className="relative">

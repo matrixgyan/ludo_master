@@ -513,7 +513,6 @@ adminRouter.get('/api/admin/users', requireAdminAuth, async (req: Request, res: 
       id: 'p1',
       username: 'Player 1 (Master)',
       coins: 15400,
-      diamonds: 120,
       createdAt: new Date().toISOString(),
       walletAddress: '0x71C...49b2',
     },
@@ -521,7 +520,6 @@ adminRouter.get('/api/admin/users', requireAdminAuth, async (req: Request, res: 
       id: 'p2',
       username: 'Player 2 (Viper)',
       coins: 8200,
-      diamonds: 45,
       createdAt: new Date().toISOString(),
       walletAddress: '0x32A...81ec',
     },
@@ -529,7 +527,6 @@ adminRouter.get('/api/admin/users', requireAdminAuth, async (req: Request, res: 
       id: 'p3',
       username: 'Player 3 (Apex)',
       coins: 4900,
-      diamonds: 10,
       createdAt: new Date().toISOString(),
       walletAddress: '0x99F...28a0',
     },
@@ -545,7 +542,7 @@ adminRouter.get('/api/admin/users', requireAdminAuth, async (req: Request, res: 
 
 adminRouter.post('/api/admin/users/:userId/adjust-balance', requireAdminAuth, async (req: Request, res: Response) => {
   const { userId } = req.params;
-  const { coinsDelta, diamondsDelta, reason } = req.body;
+  const { coinsDelta, reason } = req.body;
 
   if (isPostgresConfigured()) {
     try {
@@ -555,13 +552,12 @@ adminRouter.post('/api/admin/users/:userId/adjust-balance', requireAdminAuth, as
           .update(users)
           .set({
             coins: sql`${users.coins} + ${Number(coinsDelta || 0)}`,
-            diamonds: sql`${users.diamonds} + ${Number(diamondsDelta || 0)}`,
             updatedAt: new Date(),
           })
           .where(eq(users.id, userId));
 
         const updated = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-        Logger.info(`Admin adjusted balance for ${userId}: Coins +${coinsDelta}, Diamonds +${diamondsDelta} (${reason})`);
+        Logger.info(`Admin adjusted balance for ${userId}: Coins +${coinsDelta} (${reason})`);
 
         res.json({
           success: true,
@@ -577,7 +573,7 @@ adminRouter.post('/api/admin/users/:userId/adjust-balance', requireAdminAuth, as
 
   res.json({
     success: true,
-    message: `Adjusted user ${userId} balance by coins: ${coinsDelta}, diamonds: ${diamondsDelta}`,
+    message: `Adjusted user ${userId} balance by coins: ${coinsDelta}`,
   });
 });
 

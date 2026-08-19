@@ -1,65 +1,41 @@
 import React from 'react';
-import { Bell, User, Sparkles, Coins } from 'lucide-react';
+import { Bell, User, Sparkles, Zap, ShieldCheck } from 'lucide-react';
 import { motion } from 'motion/react';
 import { SoundManager } from '../../audio/soundManager';
 
 interface LobbyHeaderProps {
-  balance: number;
+  balance?: number;
   usdtBalance?: string;
-  onOpenMysteryBox: () => void;
-  onOpenShop?: () => void;
   onOpenNotifications: () => void;
   onOpenProfile: () => void;
   onOpenWallet?: () => void;
 }
 
 export const LobbyHeader: React.FC<LobbyHeaderProps> = ({
-  balance,
   usdtBalance = '$0.00',
-  onOpenMysteryBox,
-  onOpenShop,
   onOpenNotifications,
   onOpenProfile,
   onOpenWallet,
 }) => {
   return (
     <header className="sticky top-0 z-30 w-full bg-[#0a0d24]/95 backdrop-blur-md px-3.5 py-2.5 border-b border-white/10 flex items-center justify-between shadow-lg select-none">
-      {/* Left: Mystery Gift Box "Open" Button */}
-      <motion.button
-        id="lobby-mystery-box-btn"
-        whileTap={{ scale: 0.94 }}
-        whileHover={{ scale: 1.04 }}
-        onClick={() => {
-          SoundManager.play('click');
-          onOpenMysteryBox();
-        }}
-        className="flex items-center gap-2 bg-gradient-to-b from-[#1a1c4b] to-[#0d0f2f] hover:from-[#242766] hover:to-[#141740] border border-amber-400/40 rounded-xl px-3 py-1.5 shadow-[0_2px_10px_rgba(251,191,36,0.15)] group transition-all cursor-pointer"
-      >
-        {/* Animated 3D Gift Box Cube Icon */}
-        <div className="relative w-7 h-7 flex items-center justify-center">
-          <motion.div
-            animate={{ rotateY: [0, 180, 360], y: [0, -2, 0] }}
-            transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-            className="w-6 h-6 rounded-lg bg-gradient-to-tr from-amber-500 via-pink-500 to-purple-600 border border-yellow-300 shadow-md flex items-center justify-center text-[10px] font-black text-white"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-yellow-200 animate-spin" style={{ animationDuration: '6s' }} />
-          </motion.div>
-          {/* Notification Ping on Box */}
-          <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-400"></span>
-          </span>
+      {/* Left: Brand Badge */}
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-600 border border-yellow-200 shadow-md shadow-amber-500/20 flex items-center justify-center text-slate-950 font-black">
+          <Zap className="w-4 h-4 fill-slate-950 stroke-[2.5]" />
         </div>
-
         <div className="flex flex-col text-left leading-none">
-          <span className="text-[11px] font-black tracking-wide text-amber-300 uppercase drop-shadow">
-            Open
-          </span>
-          <span className="text-[8px] font-medium text-slate-400">Free Gift</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-black tracking-wider bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-400 bg-clip-text text-transparent uppercase drop-shadow">
+              Ludo Supreme
+            </span>
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          </div>
+          <span className="text-[9px] font-bold text-slate-400 tracking-tight">On-Chain Arena</span>
         </div>
-      </motion.button>
+      </div>
 
-      {/* Right Controls: Notifications, Coins Pill, Profile Avatar */}
+      {/* Right Controls: Notifications, USDT Vault, Profile Avatar */}
       <div className="flex items-center gap-2 sm:gap-3">
         {/* Notifications Bell */}
         <motion.button
@@ -76,7 +52,7 @@ export const LobbyHeader: React.FC<LobbyHeaderProps> = ({
           <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-[#0a0d24]" />
         </motion.button>
 
-        {/* USDT Vault Pill */}
+        {/* Unified USDT Multi-Chain Vault Pill */}
         <motion.button
           id="lobby-usdt-vault-btn"
           whileTap={{ scale: 0.95 }}
@@ -96,30 +72,6 @@ export const LobbyHeader: React.FC<LobbyHeaderProps> = ({
           {/* USDT Amount */}
           <span className="text-emerald-300 font-black text-xs sm:text-sm tracking-tight flex items-center">
             {usdtBalance} <span className="text-[10px] text-emerald-400/90 font-extrabold ml-1">USDT</span>
-          </span>
-        </motion.button>
-
-        {/* Game Coins Pill */}
-        <motion.button
-          id="lobby-coins-btn"
-          whileTap={{ scale: 0.95 }}
-          whileHover={{ scale: 1.03 }}
-          onClick={() => {
-            SoundManager.play('click');
-            if (onOpenShop) onOpenShop();
-            else onOpenMysteryBox();
-          }}
-          className="flex items-center gap-1.5 bg-gradient-to-r from-amber-950/60 via-amber-900/40 to-yellow-950/50 hover:from-amber-900/80 hover:to-yellow-900/70 border border-amber-400/40 rounded-full pl-2 pr-2.5 py-1 shadow-[0_2px_12px_rgba(245,158,11,0.2)] transition-all group cursor-pointer"
-          title="Game Coins"
-        >
-          {/* Gold Coin Icon */}
-          <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-300 border border-yellow-200 flex items-center justify-center text-slate-950 font-black text-[11px] shadow-sm">
-            🪙
-          </div>
-
-          {/* Coins Amount */}
-          <span className="text-amber-200 font-black text-xs sm:text-sm tracking-tight flex items-center">
-            {balance.toFixed(0)} <span className="text-[10px] text-amber-400/90 font-extrabold ml-1">COINS</span>
           </span>
         </motion.button>
 

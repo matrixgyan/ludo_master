@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Search, Coins, Gem, PlusCircle, MinusCircle, RefreshCw, X, ShieldAlert, Check } from 'lucide-react';
+import { Users, Search, Wallet, PlusCircle, MinusCircle, RefreshCw, X, ShieldAlert, Check } from 'lucide-react';
 
 interface UserManagementTabProps {
   token: string;
@@ -10,8 +10,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ token }) =
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
-  const [coinsDelta, setCoinsDelta] = useState('1000');
-  const [diamondsDelta, setDiamondsDelta] = useState('10');
+  const [coinsDelta, setCoinsDelta] = useState('100');
   const [adjustReason, setAdjustReason] = useState('Admin Reward / Tournament Payout');
   const [isAdjusting, setIsAdjusting] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
@@ -46,7 +45,6 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ token }) =
         },
         body: JSON.stringify({
           coinsDelta: Number(coinsDelta),
-          diamondsDelta: Number(diamondsDelta),
           reason: adjustReason,
         }),
       });
@@ -109,8 +107,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ token }) =
             <thead className="bg-[#141b2d] text-slate-400 uppercase font-mono text-[10px] tracking-wider border-b border-slate-800">
               <tr>
                 <th className="py-3 px-4">User ID / Username</th>
-                <th className="py-3 px-4">Coins Balance</th>
-                <th className="py-3 px-4">Diamonds</th>
+                <th className="py-3 px-4">Player Balance</th>
                 <th className="py-3 px-4">Wallet Address</th>
                 <th className="py-3 px-4">Joined Date</th>
                 <th className="py-3 px-4 text-right">Actions</th>
@@ -119,7 +116,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ token }) =
             <tbody className="divide-y divide-slate-800/60 font-sans">
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-500">
+                  <td colSpan={5} className="py-8 text-center text-slate-500">
                     No user accounts found matching query.
                   </td>
                 </tr>
@@ -131,15 +128,9 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ token }) =
                       <div className="text-[11px] text-slate-400 font-mono">{u.id}</div>
                     </td>
                     <td className="py-3 px-4">
-                      <div className="flex items-center gap-1.5 text-amber-400 font-bold font-mono">
-                        <Coins className="w-4 h-4" />
-                        <span>{(u.coins || 0).toLocaleString()}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-1.5 text-cyan-400 font-bold font-mono">
-                        <Gem className="w-4 h-4" />
-                        <span>{(u.diamonds || 0).toLocaleString()}</span>
+                      <div className="flex items-center gap-1.5 text-emerald-400 font-bold font-mono">
+                        <Wallet className="w-4 h-4" />
+                        <span>${(Number(u.coins || 0) / 100).toFixed(2)} USDT</span>
                       </div>
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-400 text-[11px]">
@@ -151,9 +142,9 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ token }) =
                     <td className="py-3 px-4 text-right">
                       <button
                         onClick={() => setSelectedUser(u)}
-                        className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl font-semibold transition-all cursor-pointer inline-flex items-center gap-1"
+                        className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl font-semibold transition-all cursor-pointer inline-flex items-center gap-1"
                       >
-                        <Coins className="w-3 h-3" />
+                        <Wallet className="w-3 h-3" />
                         Adjust Funds
                       </button>
                     </td>
@@ -177,8 +168,8 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ token }) =
             </button>
 
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-                <Coins className="w-5 h-5" />
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                <Wallet className="w-5 h-5" />
               </div>
               <div>
                 <h4 className="text-base font-bold text-white">Adjust Player Balance</h4>
@@ -195,27 +186,14 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ token }) =
               <form onSubmit={handleAdjustBalance} className="space-y-4 text-xs">
                 <div>
                   <label className="block text-slate-400 uppercase font-bold text-[10px] tracking-wider mb-1">
-                    Coins Delta (+ to credit, - to debit)
+                    Balance Delta (+ to credit, - to debit in cents/units)
                   </label>
                   <input
                     type="number"
                     required
                     value={coinsDelta}
                     onChange={(e) => setCoinsDelta(e.target.value)}
-                    className="w-full bg-[#141b2d] border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-mono outline-none focus:border-amber-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 uppercase font-bold text-[10px] tracking-wider mb-1">
-                    Diamonds Delta (+ to credit, - to debit)
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={diamondsDelta}
-                    onChange={(e) => setDiamondsDelta(e.target.value)}
-                    className="w-full bg-[#141b2d] border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-mono outline-none focus:border-cyan-400"
+                    className="w-full bg-[#141b2d] border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-mono outline-none focus:border-emerald-400"
                   />
                 </div>
 
@@ -243,7 +221,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ token }) =
                   <button
                     type="submit"
                     disabled={isAdjusting}
-                    className="w-1/2 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+                    className="w-1/2 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl transition-colors cursor-pointer disabled:opacity-50"
                   >
                     {isAdjusting ? 'Updating...' : 'Confirm Update'}
                   </button>

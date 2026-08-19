@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Sparkles, Coins, Zap, Trophy, Flame } from 'lucide-react';
+import { Sparkles, Zap, Trophy, Flame } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
 
 // 3D Generated Assets
@@ -74,11 +74,11 @@ export const LobbyCardFeaturedTrio: React.FC<LobbyCardFeaturedTrioProps> = ({
             transition={{ duration: 4.5, repeat: Infinity, repeatDelay: 2, ease: 'easeInOut' }}
           />
 
-          {/* Top-Right Coin Badge */}
+          {/* Top-Right Multiplier Badge */}
           <div className="relative z-10 w-full flex justify-end">
             <div className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 border border-emerald-300/80 shadow-[0_4px_12px_rgba(16,185,129,0.5)] px-2.5 py-1 rounded-full text-white text-[11px] font-black tracking-wide">
               <div className="w-4 h-4 rounded-full bg-amber-400 flex items-center justify-center shadow-inner">
-                <Coins className="w-2.5 h-2.5 text-amber-900" />
+                <Zap className="w-2.5 h-2.5 text-amber-900 fill-amber-900" />
               </div>
               <span>Win 10X</span>
             </div>

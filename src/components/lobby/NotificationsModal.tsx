@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Bell, Trophy, Gift, Sparkles } from 'lucide-react';
+import { X, Bell, Trophy, Zap, Sparkles } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
 
 interface NotificationsModalProps {
@@ -17,16 +17,16 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({ isOpen, 
       icon: Trophy,
       color: 'text-amber-400',
       title: '$50K Mega Cash Tournament Live!',
-      desc: 'Free registration is now open. Join before timer expires.',
+      desc: 'Registration is now open. Join the supreme league arena.',
       time: '10m ago',
     },
     {
       id: 2,
-      icon: Gift,
-      color: 'text-pink-400',
-      title: 'Daily Mystery Gift Ready',
-      desc: 'Claim your free dollar bonus chest in the lobby.',
-      time: '2h ago',
+      icon: Zap,
+      color: 'text-cyan-400',
+      title: 'Multi-Chain EVM Deposit Active',
+      desc: 'Instant USDT deposits on Optimism, Arbitrum, BSC, Base & Polygon.',
+      time: '1h ago',
     },
     {
       id: 3,

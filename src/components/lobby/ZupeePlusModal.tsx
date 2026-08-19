@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Sparkles, Crown, Zap, Shield, Gift } from 'lucide-react';
+import { X, Sparkles, Crown, Zap, Shield, Flame } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
 
 interface ZupeePlusModalProps {
@@ -44,7 +44,7 @@ export const ZupeePlusModal: React.FC<ZupeePlusModalProps> = ({ isOpen, onClose 
             <Sparkles className="w-8 h-8 text-amber-300 mx-auto mb-1" />
             <h4 className="text-base font-black text-white">VIP Club Pass Active</h4>
             <p className="text-xs text-slate-300 mt-1">
-              Enjoy 0% withdrawal fees, 2x daily mystery rewards, and free mega tournament entries!
+              Enjoy 0% withdrawal gateway fees, VIP tournament access, and premium leaderboard badges!
             </p>
           </div>
 
@@ -54,12 +54,12 @@ export const ZupeePlusModal: React.FC<ZupeePlusModalProps> = ({ isOpen, onClose 
               <span>Instant High-Speed Matchmaking</span>
             </div>
             <div className="flex items-center gap-3 p-2.5 rounded-xl bg-white/5 border border-white/10">
-              <Gift className="w-4 h-4 text-pink-400" />
-              <span>Daily $2.00 Bonus Drops</span>
+              <Flame className="w-4 h-4 text-rose-400" />
+              <span>High-Roller Arena VIP Access</span>
             </div>
             <div className="flex items-center gap-3 p-2.5 rounded-xl bg-white/5 border border-white/10">
               <Shield className="w-4 h-4 text-emerald-400" />
-              <span>Priority Customer Support</span>
+              <span>Priority Customer & Wallet Support</span>
             </div>
           </div>
         </motion.div>

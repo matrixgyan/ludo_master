@@ -6,7 +6,6 @@ interface TopBarHUDProps {
   onOpenMenu: () => void;
   isMuted: boolean;
   onToggleMute: () => void;
-  gemsCount?: number;
   balance?: number;
   onBackToLobby?: () => void;
   gameType?: 'classic' | 'supreme';

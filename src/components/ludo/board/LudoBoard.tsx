@@ -226,15 +226,25 @@ export const LudoBoard: React.FC<LudoBoardProps> = ({
             </svg>
 
             {/* Blue Home Base Slot Tray */}
-            <div className="absolute inset-4 sm:inset-5 z-10 bg-[#0284c7]/90 rounded-2xl p-2.5 sm:p-3 border-2 border-[#0369a1] shadow-xl flex items-center justify-center">
-              <div className="w-full h-full bg-[#f0f9ff] rounded-xl p-2 border border-[#7dd3fc] grid grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
-                {[0, 1, 2, 3].map((slot) => (
-                  <div
-                    key={`blue-slot-${slot}`}
-                    className="rounded-full bg-[#0284c7]/20 border-2 border-[#0284c7]/40 shadow-[inset_0_2px_4px_rgba(0,0,0,0.25)] flex items-center justify-center"
-                  />
-                ))}
-              </div>
+            <div className={`absolute inset-4 sm:inset-5 z-10 rounded-2xl p-2.5 sm:p-3 border-2 shadow-xl flex items-center justify-center ${
+              activeColors.includes('blue')
+                ? 'bg-[#0284c7]/90 border-[#0369a1]'
+                : 'bg-slate-800/60 border-slate-600/40 grayscale opacity-40'
+            }`}>
+              {activeColors.includes('blue') ? (
+                <div className="w-full h-full bg-[#f0f9ff] rounded-xl p-2 border border-[#7dd3fc] grid grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
+                  {[0, 1, 2, 3].map((slot) => (
+                    <div
+                      key={`blue-slot-${slot}`}
+                      className="rounded-full bg-[#0284c7]/20 border-2 border-[#0284c7]/40 shadow-[inset_0_2px_4px_rgba(0,0,0,0.25)] flex items-center justify-center"
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                  <span>VACANT</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -272,15 +282,25 @@ export const LudoBoard: React.FC<LudoBoardProps> = ({
               </g>
             </svg>
 
-            <div className="absolute inset-4 sm:inset-5 z-10 bg-[#e11d48]/90 rounded-2xl p-2.5 sm:p-3 border-2 border-[#be123c] shadow-xl flex items-center justify-center">
-              <div className="w-full h-full bg-[#fff1f2] rounded-xl p-2 border border-[#fecdd3] grid grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
-                {[0, 1, 2, 3].map((slot) => (
-                  <div
-                    key={`red-slot-${slot}`}
-                    className="rounded-full bg-[#e11d48]/20 border-2 border-[#e11d48]/40 shadow-[inset_0_2px_4px_rgba(0,0,0,0.25)] flex items-center justify-center"
-                  />
-                ))}
-              </div>
+            <div className={`absolute inset-4 sm:inset-5 z-10 rounded-2xl p-2.5 sm:p-3 border-2 shadow-xl flex items-center justify-center ${
+              activeColors.includes('red')
+                ? 'bg-[#e11d48]/90 border-[#be123c]'
+                : 'bg-slate-800/60 border-slate-600/40 grayscale opacity-40'
+            }`}>
+              {activeColors.includes('red') ? (
+                <div className="w-full h-full bg-[#fff1f2] rounded-xl p-2 border border-[#fecdd3] grid grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
+                  {[0, 1, 2, 3].map((slot) => (
+                    <div
+                      key={`red-slot-${slot}`}
+                      className="rounded-full bg-[#e11d48]/20 border-2 border-[#e11d48]/40 shadow-[inset_0_2px_4px_rgba(0,0,0,0.25)] flex items-center justify-center"
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                  <span>VACANT</span>
+                </div>
+              )}
             </div>
           </div>
 

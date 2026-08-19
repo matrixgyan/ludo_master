@@ -17,6 +17,7 @@ import {
   Sparkles,
   Search,
 } from 'lucide-react';
+import { NetworkLogo } from './NetworkLogo';
 import {
   UnifiedWalletService,
   UserWalletData,
@@ -348,14 +349,17 @@ export const UnifiedUsdtWalletModal: React.FC<UnifiedUsdtWalletModalProps> = ({
                       <button
                         key={net.networkKey}
                         onClick={() => setSelectedDepositNet(net.networkKey)}
-                        className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                        className={`p-2.5 rounded-xl border text-left transition flex items-center gap-2.5 ${
                           isSelected
                             ? 'bg-emerald-950/40 border-emerald-500/80 text-white shadow-md shadow-emerald-500/10'
                             : 'bg-slate-800/50 border-slate-700/60 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                         }`}
                       >
-                        <span className="text-xs font-bold truncate">{net.name}</span>
-                        <span className="text-[10px] text-slate-500 mt-1">Chain ID {net.chainId}</span>
+                        <NetworkLogo networkKey={net.networkKey} size="sm" showGlow={isSelected} />
+                        <div className="min-w-0 flex-1">
+                          <span className="text-xs font-bold truncate block">{net.name}</span>
+                          <span className="text-[10px] text-slate-500 block">Chain ID {net.chainId}</span>
+                        </div>
                       </button>
                     );
                   })}

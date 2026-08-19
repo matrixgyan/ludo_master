@@ -16,7 +16,7 @@ import { SnakeLudoGame } from './components/lobby/SnakeLudoGame';
 import { AngelFlightData } from './components/ludo/effects/AngelFlightOverlay';
 import { AdminLayout } from './components/admin/AdminLayout';
 import { AdminLogin } from './components/admin/AdminLogin';
-import { PlayerModeOption } from './components/lobby/LudoModeSelectorModal';
+import { PlayerModeOption, GameVariation, PlayerConfig } from './components/lobby/LudoModeSelectorModal';
 import { OnlineMatchmakingScreen, MatchedOpponent } from './components/lobby/OnlineMatchmakingScreen';
 import { VictoryModal } from './components/ludo/effects/VictoryModal';
 import { GameSettingsModal } from './components/lobby/GameSettingsModal';
@@ -28,6 +28,8 @@ interface MatchConfig {
   entryFee: number;
   prizePool: number;
   gameType?: 'classic' | 'supreme';
+  variation?: GameVariation;
+  playersConfig?: PlayerConfig[];
 }
 
 const DEFAULT_PLAYERS: Record<PlayerColor, Player> = {
@@ -148,13 +150,6 @@ export default function App() {
   const [playerMode, setPlayerMode] = useState<PlayerModeOption>(4);
   const [currentMatchConfig, setCurrentMatchConfig] = useState<MatchConfig | null>(null);
 
-  const activeColors: PlayerColor[] =
-    playerMode === 2
-      ? ['blue', 'green']
-      : playerMode === 3
-      ? ['blue', 'red', 'green']
-      : ['blue', 'red', 'green', 'yellow'];
-
   // URL Path & Query Detection for Admin Portal
   useEffect(() => {
     fetch('/api/admin/settings')
@@ -230,6 +225,18 @@ export default function App() {
     theme: 'dubai_sunset',
     consecutiveSixes: 0,
   });
+
+  const activeColors: PlayerColor[] = useMemo(() => {
+    const active = (Object.keys(gameState.players) as PlayerColor[]).filter(
+      (c) => gameState.players[c]?.isActive
+    );
+    if (active.length > 0) return active;
+    return playerMode === 2
+      ? ['blue', 'green']
+      : playerMode === 3
+      ? ['blue', 'red', 'green']
+      : ['blue', 'red', 'green', 'yellow'];
+  }, [gameState.players, playerMode]);
 
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -345,20 +352,30 @@ export default function App() {
     mode: PlayerModeOption,
     entryFee: number,
     prizePool: number,
-    gameType: 'classic' | 'supreme' = 'supreme'
+    gameType: 'classic' | 'supreme' = 'supreme',
+    variation: GameVariation = 'Classic',
+    playersConfig?: PlayerConfig[]
   ) => {
     if (entryFee > 0) {
       setBalance((b) => Math.max(0, Number((b - entryFee).toFixed(2))));
     }
     setPlayerMode(mode);
-    setCurrentMatchConfig({ mode, entryFee, prizePool, gameType });
+    setCurrentMatchConfig({ mode, entryFee, prizePool, gameType, variation, playersConfig });
     setViewMode('matchmaking');
   };
 
   // Match Complete -> Prepare Board for 2P, 3P, or 4P
   const handleMatchComplete = (matchedOpponents: MatchedOpponent[]) => {
     const isSupreme = currentMatchConfig?.gameType !== 'classic';
-    const updatedPlayers: Record<PlayerColor, Player> = { ...DEFAULT_PLAYERS };
+    const customPlayers = currentMatchConfig?.playersConfig;
+    
+    // Initialize all 4 colors as inactive
+    const updatedPlayers: Record<PlayerColor, Player> = {
+      blue: { ...DEFAULT_PLAYERS.blue, isActive: false, pawns: [] },
+      red: { ...DEFAULT_PLAYERS.red, isActive: false, pawns: [] },
+      green: { ...DEFAULT_PLAYERS.green, isActive: false, pawns: [] },
+      yellow: { ...DEFAULT_PLAYERS.yellow, isActive: false, pawns: [] },
+    };
 
     // Helper to generate pawns - starting OUTSIDE at pathStep: 0 for Supreme mode!
     const createPawnsForColor = (color: PlayerColor, playerId: string): Pawn[] => {
@@ -391,114 +408,61 @@ export default function App() {
       });
     };
 
-    // Player 1 (Blue - Human)
-    updatedPlayers.blue = {
-      ...DEFAULT_PLAYERS.blue,
+    const allColorPalette: PlayerColor[] = ['red', 'green', 'yellow', 'blue'];
+    
+    // Player 1 (Human) chosen color
+    const p1Color = (customPlayers?.[0]?.color || 'red') as PlayerColor;
+    
+    // Determine active colors for all players
+    const assignedPlayerColors: PlayerColor[] = [p1Color];
+    for (let i = 1; i < playerMode; i++) {
+      let desiredColor = customPlayers?.[i]?.color as PlayerColor | undefined;
+      if (!desiredColor || assignedPlayerColors.includes(desiredColor)) {
+        desiredColor = allColorPalette.find((c) => !assignedPlayerColors.includes(c)) || 'green';
+      }
+      assignedPlayerColors.push(desiredColor);
+    }
+
+    // Configure Player 1 (Human)
+    updatedPlayers[p1Color] = {
+      ...DEFAULT_PLAYERS[p1Color],
+      name: customPlayers?.[0]?.name || DEFAULT_PLAYERS[p1Color].name,
+      avatarUrl: customPlayers?.[0]?.avatarUrl || DEFAULT_PLAYERS[p1Color].avatarUrl,
+      color: p1Color,
       isActive: true,
       isHuman: true,
       score: 0,
-      pawns: createPawnsForColor('blue', 'p1'),
+      pawns: createPawnsForColor(p1Color, 'p1'),
     };
 
-    // Opponents configuration based on player count
-    if (playerMode === 2) {
-      // 2 Players: Blue (Top-Left) vs Green (Bottom-Right, Front Opposite Corner)
-      updatedPlayers.red = { ...DEFAULT_PLAYERS.red, isActive: false, pawns: [] };
-      updatedPlayers.yellow = { ...DEFAULT_PLAYERS.yellow, isActive: false, pawns: [] };
-      if (matchedOpponents[0]) {
-        updatedPlayers.green = {
-          ...DEFAULT_PLAYERS.green,
-          name: matchedOpponents[0].name,
-          avatarUrl: matchedOpponents[0].avatarUrl,
-          isActive: true,
-          isHuman: false,
-          score: 0,
-          pawns: createPawnsForColor('green', 'p2'),
-        };
-      } else {
-        updatedPlayers.green = { ...DEFAULT_PLAYERS.green, isActive: false, pawns: [] };
-      }
-    } else if (playerMode === 3) {
-      // 3 Players: Blue, Red, Green
-      updatedPlayers.yellow = { ...DEFAULT_PLAYERS.yellow, isActive: false, pawns: [] };
-      if (matchedOpponents[0]) {
-        updatedPlayers.red = {
-          ...DEFAULT_PLAYERS.red,
-          name: matchedOpponents[0].name,
-          avatarUrl: matchedOpponents[0].avatarUrl,
-          isActive: true,
-          isHuman: false,
-          score: 0,
-          pawns: createPawnsForColor('red', 'p2'),
-        };
-      } else {
-        updatedPlayers.red = { ...DEFAULT_PLAYERS.red, isActive: false, pawns: [] };
-      }
-      if (matchedOpponents[1]) {
-        updatedPlayers.green = {
-          ...DEFAULT_PLAYERS.green,
-          name: matchedOpponents[1].name,
-          avatarUrl: matchedOpponents[1].avatarUrl,
-          isActive: true,
-          isHuman: false,
-          score: 0,
-          pawns: createPawnsForColor('green', 'p3'),
-        };
-      } else {
-        updatedPlayers.green = { ...DEFAULT_PLAYERS.green, isActive: false, pawns: [] };
-      }
-    } else {
-      // 4 Players: Blue, Red, Green, Yellow
-      if (matchedOpponents[0]) {
-        updatedPlayers.red = {
-          ...DEFAULT_PLAYERS.red,
-          name: matchedOpponents[0].name,
-          avatarUrl: matchedOpponents[0].avatarUrl,
-          isActive: true,
-          isHuman: false,
-          score: 0,
-          pawns: createPawnsForColor('red', 'p2'),
-        };
-      } else {
-        updatedPlayers.red = { ...DEFAULT_PLAYERS.red, isActive: false, pawns: [] };
-      }
-      if (matchedOpponents[1]) {
-        updatedPlayers.green = {
-          ...DEFAULT_PLAYERS.green,
-          name: matchedOpponents[1].name,
-          avatarUrl: matchedOpponents[1].avatarUrl,
-          isActive: true,
-          isHuman: false,
-          score: 0,
-          pawns: createPawnsForColor('green', 'p3'),
-        };
-      } else {
-        updatedPlayers.green = { ...DEFAULT_PLAYERS.green, isActive: false, pawns: [] };
-      }
-      if (matchedOpponents[2]) {
-        updatedPlayers.yellow = {
-          ...DEFAULT_PLAYERS.yellow,
-          name: matchedOpponents[2].name,
-          avatarUrl: matchedOpponents[2].avatarUrl,
-          isActive: true,
-          isHuman: false,
-          score: 0,
-          pawns: createPawnsForColor('yellow', 'p4'),
-        };
-      } else {
-        updatedPlayers.yellow = { ...DEFAULT_PLAYERS.yellow, isActive: false, pawns: [] };
-      }
+    // Configure Opponents
+    for (let i = 1; i < playerMode; i++) {
+      const oppColor = assignedPlayerColors[i];
+      const oppIndex = i - 1;
+      const opp = matchedOpponents[oppIndex];
+      const customP = customPlayers?.[i];
+
+      updatedPlayers[oppColor] = {
+        ...DEFAULT_PLAYERS[oppColor],
+        name: customP?.name || opp?.name || `Player ${i + 1}`,
+        avatarUrl: customP?.avatarUrl || opp?.avatarUrl || DEFAULT_PLAYERS[oppColor].avatarUrl,
+        color: oppColor,
+        isActive: true,
+        isHuman: false,
+        score: 0,
+        pawns: createPawnsForColor(oppColor, `p${i + 1}`),
+      };
     }
 
     setGameState({
       players: updatedPlayers,
-      currentTurn: 'blue',
+      currentTurn: p1Color,
       dice: { value: 6, isRolling: false, hasRolled: false, canRoll: true },
       selectedPawnId: null,
       movablePawnIds: [],
       statusText: isSupreme
-        ? "⚡ LUDO SUPREME SPEED MATCH! ALL PAWNS OPEN — ROLL ANY NUMBER TO MOVE!"
-        : "PLAYER 1'S TURN — ROLL THE DICE!",
+        ? `⚡ LUDO SUPREME SPEED MATCH! ${updatedPlayers[p1Color].name.toUpperCase()}'S TURN — ROLL ANY NUMBER TO MOVE!`
+        : `${updatedPlayers[p1Color].name.toUpperCase()}'S TURN — ROLL THE DICE!`,
       winner: null,
       isAutoPlay: false,
       isMuted: false,
@@ -1031,13 +995,20 @@ export default function App() {
 
   // 2. LIVE ONLINE MATCHMAKING VIEW
   if (viewMode === 'matchmaking') {
+    const p1Config = currentMatchConfig?.playersConfig?.[0];
+    const userColor = (p1Config?.color || 'red') as PlayerColor;
+    const userName = p1Config?.name || 'Player 1';
+    const userAvatar = p1Config?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+
     return (
       <OnlineMatchmakingScreen
         playerCount={playerMode}
         entryFee={currentMatchConfig?.entryFee || 0}
         prizePool={currentMatchConfig?.prizePool || 0}
-        userName={gameState.players.blue.name}
-        userAvatar={gameState.players.blue.avatarUrl}
+        userName={userName}
+        userAvatar={userAvatar}
+        userColor={userColor}
+        customOpponents={currentMatchConfig?.playersConfig?.slice(1)}
         onCancel={() => {
           // Refund fee on cancel
           if (currentMatchConfig && currentMatchConfig.entryFee > 0) {
@@ -1065,6 +1036,8 @@ export default function App() {
   }
 
   // 4. CLASSIC & MULTI-PLAYER LUDO BOARD VIEW (2P, 3P, 4P DYNAMIC)
+  const humanPlayer = (Object.values(gameState.players) as Player[]).find((p) => p?.isHuman);
+
   return (
     <BoardEnvironment>
       {/* 1. TOP HUD HEADER */}
@@ -1072,7 +1045,6 @@ export default function App() {
         onOpenMenu={() => setIsMenuOpen(true)}
         isMuted={gameState.isMuted}
         onToggleMute={handleToggleMute}
-        gemsCount={1200}
         balance={balance}
         onBackToLobby={handleReturnToLobby}
         gameType={currentMatchConfig?.gameType || 'supreme'}
@@ -1082,16 +1054,20 @@ export default function App() {
 
       {/* 2. TOP PLAYERS PROFILE HUDs (Blue Top-Left, Red Top-Right) */}
       <div className="w-full flex items-center justify-between px-2 pt-1 pb-1 z-20">
-        <PlayerProfileHUD
-          player={gameState.players.blue}
-          isTurn={gameState.currentTurn === 'blue' && !steppingPawnId}
-          position="top-left"
-          onToggleMic={handleToggleMic}
-          dice={gameState.dice}
-          onRollDice={() => handleRollDice()}
-          turnTimeLeft={turnTimeLeft}
-          scoreRank={playerRankMap.blue}
-        />
+        {activeColors.includes('blue') ? (
+          <PlayerProfileHUD
+            player={gameState.players.blue}
+            isTurn={gameState.currentTurn === 'blue' && !steppingPawnId}
+            position="top-left"
+            onToggleMic={handleToggleMic}
+            dice={gameState.dice}
+            onRollDice={() => handleRollDice()}
+            turnTimeLeft={turnTimeLeft}
+            scoreRank={playerRankMap.blue}
+          />
+        ) : (
+          <div className="w-10" />
+        )}
         {activeColors.includes('red') ? (
           <PlayerProfileHUD
             player={gameState.players.red}
@@ -1143,7 +1119,7 @@ export default function App() {
 
       {/* 4. BOTTOM PLAYERS PROFILE HUDs */}
       <div className="w-full flex items-center justify-between px-2 py-1 z-20">
-        {/* Bottom Left Player 4 (Yellow) - Only visible if 4P mode */}
+        {/* Bottom Left Player 4 (Yellow) - Only visible if active */}
         {activeColors.includes('yellow') ? (
           <PlayerProfileHUD
             player={gameState.players.yellow}
@@ -1159,7 +1135,7 @@ export default function App() {
           <div className="w-10" />
         )}
 
-        {/* Bottom Right Player 3 (Green) - Visible in 3P and 4P modes */}
+        {/* Bottom Right Player 3 (Green) - Only visible if active */}
         {activeColors.includes('green') ? (
           <PlayerProfileHUD
             player={gameState.players.green}
@@ -1178,7 +1154,7 @@ export default function App() {
 
       {/* 5. BOTTOM CONTROLS & STATUS BANNER */}
       <BottomControls
-        isMutedMic={gameState.players.blue.isMuted}
+        isMutedMic={humanPlayer?.isMuted ?? false}
         onToggleMic={() => handleToggleMic('p1')}
         onSendChat={handleSendChat}
         activeColor={gameState.currentTurn}
@@ -1190,8 +1166,8 @@ export default function App() {
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
         balance={balance}
-        userName={gameState.players.blue.name}
-        userAvatar={gameState.players.blue.avatarUrl}
+        userName={humanPlayer?.name || 'Player 1'}
+        userAvatar={humanPlayer?.avatarUrl || ''}
       />
 
       {/* 7. MATCH VICTORY & PRIZE MODAL */}
