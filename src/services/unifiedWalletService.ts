@@ -2,6 +2,7 @@ export interface SupportedNetwork {
   networkKey: string;
   name: string;
   chainId: number;
+  env?: 'mainnet' | 'testnet';
   nativeGasToken: {
     symbol: string;
     name: string;
@@ -85,129 +86,169 @@ export interface WithdrawalItem {
 export interface WithdrawalQuote {
   networkKey: string;
   amount: string;
+  networkGasFee?: string;
+  adminServiceFee?: string;
   feeAmount: string;
   netAmount: string;
   minWithdrawal: string;
   isExecutable: boolean;
 }
 
-export const DEFAULT_SUPPORTED_NETWORKS: SupportedNetwork[] = [
+export interface GasEstimateItem {
+  networkKey: string;
+  chainId: number;
+  gasPriceGwei: string;
+  estimatedGasUnits: number;
+  nativeGasFee: string;
+  nativeGasSymbol: string;
+  estimatedUsdtFee: string;
+  lastUpdated: string;
+}
+
+export interface CrossChainQuoteData {
+  quoteId: string;
+  sourceNetworkKey: string;
+  destNetworkKey: string;
+  amountUsdt: string;
+  bridgeFeeUsdt: string;
+  adminServiceFeeUsdt: string;
+  totalFeeUsdt: string;
+  netDestinationAmountUsdt: string;
+  estimatedDurationSeconds: number;
+  provider: string;
+}
+
+export const DEFAULT_MAINNET_NETWORKS: SupportedNetwork[] = [
   {
     networkKey: 'optimism',
-    name: 'Optimism Sepolia',
-    chainId: 11155420,
-    nativeGasToken: { symbol: 'ETH', name: 'Optimism Sepolia Ether', decimals: 18 },
-    usdtContractAddress: '0x5FD84259d66Cd46123540766Be93DFE6D43130D7',
+    name: 'Optimism Mainnet',
+    chainId: 10,
+    env: 'mainnet',
+    nativeGasToken: { symbol: 'ETH', name: 'Optimism Ether', decimals: 18 },
+    usdtContractAddress: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58',
     usdtDecimals: 6,
-    requiredConfirmations: 2,
+    requiredConfirmations: 15,
     minDepositUsdt: '1.00',
-    minWithdrawalUsdt: '5.00',
-    withdrawalFeeUsdt: '0.50',
+    minWithdrawalUsdt: '2.00',
+    withdrawalFeeUsdt: '0.25',
     isDepositEnabled: true,
     isWithdrawalEnabled: true,
-    explorerUrl: 'https://sepolia-optimism.etherscan.io',
+    explorerUrl: 'https://optimistic.etherscan.io',
   },
   {
     networkKey: 'ethereum',
-    name: 'Ethereum Sepolia',
-    chainId: 11155111,
-    nativeGasToken: { symbol: 'ETH', name: 'Sepolia Ether', decimals: 18 },
-    usdtContractAddress: '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06',
+    name: 'Ethereum Mainnet',
+    chainId: 1,
+    env: 'mainnet',
+    nativeGasToken: { symbol: 'ETH', name: 'Ether', decimals: 18 },
+    usdtContractAddress: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
     usdtDecimals: 6,
-    requiredConfirmations: 2,
-    minDepositUsdt: '1.00',
-    minWithdrawalUsdt: '5.00',
-    withdrawalFeeUsdt: '1.00',
+    requiredConfirmations: 12,
+    minDepositUsdt: '5.00',
+    minWithdrawalUsdt: '10.00',
+    withdrawalFeeUsdt: '3.50',
     isDepositEnabled: true,
     isWithdrawalEnabled: true,
-    explorerUrl: 'https://sepolia.etherscan.io',
+    explorerUrl: 'https://etherscan.io',
   },
   {
     networkKey: 'arbitrum',
-    name: 'Arbitrum Sepolia',
-    chainId: 421614,
-    nativeGasToken: { symbol: 'ETH', name: 'Arbitrum Sepolia Ether', decimals: 18 },
-    usdtContractAddress: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',
+    name: 'Arbitrum One',
+    chainId: 42161,
+    env: 'mainnet',
+    nativeGasToken: { symbol: 'ETH', name: 'Arbitrum Ether', decimals: 18 },
+    usdtContractAddress: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',
     usdtDecimals: 6,
-    requiredConfirmations: 2,
+    requiredConfirmations: 20,
     minDepositUsdt: '1.00',
-    minWithdrawalUsdt: '5.00',
-    withdrawalFeeUsdt: '0.50',
+    minWithdrawalUsdt: '2.00',
+    withdrawalFeeUsdt: '0.30',
     isDepositEnabled: true,
     isWithdrawalEnabled: true,
-    explorerUrl: 'https://sepolia.arbiscan.io',
+    explorerUrl: 'https://arbiscan.io',
   },
   {
     networkKey: 'bsc',
-    name: 'BNB Smart Chain Testnet',
-    chainId: 97,
-    nativeGasToken: { symbol: 'tBNB', name: 'Testnet BNB', decimals: 18 },
-    usdtContractAddress: '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd',
+    name: 'BNB Smart Chain',
+    chainId: 56,
+    env: 'mainnet',
+    nativeGasToken: { symbol: 'BNB', name: 'BNB Token', decimals: 18 },
+    usdtContractAddress: '0x55d398326f99059fF775485246999027B3197955',
     usdtDecimals: 18,
-    requiredConfirmations: 3,
+    requiredConfirmations: 15,
     minDepositUsdt: '1.00',
-    minWithdrawalUsdt: '5.00',
-    withdrawalFeeUsdt: '0.50',
+    minWithdrawalUsdt: '2.00',
+    withdrawalFeeUsdt: '0.30',
     isDepositEnabled: true,
     isWithdrawalEnabled: true,
-    explorerUrl: 'https://testnet.bscscan.com',
+    explorerUrl: 'https://bscscan.com',
   },
   {
     networkKey: 'polygon',
-    name: 'Polygon Amoy Testnet',
-    chainId: 80002,
-    nativeGasToken: { symbol: 'POL', name: 'Polygon Testnet Token', decimals: 18 },
-    usdtContractAddress: '0x1Fd430BC26E5FE9152b1ebB8f86f3f090c29Fa4a',
+    name: 'Polygon PoS',
+    chainId: 137,
+    env: 'mainnet',
+    nativeGasToken: { symbol: 'POL', name: 'Polygon Ecosystem Token', decimals: 18 },
+    usdtContractAddress: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
     usdtDecimals: 6,
-    requiredConfirmations: 3,
+    requiredConfirmations: 30,
     minDepositUsdt: '1.00',
-    minWithdrawalUsdt: '5.00',
-    withdrawalFeeUsdt: '0.50',
+    minWithdrawalUsdt: '2.00',
+    withdrawalFeeUsdt: '0.25',
     isDepositEnabled: true,
     isWithdrawalEnabled: true,
-    explorerUrl: 'https://amoy.polygonscan.com',
+    explorerUrl: 'https://polygonscan.com',
   },
   {
     networkKey: 'base',
-    name: 'Base Sepolia',
-    chainId: 84532,
-    nativeGasToken: { symbol: 'ETH', name: 'Base Sepolia Ether', decimals: 18 },
-    usdtContractAddress: '0xEEE24A06f47738f657a7E38B31c4f4a34b22c60f',
+    name: 'Base Mainnet',
+    chainId: 8453,
+    env: 'mainnet',
+    nativeGasToken: { symbol: 'ETH', name: 'Base Ether', decimals: 18 },
+    usdtContractAddress: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2',
     usdtDecimals: 6,
-    requiredConfirmations: 2,
+    requiredConfirmations: 15,
     minDepositUsdt: '1.00',
-    minWithdrawalUsdt: '5.00',
-    withdrawalFeeUsdt: '0.50',
+    minWithdrawalUsdt: '2.00',
+    withdrawalFeeUsdt: '0.25',
     isDepositEnabled: true,
     isWithdrawalEnabled: true,
-    explorerUrl: 'https://sepolia.basescan.org',
+    explorerUrl: 'https://basescan.org',
   },
   {
     networkKey: 'avalanche',
-    name: 'Avalanche Fuji',
-    chainId: 43113,
-    nativeGasToken: { symbol: 'AVAX', name: 'Avalanche Testnet AVAX', decimals: 18 },
-    usdtContractAddress: '0x5425890298aed601595a70ab815c96711a31bc65',
+    name: 'Avalanche C-Chain',
+    chainId: 43114,
+    env: 'mainnet',
+    nativeGasToken: { symbol: 'AVAX', name: 'Avalanche Token', decimals: 18 },
+    usdtContractAddress: '0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7',
     usdtDecimals: 6,
-    requiredConfirmations: 2,
+    requiredConfirmations: 12,
     minDepositUsdt: '1.00',
-    minWithdrawalUsdt: '5.00',
-    withdrawalFeeUsdt: '0.50',
+    minWithdrawalUsdt: '2.00',
+    withdrawalFeeUsdt: '0.30',
     isDepositEnabled: true,
     isWithdrawalEnabled: true,
-    explorerUrl: 'https://testnet.snowtrace.io',
+    explorerUrl: 'https://snowtrace.io',
   },
 ];
+
+export const DEFAULT_SUPPORTED_NETWORKS = DEFAULT_MAINNET_NETWORKS;
 
 const API_BASE = '';
 
 export class UnifiedWalletService {
-  private static cachedNetworks: SupportedNetwork[] = DEFAULT_SUPPORTED_NETWORKS;
+  private static cachedNetworks: SupportedNetwork[] = DEFAULT_MAINNET_NETWORKS;
+  private static activeEnv: 'mainnet' | 'testnet' = 'mainnet';
   private static depositAddressCache: Map<string, DepositInfo> = new Map();
   private static cachedWalletData: Map<string, UserWalletData> = new Map();
 
   public static getCachedNetworks(): SupportedNetwork[] {
     return this.cachedNetworks;
+  }
+
+  public static getActiveEnv(): 'mainnet' | 'testnet' {
+    return this.activeEnv;
   }
 
   public static getCachedDepositAddress(userId: string, networkKey: string): DepositInfo | null {
@@ -235,6 +276,9 @@ export class UnifiedWalletService {
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Failed to fetch wallet');
+      if (data.env) {
+        this.activeEnv = data.env;
+      }
       this.cachedWalletData.set(userId, data.wallet);
       return data.wallet;
     } catch (err) {
@@ -251,6 +295,9 @@ export class UnifiedWalletService {
       const data = await res.json();
       if (data.success && Array.isArray(data.networks) && data.networks.length > 0) {
         this.cachedNetworks = data.networks;
+        if (data.env) {
+          this.activeEnv = data.env;
+        }
         return data.networks;
       }
     } catch (err) {
@@ -259,10 +306,31 @@ export class UnifiedWalletService {
     return this.cachedNetworks;
   }
 
+  public static async fetchGasEstimates(): Promise<GasEstimateItem[]> {
+    try {
+      const res = await fetch(`${API_BASE}/api/wallet/gas-estimate`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.estimates)) {
+        return data.estimates;
+      }
+    } catch (err) {
+      console.warn('Failed to fetch live gas estimates:', err);
+    }
+    return [];
+  }
+
+  public static async fetchCrossChainQuote(source: string, dest: string, amount: string): Promise<CrossChainQuoteData> {
+    const res = await fetch(
+      `${API_BASE}/api/wallet/cross-chain-quote?source=${encodeURIComponent(source)}&dest=${encodeURIComponent(dest)}&amount=${encodeURIComponent(amount)}`
+    );
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Failed to fetch cross chain quote');
+    return data.quote;
+  }
+
   public static async fetchDepositAddress(userId: string, networkKey: string): Promise<DepositInfo> {
     const cacheKey = `${userId}_${networkKey}`;
     if (this.depositAddressCache.has(cacheKey)) {
-      // Return cached instantly and refresh in background
       const cached = this.depositAddressCache.get(cacheKey)!;
       this.fetchDepositAddressRemote(userId, networkKey).catch(() => {});
       return cached;
@@ -280,7 +348,10 @@ export class UnifiedWalletService {
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Failed to fetch deposit address');
     
-    // Cache for all EVM networks if address is shared
+    if (data.env) {
+      this.activeEnv = data.env;
+    }
+
     const info: DepositInfo = data.depositInfo;
     this.depositAddressCache.set(cacheKey, info);
 
@@ -357,5 +428,24 @@ export class UnifiedWalletService {
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Failed to fetch withdrawals');
     return data.withdrawals || [];
+  }
+
+  /**
+   * Admin API: 1-Click Mode Switcher
+   */
+  public static async setAdminWalletMode(token: string, env: 'mainnet' | 'testnet'): Promise<any> {
+    const res = await fetch(`${API_BASE}/api/admin/wallet/mode`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ env }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Failed to switch wallet mode');
+    this.activeEnv = env;
+    this.depositAddressCache.clear();
+    return data;
   }
 }

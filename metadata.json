@@ -1,6 +1,6 @@
 {
   "name": "Ludo World Master",
-  "description": "A production Ludo gaming platform featuring real-time multiplayer, double-entry financial ledger, BullMQ background workers, Neon PostgreSQL, Upstash Redis, and a production-grade multi-chain custodial USDT wallet subsystem across 7 EVM networks (Ethereum Sepolia, Arbitrum Sepolia, BSC Testnet, Polygon Amoy, Base Sepolia, OP Sepolia, Avalanche Fuji).",
+  "description": "A production-grade Ludo gaming platform with real-time multiplayer, double-entry financial ledger, BullMQ background workers, and an enterprise multi-chain custodial USDT wallet subsystem across 7 EVM networks (Ethereum, Arbitrum One, BNB Smart Chain, Polygon PoS, Base, Optimism, Avalanche C-Chain) with live gas estimation, dynamic admin platform fees, and 1-click Mainnet/Testnet toggle.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

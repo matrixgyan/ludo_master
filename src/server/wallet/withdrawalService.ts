@@ -13,11 +13,13 @@ export class WithdrawalService {
   private static memoryWithdrawals: Map<string, WithdrawalRecord> = new Map();
 
   /**
-   * Calculates fee and net receive amount for a withdrawal quote
+   * Calculates fee and net receive amount for a withdrawal quote with full admin and gas fee breakdown
    */
   public static calculateQuote(networkKey: string, amountUsdt: string): {
     networkKey: string;
     amount: string;
+    networkGasFee: string;
+    adminServiceFee: string;
     feeAmount: string;
     netAmount: string;
     minWithdrawal: string;
@@ -25,25 +27,38 @@ export class WithdrawalService {
   } {
     const config = NetworkRegistry.getNetwork(networkKey);
     const minWithdrawal = config.minWithdrawalUsdt;
-    const feeAmount = config.withdrawalFeeUsdt;
+    const networkGasFee = config.withdrawalFeeUsdt;
+
+    // Dynamic Admin Service Fee calculation
+    const adminConfig = NetworkRegistry.getAdminServiceFeeConfig();
+    const rawAdminFee = (parseFloat(amountUsdt) * (adminConfig.feePercent / 100)).toFixed(8);
+    const adminServiceFee = parseFloat(rawAdminFee) < parseFloat(adminConfig.minFeeUsdt)
+      ? adminConfig.minFeeUsdt
+      : rawAdminFee;
+
+    const totalFeeAmount = LedgerMath.add(networkGasFee, adminServiceFee);
 
     if (!LedgerMath.isGreaterThanOrEqual(amountUsdt, minWithdrawal)) {
       return {
         networkKey: config.networkKey,
         amount: amountUsdt,
-        feeAmount,
+        networkGasFee,
+        adminServiceFee,
+        feeAmount: totalFeeAmount,
         netAmount: '0.00000000',
         minWithdrawal,
         isExecutable: false,
       };
     }
 
-    const netAmount = LedgerMath.subtract(amountUsdt, feeAmount);
+    const netAmount = LedgerMath.subtract(amountUsdt, totalFeeAmount);
     return {
       networkKey: config.networkKey,
       amount: amountUsdt,
-      feeAmount,
-      netAmount,
+      networkGasFee,
+      adminServiceFee,
+      feeAmount: totalFeeAmount,
+      netAmount: LedgerMath.isGreaterThan(netAmount, '0') ? netAmount : '0.00000000',
       minWithdrawal,
       isExecutable: LedgerMath.isGreaterThan(netAmount, '0'),
     };

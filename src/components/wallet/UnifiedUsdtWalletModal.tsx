@@ -203,8 +203,12 @@ export const UnifiedUsdtWalletModal: React.FC<UnifiedUsdtWalletModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-white tracking-wide">Unified USDT Vault</h2>
-                <span className="px-2 py-0.5 text-[10px] font-semibold tracking-wider text-emerald-400 bg-emerald-950/80 border border-emerald-500/30 rounded-full">
-                  TESTNET MODE
+                <span className={`px-2 py-0.5 text-[10px] font-bold tracking-wider rounded-full border ${
+                  UnifiedWalletService.getActiveEnv() === 'mainnet'
+                    ? 'text-emerald-400 bg-emerald-950/80 border-emerald-500/40'
+                    : 'text-amber-400 bg-amber-950/80 border-amber-500/40'
+                }`}>
+                  {UnifiedWalletService.getActiveEnv() === 'mainnet' ? 'MAINNET LIVE' : 'TESTNET MODE'}
                 </span>
               </div>
               <p className="text-xs text-slate-400">7 EVM Networks • Unified Multi-Chain Liquidity</p>
@@ -551,8 +555,20 @@ export const UnifiedUsdtWalletModal: React.FC<UnifiedUsdtWalletModalProps> = ({
                     <span>Requested Amount:</span>
                     <span className="font-semibold text-slate-200">{withdrawQuote.amount} USDT</span>
                   </div>
+                  {withdrawQuote.networkGasFee && (
+                    <div className="flex justify-between text-slate-400">
+                      <span>Network Gas & Relayer Fee:</span>
+                      <span className="font-semibold text-amber-400">-{withdrawQuote.networkGasFee} USDT</span>
+                    </div>
+                  )}
+                  {withdrawQuote.adminServiceFee && (
+                    <div className="flex justify-between text-slate-400">
+                      <span>Platform Service Fee:</span>
+                      <span className="font-semibold text-teal-400">-{withdrawQuote.adminServiceFee} USDT</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-slate-400">
-                    <span>Network Relayer Fee:</span>
+                    <span>Total Fee Deducted:</span>
                     <span className="font-semibold text-slate-200">-{withdrawQuote.feeAmount} USDT</span>
                   </div>
                   <div className="pt-2 border-t border-slate-800 flex justify-between text-emerald-400 font-bold text-sm">

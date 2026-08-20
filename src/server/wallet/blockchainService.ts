@@ -1,4 +1,4 @@
-import { JsonRpcProvider, Contract, parseUnits, formatUnits, getAddress, isAddress } from 'ethers';
+import { JsonRpcProvider, Contract, parseUnits, formatUnits, getAddress, isAddress, formatEther } from 'ethers';
 import { NetworkRegistry } from './registry';
 import { ServerCustodyManager } from './custody';
 import { SupportedNetworkConfig } from './types';
@@ -10,18 +10,38 @@ const ERC20_ABI = [
   'function decimals() view returns (uint8)',
   'function symbol() view returns (string)',
   'function transfer(address to, uint256 amount) returns (bool)',
+  'function allowance(address owner, address spender) view returns (uint256)',
   'event Transfer(address indexed from, address indexed to, uint256 value)',
 ];
 
+export interface GasEstimateResult {
+  networkKey: string;
+  chainId: number;
+  gasPriceGwei: string;
+  estimatedGasUnits: number;
+  nativeGasFee: string;
+  nativeGasSymbol: string;
+  estimatedUsdtFee: string;
+  lastUpdated: string;
+}
+
 export class BlockchainService {
   private static providers: Map<string, JsonRpcProvider> = new Map();
+
+  /**
+   * Clears cached providers (e.g. when admin toggles Mainnet / Testnet mode)
+   */
+  public static clearProviders(): void {
+    this.providers.clear();
+  }
 
   /**
    * Returns a connected JsonRpcProvider for the specified network with static network configuration
    */
   public static getProvider(networkKeyOrChainId: string | number, rpcIndex = 0): JsonRpcProvider {
     const config = NetworkRegistry.getNetwork(networkKeyOrChainId);
-    const key = `${config.networkKey}_${rpcIndex}`;
+    const env = NetworkRegistry.getBlockchainEnv();
+    const key = `${env}_${config.networkKey}_${rpcIndex}`;
 
     if (!this.providers.has(key)) {
       const urls = config.rpcUrls;
@@ -52,7 +72,7 @@ export class BlockchainService {
         return await action(provider);
       } catch (err: any) {
         lastError = err;
-        // If it's a contract BAD_DATA / 0x error, do not retry other RPCs because it's a contract issue
+        // If it's a deterministic contract error, don't retry other RPCs
         if (
           err?.code === 'BAD_DATA' ||
           err?.message?.includes('could not decode result data') ||
@@ -63,6 +83,70 @@ export class BlockchainService {
       }
     }
     throw lastError;
+  }
+
+  /**
+   * Real-time Gas Estimation across all 7 EVM networks
+   */
+  public static async estimateGasFee(
+    networkKey: string,
+    actionType: 'erc20_transfer' | 'native_transfer' | 'deposit' | 'rebalance' = 'erc20_transfer'
+  ): Promise<GasEstimateResult> {
+    const config = NetworkRegistry.getNetwork(networkKey);
+    
+    // Standard EVM Gas limits for operations
+    const gasUnitsMap: Record<string, number> = {
+      erc20_transfer: 65000,
+      native_transfer: 21000,
+      deposit: 65000,
+      rebalance: 130000,
+    };
+    const estimatedGasUnits = gasUnitsMap[actionType] || 65000;
+
+    try {
+      return await this.executeWithFailover(networkKey, async (provider) => {
+        const feeData = await provider.getFeeData();
+        const gasPrice = feeData.gasPrice || feeData.maxFeePerGas || parseUnits('20', 'gwei');
+        const gasPriceGwei = (Number(gasPrice) / 1e9).toFixed(3);
+        
+        const totalNativeWei = BigInt(estimatedGasUnits) * gasPrice;
+        const nativeGasFee = formatEther(totalNativeWei);
+
+        // Native token approximate USDT price conversion (conservative production estimates)
+        const tokenPricesInUsdt: Record<string, number> = {
+          ETH: 3000,
+          BNB: 600,
+          POL: 0.50,
+          AVAX: 30,
+          tBNB: 600,
+        };
+        const unitPrice = tokenPricesInUsdt[config.nativeGasToken.symbol] || 1;
+        const estimatedUsdtFee = (parseFloat(nativeGasFee) * unitPrice).toFixed(4);
+
+        return {
+          networkKey: config.networkKey,
+          chainId: config.chainId,
+          gasPriceGwei,
+          estimatedGasUnits,
+          nativeGasFee,
+          nativeGasSymbol: config.nativeGasToken.symbol,
+          estimatedUsdtFee,
+          lastUpdated: new Date().toISOString(),
+        };
+      });
+    } catch (err: any) {
+      Logger.warn(`Gas fee estimation fallback on ${config.name}`, { error: err?.message });
+      return {
+        networkKey: config.networkKey,
+        chainId: config.chainId,
+        gasPriceGwei: '25.000',
+        estimatedGasUnits,
+        nativeGasFee: '0.0015',
+        nativeGasSymbol: config.nativeGasToken.symbol,
+        estimatedUsdtFee: config.withdrawalFeeUsdt,
+        lastUpdated: new Date().toISOString(),
+      };
+    }
   }
 
   /**
@@ -80,7 +164,7 @@ export class BlockchainService {
         return { rawBalance, formattedBalance };
       });
     } catch (err: any) {
-      // Gracefully handle un-deployed testnet token addresses or RPC disconnects
+      // Gracefully handle RPC disconnects
       return { rawBalance: 0n, formattedBalance: '0.00' };
     }
   }
@@ -167,7 +251,7 @@ export class BlockchainService {
     // Connect contract with signer
     const contract = new Contract(config.usdtContractAddress, ERC20_ABI, signer);
 
-    Logger.info(`Broadcasting real USDT withdrawal transaction on ${config.name}`, {
+    Logger.info(`Broadcasting real USDT withdrawal transaction on ${config.name} (${config.env.toUpperCase()})`, {
       destination: checksumDestination,
       amount: amountUsdt,
       contract: config.usdtContractAddress,

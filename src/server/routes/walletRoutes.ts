@@ -5,6 +5,7 @@ import { DepositService } from '../wallet/depositService';
 import { WithdrawalService } from '../wallet/withdrawalService';
 import { NetworkRegistry } from '../wallet/registry';
 import { BlockchainService } from '../wallet/blockchainService';
+import { CrossChainRebalancingService } from '../wallet/crossChainRebalancingService';
 import { Logger } from '../config/env';
 
 export const walletRouter = Router();
@@ -24,7 +25,7 @@ walletRouter.get('/api/wallet', async (req: Request, res: Response) => {
   try {
     const userId = resolveUserId(req);
     const wallet = await LedgerService.getUserWallet(userId);
-    res.json({ success: true, wallet });
+    res.json({ success: true, wallet, env: NetworkRegistry.getBlockchainEnv() });
   } catch (err: any) {
     Logger.error('API Error in GET /api/wallet', err);
     res.status(500).json({ success: false, error: err.message || 'Internal Server Error' });
@@ -33,18 +34,21 @@ walletRouter.get('/api/wallet', async (req: Request, res: Response) => {
 
 /**
  * GET /api/wallet/networks
- * Returns list of 7 supported EVM networks
+ * Returns list of 7 supported EVM networks (filtered by active Mainnet or Testnet mode)
  */
 walletRouter.get('/api/wallet/networks', async (req: Request, res: Response) => {
   try {
     const networks = NetworkRegistry.getAllSupportedNetworks();
+    const adminConfig = NetworkRegistry.getAdminServiceFeeConfig();
     res.json({
       success: true,
       env: NetworkRegistry.getBlockchainEnv(),
+      adminServiceFee: adminConfig,
       networks: networks.map((net) => ({
         networkKey: net.networkKey,
         name: net.name,
         chainId: net.chainId,
+        env: net.env,
         nativeGasToken: net.nativeGasToken,
         usdtContractAddress: net.usdtContractAddress,
         usdtDecimals: net.usdtDecimals,
@@ -63,15 +67,56 @@ walletRouter.get('/api/wallet/networks', async (req: Request, res: Response) => 
 });
 
 /**
+ * GET /api/wallet/gas-estimate
+ * Returns real-time gas fee estimates for network(s)
+ */
+walletRouter.get('/api/wallet/gas-estimate', async (req: Request, res: Response) => {
+  try {
+    const networkKey = req.query.networkKey as string;
+    const actionType = (req.query.actionType as any) || 'erc20_transfer';
+
+    if (networkKey) {
+      const estimate = await BlockchainService.estimateGasFee(networkKey, actionType);
+      res.json({ success: true, estimate });
+    } else {
+      const networks = NetworkRegistry.getAllSupportedNetworks();
+      const estimates = await Promise.all(
+        networks.map((n) => BlockchainService.estimateGasFee(n.networkKey, actionType))
+      );
+      res.json({ success: true, estimates });
+    }
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/wallet/cross-chain-quote
+ * Returns dynamic cross-chain bridge & relayer fee estimate
+ */
+walletRouter.get('/api/wallet/cross-chain-quote', async (req: Request, res: Response) => {
+  try {
+    const source = (req.query.source as string) || 'optimism';
+    const dest = (req.query.dest as string) || 'ethereum';
+    const amount = (req.query.amount as string) || '10.00';
+
+    const quote = await CrossChainRebalancingService.getRebalanceQuote(source, dest, amount);
+    res.json({ success: true, quote });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+/**
  * GET /api/wallet/deposit/address
  * Returns the custodial deposit address for the user on the chosen network
  */
 walletRouter.get('/api/wallet/deposit/address', async (req: Request, res: Response) => {
   try {
     const userId = resolveUserId(req);
-    const networkKey = (req.query.networkKey as string) || 'ethereum';
+    const networkKey = (req.query.networkKey as string) || 'optimism';
     const depositInfo = await DepositService.getUserDepositAddress(userId, networkKey);
-    res.json({ success: true, depositInfo });
+    res.json({ success: true, depositInfo, env: NetworkRegistry.getBlockchainEnv() });
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });
   }

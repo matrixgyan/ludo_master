@@ -10,7 +10,10 @@ export interface CrossChainQuote {
   sourceNetworkKey: string;
   destNetworkKey: string;
   amountUsdt: string;
-  estimatedFeeUsdt: string;
+  bridgeFeeUsdt: string;
+  adminServiceFeeUsdt: string;
+  totalFeeUsdt: string;
+  netDestinationAmountUsdt: string;
   estimatedDurationSeconds: number;
   provider: string;
 }
@@ -33,7 +36,7 @@ export class CrossChainRebalancingService {
   private static activeRebalances: Map<string, RebalanceExecutionRecord> = new Map();
 
   /**
-   * Generates an automated cross-chain rebalance quote using provider routing
+   * Generates an automated cross-chain rebalance quote with dynamic fees & admin platform fee
    */
   public static async getRebalanceQuote(
     sourceNetworkKey: string,
@@ -47,7 +50,25 @@ export class CrossChainRebalancingService {
       throw new Error('Source and destination networks must be different for cross-chain rebalance');
     }
 
-    const estimatedFeeUsdt = '0.50000000'; // Standard testnet bridge relayer fee estimate
+    // Dynamic bridge fee estimation based on environment and chains (L1 vs L2)
+    const env = NetworkRegistry.getBlockchainEnv();
+    let bridgeFee = '0.30000000';
+    if (src.networkKey === 'ethereum' || dst.networkKey === 'ethereum') {
+      bridgeFee = env === 'mainnet' ? '2.50000000' : '0.50000000';
+    } else {
+      bridgeFee = env === 'mainnet' ? '0.35000000' : '0.20000000';
+    }
+
+    // Admin platform service fee calculation
+    const adminConfig = NetworkRegistry.getAdminServiceFeeConfig();
+    const rawAdminFee = (parseFloat(amountUsdt) * (adminConfig.feePercent / 100)).toFixed(8);
+    const adminServiceFee = parseFloat(rawAdminFee) < parseFloat(adminConfig.minFeeUsdt) 
+      ? adminConfig.minFeeUsdt 
+      : rawAdminFee;
+
+    const totalFee = LedgerMath.add(bridgeFee, adminServiceFee);
+    const netDestinationAmount = LedgerMath.subtract(amountUsdt, totalFee);
+
     const quoteId = `quote_${uuidv4()}`;
 
     return {
@@ -55,9 +76,12 @@ export class CrossChainRebalancingService {
       sourceNetworkKey: src.networkKey,
       destNetworkKey: dst.networkKey,
       amountUsdt,
-      estimatedFeeUsdt,
-      estimatedDurationSeconds: 120,
-      provider: 'Socket/Li.Fi Cross-Chain Relayer',
+      bridgeFeeUsdt: bridgeFee,
+      adminServiceFeeUsdt: adminServiceFee,
+      totalFeeUsdt: totalFee,
+      netDestinationAmountUsdt: LedgerMath.isGreaterThan(netDestinationAmount, '0') ? netDestinationAmount : '0.00000000',
+      estimatedDurationSeconds: src.networkKey === 'ethereum' ? 180 : 60,
+      provider: env === 'mainnet' ? 'Socket / Across Protocol Relayer' : 'Socket / Li.Fi Testnet Relayer',
     };
   }
 
@@ -78,7 +102,7 @@ export class CrossChainRebalancingService {
       sourceNetworkKey: quote.sourceNetworkKey,
       destNetworkKey: quote.destNetworkKey,
       amountUsdt: quote.amountUsdt,
-      feeUsdt: quote.estimatedFeeUsdt,
+      feeUsdt: quote.totalFeeUsdt,
       status: 'APPROVED',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -88,6 +112,7 @@ export class CrossChainRebalancingService {
     Logger.info(`Initiated cross-chain rebalance from ${sourceNetworkKey} to ${destNetworkKey}`, {
       id,
       amount: amountUsdt,
+      fee: quote.totalFeeUsdt,
     });
 
     // Advance state machine
