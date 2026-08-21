@@ -620,7 +620,7 @@ export const UnifiedUsdtWalletModal: React.FC<UnifiedUsdtWalletModalProps> = ({
                   {/* Deposits */}
                   {deposits.map((dep) => (
                     <div
-                      key={dep.id}
+                      key={`dep-${dep.id}`}
                       className="p-3.5 bg-slate-950/60 border border-slate-800 rounded-xl flex items-center justify-between gap-3"
                     >
                       <div className="flex items-center gap-3">
@@ -662,7 +662,7 @@ export const UnifiedUsdtWalletModal: React.FC<UnifiedUsdtWalletModalProps> = ({
                   {/* Withdrawals */}
                   {withdrawals.map((w) => (
                     <div
-                      key={w.id}
+                      key={`wd-${w.id}`}
                       className="p-3.5 bg-slate-950/60 border border-slate-800 rounded-xl flex items-center justify-between gap-3"
                     >
                       <div className="flex items-center gap-3">

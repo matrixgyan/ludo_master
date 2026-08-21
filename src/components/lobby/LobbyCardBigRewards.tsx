@@ -113,7 +113,7 @@ export const LobbyCardBigRewards: React.FC<LobbyCardBigRewardsProps> = ({
           <div className="flex-1 w-full flex flex-col items-center justify-around py-1 opacity-90">
             {Array.from({ length: 12 }).map((_, i) => (
               <div
-                key={i}
+                key={`perforate-tooth-${i}`}
                 className="w-1.5 h-1.5 rotate-45 bg-slate-200 shadow-[0_0_1px_rgba(0,0,0,0.2)] my-0.5"
               />
             ))}

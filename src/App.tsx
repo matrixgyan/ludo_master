@@ -878,7 +878,7 @@ export default function App() {
   // Chat
   const handleSendChat = (text: string, isEmoji = false) => {
     const newMessage: ChatMessage = {
-      id: `chat-${Date.now()}`,
+      id: `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       senderName: gameState.players.blue.name,
       senderColor: 'blue',
       text,
@@ -1131,13 +1131,15 @@ export default function App() {
         {/* Optional 15x15 Coordinate Overlay for Debugging */}
         {isDebugGridVisible && (
           <div className="absolute inset-0 z-40 bg-black/80 p-2 text-[8px] font-mono text-cyan-300 grid grid-cols-15 grid-rows-15 pointer-events-none">
-            {Array.from({ length: 15 }).map((_, r) =>
-              Array.from({ length: 15 }).map((_, c) => (
-                <div key={`${c}-${r}`} className="border border-cyan-500/30 flex items-center justify-center">
+            {Array.from({ length: 225 }).map((_, i) => {
+              const c = i % 15;
+              const r = Math.floor(i / 15);
+              return (
+                <div key={`debug-cell-${c}-${r}`} className="border border-cyan-500/30 flex items-center justify-center">
                   {c},{r}
                 </div>
-              ))
-            )}
+              );
+            })}
           </div>
         )}
       </div>

@@ -838,11 +838,11 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
                   <p className="text-[11px] text-slate-500">Deposit or withdraw USDT to view live tracking.</p>
                 </div>
               ) : (
-                filteredActivities.map((item) => {
+                filteredActivities.map((item, idx) => {
                   const isDep = item.type === 'DEPOSIT';
                   return (
                     <div
-                      key={item.id}
+                      key={`act-${item.type}-${item.id || idx}`}
                       className="w-full bg-[#120426]/95 border border-amber-400/40 rounded-2xl p-3.5 shadow-md shadow-black/50 flex items-center justify-between gap-3"
                     >
                       <div className="flex items-center gap-3">

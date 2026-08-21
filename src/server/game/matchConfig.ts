@@ -7,6 +7,7 @@ export const SUPPORTED_PLAYER_COUNTS = [2, 3, 4] as const;
 export type PlayerCount = (typeof SUPPORTED_PLAYER_COUNTS)[number];
 
 export const SUPPORTED_ENTRY_FEES = [
+  '0.00000000',
   '1.00000000',
   '5.00000000',
   '10.00000000',
@@ -17,7 +18,7 @@ export const SUPPORTED_ENTRY_FEES = [
 ] as const;
 export type EntryFee = (typeof SUPPORTED_ENTRY_FEES)[number];
 
-export const ENTRY_FEE_NUMBERS = [1, 5, 10, 20, 25, 50, 100] as const;
+export const ENTRY_FEE_NUMBERS = [0, 1, 5, 10, 20, 25, 50, 100] as const;
 
 export interface GameModeConfig {
   gameMode: GameMode;

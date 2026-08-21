@@ -181,7 +181,7 @@ export const SupremeLeagueModal: React.FC<SupremeLeagueModalProps> = ({
                 </div>
                 {prizeDistribution.map((item, idx) => (
                   <div
-                    key={idx}
+                    key={`prize-rank-${item.rank}-${idx}`}
                     className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
                       item.highlight
                         ? 'bg-gradient-to-r from-amber-500/20 via-yellow-500/10 to-amber-500/20 border-amber-400/50 shadow-[0_4px_16px_rgba(245,158,11,0.15)]'
@@ -221,9 +221,9 @@ export const SupremeLeagueModal: React.FC<SupremeLeagueModalProps> = ({
                   <span>PLAYER</span>
                   <span>POINTS / PRIZE</span>
                 </div>
-                {sampleLeaderboard.map((player) => (
+                {sampleLeaderboard.map((player, idx) => (
                   <div
-                    key={player.rank}
+                    key={`sl-player-${player.rank}-${player.name}-${idx}`}
                     className="flex items-center justify-between p-2.5 rounded-2xl bg-white/5 border border-white/10"
                   >
                     <div className="flex items-center gap-2.5">

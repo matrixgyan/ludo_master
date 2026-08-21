@@ -126,7 +126,7 @@ export const LeaderboardsTab: React.FC<LeaderboardsTabProps> = ({ token }) => {
                 </tr>
               ) : (
                 leaderboard.map((item, idx) => (
-                  <tr key={item.userId || idx} className="hover:bg-[#141b2d]/60 transition-colors">
+                  <tr key={`lb-row-${item.userId || 'u'}-${idx}`} className="hover:bg-[#141b2d]/60 transition-colors">
                     <td className="py-3 px-4 font-mono font-bold">
                       <div className="flex items-center gap-2">
                         {idx === 0 ? (

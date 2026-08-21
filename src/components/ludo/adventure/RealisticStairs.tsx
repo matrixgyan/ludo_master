@@ -170,7 +170,7 @@ const LadderItem: React.FC<{ ladder: LadderConfig; isHighlighted: boolean }> = (
 
       {/* Rungs (Steps) */}
       {rungs.map((rung, idx) => (
-        <g key={idx}>
+        <g key={`ladder-rung-${ladder.id}-${idx}`}>
           {/* Step Drop Shadow */}
           <line
             x1={rung.rx1}

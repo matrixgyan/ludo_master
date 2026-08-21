@@ -143,18 +143,22 @@ export class RoomJoinService {
                 };
               }
 
-              // C. Check user wallet balance from double-entry ledger
-              const userWallet = await LedgerService.getUserWallet(req.userId);
-              if (LedgerMath.isLessThan(userWallet.availableBalance, feeStr)) {
-                throw new Error(
-                  `Insufficient USDT balance. Required: ${feeStr} USDT, Available: ${userWallet.availableBalance} USDT`
-                );
-              }
+              // C. Check user wallet balance & lock entry fee (for paid matches)
+              if (feeNumber > 0) {
+                const userWallet = await LedgerService.getUserWallet(req.userId);
+                if (LedgerMath.isLessThan(userWallet.availableBalance, feeStr)) {
+                  throw new Error(
+                    `Insufficient USDT balance. Required: ${feeStr} USDT, Available: ${userWallet.availableBalance} USDT`
+                  );
+                }
 
-              // D. Execute Double-Entry Entry Fee Lock
-              const reserveIdemp = `reserve_${targetRoomId}_${req.userId}`;
-              const lockResult = await LedgerService.lockFundsForWithdrawal(req.userId, feeStr, reserveIdemp);
-              reservationTxId = lockResult.transactionId;
+                // D. Execute Double-Entry Entry Fee Lock
+                const reserveIdemp = `reserve_${targetRoomId}_${req.userId}`;
+                const lockResult = await LedgerService.lockFundsForWithdrawal(req.userId, feeStr, reserveIdemp);
+                reservationTxId = lockResult.transactionId;
+              } else {
+                reservationTxId = `free_res_${uuidv4().slice(0, 8)}`;
+              }
 
               // E. Assign Color and Seat Index
               const existingPlayersRes = await client.query(
@@ -256,7 +260,7 @@ export class RoomJoinService {
             } catch (err) {
               await client.query('ROLLBACK');
               // Safety refund if reservation occurred before crash
-              if (reservationTxId) {
+              if (reservationTxId && feeNumber > 0) {
                 await LedgerService.refundWithdrawal(
                   req.userId,
                   feeStr,
@@ -336,13 +340,15 @@ export class RoomJoinService {
             );
 
             // 3. Refund wallet reservation
-            const refundIdemp = `leave_refund_${matchId}_${userId}`;
-            await LedgerService.refundWithdrawal(
-              userId,
-              playerRow.entry_fee,
-              refundIdemp,
-              `Player left lobby match ${matchId}`
-            );
+            if (parseFloat(playerRow.entry_fee || '0') > 0) {
+              const refundIdemp = `leave_refund_${matchId}_${userId}`;
+              await LedgerService.refundWithdrawal(
+                userId,
+                playerRow.entry_fee,
+                refundIdemp,
+                `Player left lobby match ${matchId}`
+              );
+            }
 
             await client.query('COMMIT');
             Logger.info(`User ${userId} left match ${matchId} and entry fee ${playerRow.entry_fee} was refunded.`);

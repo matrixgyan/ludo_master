@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
 import { PlayerModeOption, GameVariation, PlayerConfig } from './LudoModeSelectorModal';
+import { ArenaRulesInfoModal } from './ArenaRulesInfoModal';
 import arabAvatarImg from '../../assets/images/arab_avatar_man_1787143002600.jpg';
 import woodBgImg from '../../assets/images/wood_plank_bg_1787143024792.jpg';
 
@@ -256,22 +257,25 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
   const currentPoolTiers = POOLS_BY_PLAYER_COUNT[selectedPlayerCount] || POOLS_BY_PLAYER_COUNT[2];
 
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 select-none overflow-y-auto">
-        {/* Backdrop Overlay */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={onClose}
-          className="fixed inset-0 bg-black/85 backdrop-blur-sm"
-        />
+    <>
+      <AnimatePresence>
+        <div key="match-arena-list-view-root" className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 select-none overflow-y-auto">
+          {/* Backdrop Overlay */}
+          <motion.div
+            key="match-arena-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-black/85 backdrop-blur-sm"
+          />
 
-        {/* 1. WOODEN PLANK BACKGROUND CONTAINER */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.94, y: 15 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.94, y: 15 }}
+          {/* 1. WOODEN PLANK BACKGROUND CONTAINER */}
+          <motion.div
+            key="match-arena-modal-card"
+            initial={{ opacity: 0, scale: 0.94, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.94, y: 15 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
           className="relative z-10 w-full max-w-sm sm:max-w-md rounded-3xl overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.95)] border-4 border-[#5c2411]/90 my-auto"
           style={{
@@ -397,34 +401,36 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
                   </h1>
                 </div>
 
-                {/* 4. SELECT VARIATION SECTION (Exact 3D Glossy Buttons from Screenshot) */}
-                <div className="mb-3.5">
-                  <h3 className="text-xs sm:text-sm font-black text-[#5c2411] uppercase tracking-wider text-center mb-1.5 drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)]">
-                    SELECT VARIATION
-                  </h3>
+                {/* 4. ARENA TOURNAMENT FORMAT BANNER */}
+                <div className="mb-3">
+                  <div className="bg-gradient-to-r from-[#2e1307]/95 via-[#421b0b]/95 to-[#2e1307]/95 rounded-2xl p-2 sm:p-2.5 border border-[#dfb35e]/60 shadow-[0_3px_8px_rgba(0,0,0,0.35),inset_0_1px_2px_rgba(255,255,255,0.12)] flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-[#ffd166] via-[#f59e0b] to-[#b45309] border border-amber-300 shadow-[0_2px_4px_rgba(0,0,0,0.3),inset_0_1px_2px_rgba(255,255,255,0.6)] flex items-center justify-center text-slate-950 shrink-0">
+                        {activeGameType === 'classic' ? (
+                          <Trophy className="w-4 h-4 fill-slate-950 text-slate-950" />
+                        ) : (
+                          <Zap className="w-4 h-4 fill-slate-950 text-slate-950" />
+                        )}
+                      </div>
+                      <div className="text-left">
+                        <div className="text-xs font-black text-amber-300 uppercase tracking-wider leading-none flex items-center gap-1.5">
+                          <span>{activeGameType === 'classic' ? 'Full Classic Match' : '3-Min Speed Battle'}</span>
+                          <span className="bg-emerald-600/90 text-white text-[8.5px] px-1.5 py-0.5 rounded font-mono font-black shadow-sm">
+                            {activeGameType === 'classic' ? '4 PAWNS HOME' : '3 MIN RACE'}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-amber-100/85 font-semibold leading-tight mt-0.5">
+                          {activeGameType === 'classic'
+                            ? 'First to clear 4 pawns wins • Safe Stars • 90% Net Payout'
+                            : 'Highest score in 3 min wins • Points Race • 90% Net Payout'}
+                        </div>
+                      </div>
+                    </div>
 
-                  <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-                    {(['Classic', 'Master', 'Quick'] as GameVariation[]).map((v) => {
-                      const isSelected = variation === v;
-                      return (
-                        <button
-                          key={v}
-                          onClick={() => {
-                            SoundManager.play('click');
-                            setVariation(v);
-                          }}
-                          className={`relative py-1.5 sm:py-2 px-1 rounded-2xl font-black text-xs sm:text-sm tracking-wide transition-all cursor-pointer shadow-md ${
-                            isSelected
-                              ? 'bg-gradient-to-b from-[#38bdf8] via-[#0284c7] to-[#0369a1] text-white border-2 border-[#bae6fd] shadow-[0_4px_10px_rgba(2,132,199,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] scale-105'
-                              : 'bg-gradient-to-b from-[#8da0bd] via-[#7487a5] to-[#5a6d89] text-white border-2 border-[#b8c7dc] hover:brightness-105 shadow-[0_2px_5px_rgba(0,0,0,0.3),inset_0_1px_2px_rgba(255,255,255,0.5)]'
-                          }`}
-                        >
-                          {/* Beveled Top Specular Highlight */}
-                          <div className="absolute inset-x-2 top-0.5 h-[2px] bg-white/40 rounded-full" />
-                          <span>{v}</span>
-                        </button>
-                      );
-                    })}
+                    <div className="shrink-0 flex items-center gap-1 bg-amber-950/80 border border-amber-500/40 px-2 py-1 rounded-lg text-[9px] font-black text-amber-300 shadow-inner">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="hidden sm:inline">PROVABLY</span> FAIR
+                    </div>
                   </div>
                 </div>
 
@@ -556,52 +562,14 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
           </div>
         </motion.div>
       </div>
+      </AnimatePresence>
 
-      {/* RULES INFO POPUP MODAL */}
-      {showInfoModal && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-sm bg-[#241006] rounded-2xl p-4 border-2 border-amber-400 shadow-2xl text-amber-100 space-y-3"
-          >
-            <div className="flex items-center justify-between border-b border-amber-500/30 pb-2">
-              <h3 className="font-black text-sm text-amber-300 uppercase tracking-wide flex items-center gap-1.5">
-                <Info className="w-4 h-4" />
-                Game Variation Guide
-              </h3>
-              <button
-                onClick={() => setShowInfoModal(false)}
-                className="text-amber-300 hover:text-white font-bold text-xs"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="space-y-2 text-xs text-amber-100/90">
-              <div className="bg-black/40 p-2 rounded-xl border border-amber-500/20">
-                <span className="font-black text-amber-300 block">Classic Variation:</span>
-                Move all 4 tokens from the yard to home base. Standard rolling on 6.
-              </div>
-              <div className="bg-black/40 p-2 rounded-xl border border-amber-500/20">
-                <span className="font-black text-amber-300 block">Master Variation:</span>
-                Strategic locks and captures. Higher score on piece captures!
-              </div>
-              <div className="bg-black/40 p-2 rounded-xl border border-amber-500/20">
-                <span className="font-black text-amber-300 block">Quick Variation:</span>
-                Fast-paced rush: 1 token to home or highest timer steps to win!
-              </div>
-            </div>
-
-            <button
-              onClick={() => setShowInfoModal(false)}
-              className="w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-black text-xs uppercase tracking-wider shadow cursor-pointer"
-            >
-              Got It
-            </button>
-          </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
+      {/* RICH ARENA RULES & PAYOUT INFO MODAL */}
+      <ArenaRulesInfoModal
+        isOpen={showInfoModal}
+        onClose={() => setShowInfoModal(false)}
+        gameType={activeGameType}
+      />
+    </>
   );
 };

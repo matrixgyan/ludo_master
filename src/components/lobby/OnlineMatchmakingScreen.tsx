@@ -128,7 +128,7 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
       const custom = customOpponents?.[idx];
       const fallback = shuffledPool[idx % shuffledPool.length];
       return {
-        id: custom ? `p_custom_${idx}` : fallback.id,
+        id: custom ? `p_custom_${idx}_${custom.name}` : `${fallback.id}_${idx}`,
         name: custom?.name || fallback.name,
         avatarUrl: custom?.avatarUrl || fallback.avatarUrl,
         country: fallback.country || 'AE',
@@ -246,7 +246,7 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
           <div className="relative z-10 flex flex-col items-center justify-center text-center">
             {countdown !== null ? (
               <motion.div
-                key={countdown}
+                key={`countdown-val-${countdown}`}
                 initial={{ scale: 0.3, opacity: 0 }}
                 animate={{ scale: 1.2, opacity: 1 }}
                 className="flex flex-col items-center"
@@ -259,7 +259,7 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
                 </span>
               </motion.div>
             ) : (
-              <div className="flex flex-col items-center">
+              <div key="searching-icon-wrap" className="flex flex-col items-center">
                 <Swords className="w-10 h-10 text-cyan-300 animate-bounce drop-shadow-[0_0_10px_#38bdf8]" />
                 <span className="text-xs font-black text-violet-200 mt-2">
                   00:{searchTime < 10 ? `0${searchTime}` : searchTime}
@@ -270,14 +270,9 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
         </div>
 
         {/* Dynamic Status Text */}
-        <motion.p
-          key={statusMessage}
-          initial={{ opacity: 0, y: 5 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-xs sm:text-sm font-black text-cyan-300 tracking-wider uppercase text-center mt-4 drop-shadow"
-        >
+        <p className="text-xs sm:text-sm font-black text-cyan-300 tracking-wider uppercase text-center mt-4 drop-shadow">
           {statusMessage}
-        </motion.p>
+        </p>
       </div>
 
       {/* Bottom Player Matching Slots */}
@@ -301,6 +296,7 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
         <div className={`grid gap-2 ${playerCount === 2 ? 'grid-cols-2' : playerCount === 3 ? 'grid-cols-3' : 'grid-cols-4'}`}>
           {/* SLOT 1: YOU (Player 1) */}
           <div
+            key="slot-player-1-user"
             className={`p-2.5 rounded-2xl border-2 flex flex-col items-center text-center shadow-[0_0_15px_rgba(0,0,0,0.5)] ${
               userColor === 'red'
                 ? 'bg-gradient-to-b from-rose-950/90 to-red-950/90 border-rose-400 shadow-rose-900/50'
@@ -343,9 +339,10 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
             const color = opp?.color || remainingColors[idx] || 'green';
 
             return (
-              <AnimatePresence key={idx} mode="wait">
+              <AnimatePresence key={`slot-presence-${idx}`} mode="wait">
                 {opp ? (
                   <motion.div
+                    key={`slot-matched-${idx}-${opp.name}`}
                     initial={{ scale: 0.8, opacity: 0, y: 10 }}
                     animate={{ scale: 1, opacity: 1, y: 0 }}
                     className={`p-2.5 rounded-2xl border-2 flex flex-col items-center text-center shadow-lg ${
@@ -374,13 +371,16 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
                     </span>
                   </motion.div>
                 ) : (
-                  <div className="p-2.5 rounded-2xl bg-white/5 border border-dashed border-white/20 flex flex-col items-center justify-center text-center min-h-[105px]">
+                  <motion.div
+                    key={`slot-waiting-${idx}`}
+                    className="p-2.5 rounded-2xl bg-white/5 border border-dashed border-white/20 flex flex-col items-center justify-center text-center min-h-[105px]"
+                  >
                     <div className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center animate-pulse">
                       <Radio className="w-5 h-5 text-violet-300" />
                     </div>
                     <span className="text-[11px] font-bold text-violet-300/80 mt-1">Player {idx + 2}</span>
                     <span className="text-[9px] text-cyan-300/70 animate-pulse">Matching...</span>
-                  </div>
+                  </motion.div>
                 )}
               </AnimatePresence>
             );

@@ -178,9 +178,11 @@ export const LudoBoard: React.FC<LudoBoardProps> = ({
           }}
         >
           {/* 1. Render Grid Cells */}
-          {Array.from({ length: 15 }).map((_, r) =>
-            Array.from({ length: 15 }).map((_, c) => renderCell(c, r))
-          )}
+          {Array.from({ length: 225 }).map((_, i) => {
+            const c = i % 15;
+            const r = Math.floor(i / 15);
+            return renderCell(c, r);
+          })}
 
           {/* 2. TOP-LEFT RESORT CORNER (BLUE BASE) */}
           <div

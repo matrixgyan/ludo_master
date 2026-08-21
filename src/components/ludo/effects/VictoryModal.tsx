@@ -114,7 +114,7 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
             </span>
             {activePlayersList.map((p, idx) => (
               <div
-                key={p.color}
+                key={`player-rank-${p.id || p.color || idx}`}
                 className={`flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold ${
                   idx === 0
                     ? 'bg-amber-500/20 text-amber-200 border border-amber-400/30'

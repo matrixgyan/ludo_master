@@ -315,7 +315,7 @@ export const GameSettingsModal: React.FC<GameSettingsModalProps> = ({
               <div className="absolute -bottom-2.5 inset-x-0 flex justify-center gap-1 overflow-hidden pointer-events-none">
                 {Array.from({ length: 9 }).map((_, i) => (
                   <div
-                    key={i}
+                    key={`scallop-tab-${i}`}
                     className="w-9 h-5 bg-gradient-to-b from-[#d97706] to-[#fbbf24] rounded-b-full shadow-[0_3px_5px_rgba(0,0,0,0.2)] border-b border-amber-200/60"
                   />
                 ))}

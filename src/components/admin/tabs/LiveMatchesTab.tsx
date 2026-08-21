@@ -138,9 +138,9 @@ export const LiveMatchesTab: React.FC<LiveMatchesTabProps> = ({ token }) => {
                     </td>
                   </tr>
                 ) : (
-                  games.map((g) => (
+                  games.map((g, idx) => (
                     <tr
-                      key={g.id}
+                      key={`live-g-${g.id}-${idx}`}
                       className={`hover:bg-[#141b2d]/60 transition-colors cursor-pointer ${
                         selectedGameId === g.id ? 'bg-[#141b2d]' : ''
                       }`}
@@ -251,9 +251,9 @@ export const LiveMatchesTab: React.FC<LiveMatchesTabProps> = ({ token }) => {
                   Room Players ({gameDetails.players?.length || 0})
                 </span>
                 <div className="space-y-2">
-                  {gameDetails.players?.map((p: any) => (
+                  {gameDetails.players?.map((p: any, idx: number) => (
                     <div
-                      key={p.id}
+                      key={`game-player-${p.id || p.userId || idx}-${idx}`}
                       className="bg-[#141b2d] p-2.5 rounded-xl border border-slate-800 flex items-center justify-between"
                     >
                       <div className="flex items-center gap-2">
@@ -284,8 +284,8 @@ export const LiveMatchesTab: React.FC<LiveMatchesTabProps> = ({ token }) => {
                   Event Sequence ({gameDetails.events?.length || 0})
                 </span>
                 <div className="bg-[#141b2d] p-2.5 rounded-xl border border-slate-800 max-h-40 overflow-y-auto space-y-1.5 font-mono text-[10px]">
-                  {gameDetails.events?.map((ev: any) => (
-                    <div key={ev.id} className="flex items-center justify-between text-slate-400 border-b border-slate-800/60 pb-1">
+                  {gameDetails.events?.map((ev: any, idx: number) => (
+                    <div key={`game-ev-${ev.id || ev.sequenceNumber || idx}-${idx}`} className="flex items-center justify-between text-slate-400 border-b border-slate-800/60 pb-1">
                       <span className="text-amber-400 font-bold">#{ev.sequenceNumber} {ev.eventType}</span>
                       <span>{new Date(ev.serverTimestamp).toLocaleTimeString()}</span>
                     </div>

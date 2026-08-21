@@ -125,42 +125,50 @@ export class MatchSettlementService {
                 );
               }
 
-              // 5. Release and settle locked entry fees for all players through the ledger
-              for (const player of playersRes.rows) {
-                const playerUserId = player.user_id;
-                // Finalize withdrawal of locked fee
-                const deductIdemp = `settle_entry_deduct_${matchId}_${playerUserId}`;
-                await LedgerService.settleWithdrawal(playerUserId, entryFee, '0.00000000', deductIdemp);
+              // 5. Release and settle locked entry fees for all players through the ledger (paid matches only)
+              if (parseFloat(entryFee) > 0) {
+                for (const player of playersRes.rows) {
+                  const playerUserId = player.user_id;
+                  // Finalize withdrawal of locked fee
+                  const deductIdemp = `settle_entry_deduct_${matchId}_${playerUserId}`;
+                  await LedgerService.settleWithdrawal(playerUserId, entryFee, '0.00000000', deductIdemp);
+                }
               }
 
               // 6. Credit winner with net prize pool
-              const payoutResult = await LedgerService.creditDeposit(
-                winnerUserId,
-                netPrizePool,
-                `payout_${matchId}_${winnerUserId}`,
-                {
-                  matchId,
-                  type: 'MATCH_WIN_PAYOUT',
-                  grossPool,
-                  platformFee,
+              let payoutTxId: string | null = null;
+              if (parseFloat(netPrizePool) > 0) {
+                const payoutResult = await LedgerService.creditDeposit(
+                  winnerUserId,
                   netPrizePool,
-                }
-              );
+                  `payout_${matchId}_${winnerUserId}`,
+                  {
+                    matchId,
+                    type: 'MATCH_WIN_PAYOUT',
+                    grossPool,
+                    platformFee,
+                    netPrizePool,
+                  }
+                );
+                payoutTxId = payoutResult.transactionId;
+              }
 
               // 7. Record platform fee collection in platform revenue account
-              const platformAccId = await LedgerService.getOrCreateAccount('PLATFORM_TREASURY', 'PLATFORM_REVENUE' as any);
-              const feeTxId = `fee_tx_${uuidv4()}`;
-              await client.query(
-                `INSERT INTO ledger_transactions (id, idempotency_key, tx_type, description, metadata)
-                 VALUES ($1, $2, 'PLATFORM_FEE', $3, $4)
-                 ON CONFLICT DO NOTHING`,
-                [
-                  feeTxId,
-                  `platform_fee_${matchId}`,
-                  `Platform fee collected for match ${matchId}`,
-                  JSON.stringify({ matchId, feeAmount: platformFee }),
-                ]
-              );
+              if (parseFloat(platformFee) > 0) {
+                const platformAccId = await LedgerService.getOrCreateAccount('PLATFORM_TREASURY', 'PLATFORM_REVENUE' as any);
+                const feeTxId = `fee_tx_${uuidv4()}`;
+                await client.query(
+                  `INSERT INTO ledger_transactions (id, idempotency_key, tx_type, description, metadata)
+                   VALUES ($1, $2, 'PLATFORM_FEE', $3, $4)
+                   ON CONFLICT DO NOTHING`,
+                  [
+                    feeTxId,
+                    `platform_fee_${matchId}`,
+                    `Platform fee collected for match ${matchId}`,
+                    JSON.stringify({ matchId, feeAmount: platformFee }),
+                  ]
+                );
+              }
 
               // 8. Insert immutable match settlement record
               const settlementId = `stl_${uuidv4()}`;
@@ -178,7 +186,7 @@ export class MatchSettlementService {
                   netPrizePool,
                   winnerUserId,
                   JSON.stringify({
-                    payoutTxId: payoutResult.transactionId,
+                    payoutTxId,
                     playerResults,
                     platformFeeRate,
                   }),
@@ -234,7 +242,7 @@ export class MatchSettlementService {
                 grossPool,
                 platformFee,
                 prizePool: netPrizePool,
-                payoutTxId: payoutResult.transactionId,
+                payoutTxId,
                 status: 'COMPLETED',
               };
             } catch (err) {
