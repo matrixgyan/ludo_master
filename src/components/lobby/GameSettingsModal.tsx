@@ -52,7 +52,7 @@ const AVAILABLE_LANGUAGES = [
 export const GameSettingsModal: React.FC<GameSettingsModalProps> = ({
   isOpen,
   onClose,
-  balance = 0.50,
+  balance = 0.0,
   userName = 'Player 1',
   userAvatar = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=160&auto=format&fit=crop&q=80',
 }) => {

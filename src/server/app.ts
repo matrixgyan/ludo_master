@@ -3,6 +3,7 @@ import { apiRouter } from './routes/api';
 import { adminRouter } from './routes/adminApi';
 import { walletRouter } from './routes/walletRoutes';
 import { adminWalletRouter } from './routes/adminWalletRoutes';
+import { matchApiRouter } from './routes/matchApi';
 import { ensureDatabaseTables } from './db/migrator';
 import { isPostgresConfigured } from './db/client';
 import { Logger } from './config/env';
@@ -64,6 +65,7 @@ export function createApp(): express.Application {
 
   // Mount API and Admin router endpoints
   app.use(apiRouter);
+  app.use(matchApiRouter);
   app.use(adminRouter);
   app.use(walletRouter);
   app.use(adminWalletRouter);

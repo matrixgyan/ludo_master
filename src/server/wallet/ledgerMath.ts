@@ -86,6 +86,20 @@ export class LedgerMath {
   }
 
   /**
+   * Returns true if a < b
+   */
+  public static isLessThan(a: string | number, b: string | number): boolean {
+    return this.toUnits(a) < this.toUnits(b);
+  }
+
+  /**
+   * Returns true if a <= b
+   */
+  public static isLessThanOrEqual(a: string | number, b: string | number): boolean {
+    return this.toUnits(a) <= this.toUnits(b);
+  }
+
+  /**
    * Returns true if a == b
    */
   public static isEqual(a: string | number, b: string | number): boolean {

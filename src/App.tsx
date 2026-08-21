@@ -20,6 +20,7 @@ import { PlayerModeOption, GameVariation, PlayerConfig } from './components/lobb
 import { OnlineMatchmakingScreen, MatchedOpponent } from './components/lobby/OnlineMatchmakingScreen';
 import { VictoryModal } from './components/ludo/effects/VictoryModal';
 import { GameSettingsModal } from './components/lobby/GameSettingsModal';
+import { UnifiedWalletService } from './services/unifiedWalletService';
 
 type ViewMode = 'lobby' | 'ludo_game' | 'snake_ludo' | 'admin' | 'matchmaking';
 
@@ -130,18 +131,42 @@ export default function App() {
     return 'lobby';
   });
 
-  const [balance, setBalance] = useState<number>(() => {
-    const saved = localStorage.getItem('evm_testnet_user_balance');
-    return saved ? parseFloat(saved) : 0.0;
-  });
+  const [balance, setBalance] = useState<number>(0.0);
+  const [usdtBalanceStr, setUsdtBalanceStr] = useState<string>('$0.00');
+
+  // Real Wallet Balance Synchronization with Server Ledger
+  const fetchRealWalletBalance = useCallback(async () => {
+    try {
+      const data = await UnifiedWalletService.fetchWallet('user_guest_default');
+      if (data && data.availableBalance !== undefined) {
+        const parsed = parseFloat(data.availableBalance) || 0.0;
+        setBalance(parsed);
+        setUsdtBalanceStr(`$${parsed.toFixed(2)}`);
+      }
+    } catch {
+      // Keep real fallback 0.00
+    }
+  }, []);
+
+  useEffect(() => {
+    // Clear any legacy test/mock balances from browser storage
+    try {
+      localStorage.removeItem('evm_testnet_user_balance');
+    } catch {}
+
+    fetchRealWalletBalance();
+    const balanceInterval = setInterval(fetchRealWalletBalance, 4000);
+    return () => clearInterval(balanceInterval);
+  }, [fetchRealWalletBalance]);
 
   const handleUpdateBalance = useCallback((amountChange: number) => {
     setBalance((prev) => {
       const next = Math.max(0, prev + amountChange);
-      localStorage.setItem('evm_testnet_user_balance', next.toString());
+      setUsdtBalanceStr(`$${next.toFixed(2)}`);
       return next;
     });
-  }, []);
+    fetchRealWalletBalance();
+  }, [fetchRealWalletBalance]);
   const [adminToken, setAdminToken] = useState<string | null>(() => localStorage.getItem('ludo_admin_token'));
   const [adminData, setAdminData] = useState<any | null>(null);
   const [adminAlias, setAdminAlias] = useState<string>('admin');

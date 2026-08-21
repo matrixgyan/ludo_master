@@ -343,3 +343,136 @@ export const storageObjects = pgTable('storage_objects', {
   url: text('url').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// -----------------------------------------------------------------------------
+// 15. MATCH POOLS (Deterministic Competitive Pools)
+// -----------------------------------------------------------------------------
+export const matchPools = pgTable('match_pools', {
+  id: text('id').primaryKey(), // e.g. 'pool_online_arena_4p_5u_v1'
+  poolKey: text('pool_key').notNull().unique(), // e.g. 'ONLINE_ARENA:4:5:v1'
+  gameMode: text('game_mode').notNull(), // 'ONLINE_ARENA' | 'LUDO_SUPREME'
+  playerCount: integer('player_count').notNull(), // 2, 3, 4
+  entryFee: numeric('entry_fee', { precision: 28, scale: 8 }).notNull(),
+  ruleVersion: text('rule_version').notNull().default('v1'),
+  platformFeeRate: numeric('platform_fee_rate', { precision: 5, scale: 4 }).notNull().default('0.1000'),
+  isActive: boolean('is_active').notNull().default(true),
+  minBufferRooms: integer('min_buffer_rooms').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  modeFeeIdx: index('match_pools_mode_fee_idx').on(table.gameMode, table.playerCount, table.entryFee),
+}));
+
+// -----------------------------------------------------------------------------
+// 16. MATCHES (Automated Match Rooms & State Machine)
+// -----------------------------------------------------------------------------
+export const matches = pgTable('matches', {
+  id: text('id').primaryKey(), // e.g. 'match_xxx'
+  matchCode: text('match_code').notNull(), // short human readable code
+  poolId: text('pool_id').notNull().references(() => matchPools.id),
+  gameMode: text('game_mode').notNull(), // 'ONLINE_ARENA' | 'LUDO_SUPREME'
+  playerCount: integer('player_count').notNull(), // 2, 3, 4
+  entryFee: numeric('entry_fee', { precision: 28, scale: 8 }).notNull(),
+  grossPrizePool: numeric('gross_prize_pool', { precision: 28, scale: 8 }).notNull().default('0.00000000'),
+  platformFee: numeric('platform_fee', { precision: 28, scale: 8 }).notNull().default('0.00000000'),
+  netPrizePool: numeric('net_prize_pool', { precision: 28, scale: 8 }).notNull().default('0.00000000'),
+  status: text('status').notNull().default('OPEN'), 
+  // 'OPEN' | 'FILLING' | 'FULL' | 'STARTING' | 'RUNNING' | 'ENDING' | 'FINISHED' | 'SETTLEMENT_PENDING' | 'SETTLED' | 'CANCELLED' | 'REQUIRES_REVIEW'
+  joinedPlayers: integer('joined_players').notNull().default(0),
+  maxPlayers: integer('max_players').notNull().default(4),
+  serverSeed: text('server_seed'),
+  currentTurnColor: text('current_turn_color'),
+  turnNumber: integer('turn_number').notNull().default(0),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  endsAt: timestamp('ends_at', { withTimezone: true }), // 5-minute timer deadline for LUDO_SUPREME
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  settledAt: timestamp('settled_at', { withTimezone: true }),
+  winnerUserId: text('winner_user_id'),
+  version: integer('version').notNull().default(1),
+  metadata: jsonb('metadata'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  statusModeIdx: index('matches_status_mode_idx').on(table.status, table.gameMode, table.playerCount, table.entryFee),
+  createdAtIdx: index('matches_created_at_idx').on(table.createdAt),
+  poolStatusIdx: index('matches_pool_status_idx').on(table.poolId, table.status),
+}));
+
+// -----------------------------------------------------------------------------
+// 17. MATCH PLAYERS (Atomic Match Membership & Reservation)
+// -----------------------------------------------------------------------------
+export const matchPlayers = pgTable('match_players', {
+  id: text('id').primaryKey(), // e.g. 'mp_{matchId}_{userId}'
+  matchId: text('match_id').notNull().references(() => matches.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  color: text('color').notNull(), // 'red' | 'green' | 'yellow' | 'blue'
+  seatIndex: integer('seat_index').notNull(), // 0, 1, 2, 3
+  entryFee: numeric('entry_fee', { precision: 28, scale: 8 }).notNull(),
+  reservationTxId: text('reservation_tx_id'), // ledger transaction reference
+  status: text('status').notNull().default('RESERVED'), // 'RESERVED' | 'JOINED' | 'ACTIVE' | 'DISCONNECTED' | 'ABANDONED' | 'FINISHED'
+  finalRank: integer('final_rank'), // 1, 2, 3, 4
+  finalScore: integer('final_score').notNull().default(0),
+  tokensHome: integer('tokens_home').notNull().default(0),
+  totalDistanceMoved: integer('total_distance_moved').notNull().default(0),
+  capturesMade: integer('captures_made').notNull().default(0),
+  prizePayout: numeric('prize_payout', { precision: 28, scale: 8 }).notNull().default('0.00000000'),
+  payoutTxId: text('payout_tx_id'),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  matchUserUniq: uniqueIndex('match_players_match_user_uniq').on(table.matchId, table.userId),
+  matchColorUniq: uniqueIndex('match_players_match_color_uniq').on(table.matchId, table.color),
+  matchSeatUniq: uniqueIndex('match_players_match_seat_uniq').on(table.matchId, table.seatIndex),
+  matchIdx: index('match_players_match_idx').on(table.matchId),
+  userIdx: index('match_players_user_idx').on(table.userId),
+}));
+
+// -----------------------------------------------------------------------------
+// 18. SCORE EVENTS (Authoritative Immutable Score Ledger for Supreme)
+// -----------------------------------------------------------------------------
+export const scoreEvents = pgTable('score_events', {
+  id: text('id').primaryKey(),
+  matchId: text('match_id').notNull().references(() => matches.id, { onDelete: 'cascade' }),
+  sequenceNumber: integer('sequence_number').notNull(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  pawnId: text('pawn_id'),
+  eventType: text('event_type').notNull(), 
+  // 'MOVE_SCORE' | 'HOME_MULTIPLIER' | 'CAPTURE_BONUS' | 'PAWN_SCORE_RESET' | 'PENALTY'
+  deltaScore: integer('delta_score').notNull(),
+  resultingScore: integer('resulting_score').notNull(),
+  details: jsonb('details'),
+  timestamp: timestamp('timestamp', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  matchSeqUniq: uniqueIndex('score_events_match_seq_uniq').on(table.matchId, table.sequenceNumber),
+  matchIdIdx: index('score_events_match_id_idx').on(table.matchId),
+}));
+
+// -----------------------------------------------------------------------------
+// 19. MATCH SETTLEMENTS (Immutable Double-Entry Settlement Audit)
+// -----------------------------------------------------------------------------
+export const matchSettlements = pgTable('match_settlements', {
+  id: text('id').primaryKey(),
+  matchId: text('match_id').notNull().unique().references(() => matches.id, { onDelete: 'cascade' }),
+  idempotencyKey: text('idempotency_key').notNull().unique(),
+  grossPool: numeric('gross_pool', { precision: 28, scale: 8 }).notNull(),
+  platformFee: numeric('platform_fee', { precision: 28, scale: 8 }).notNull(),
+  prizePool: numeric('prize_pool', { precision: 28, scale: 8 }).notNull(),
+  winnerUserId: text('winner_user_id'),
+  status: text('status').notNull().default('PENDING'), // 'PENDING' | 'COMPLETED' | 'FAILED' | 'REQUIRES_REVIEW'
+  settlementDetails: jsonb('settlement_details'),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  idempUniq: uniqueIndex('match_settlements_idemp_uniq').on(table.idempotencyKey),
+}));
+
+// -----------------------------------------------------------------------------
+// 20. GAME CONFIGURATIONS (Dynamic Platform Game Mode Settings)
+// -----------------------------------------------------------------------------
+export const gameConfigurations = pgTable('game_configurations', {
+  key: text('key').primaryKey(), // e.g. 'PLATFORM_FEE_RATE', 'LUDO_SUPREME_DURATION'
+  value: jsonb('value').notNull(),
+  description: text('description'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+

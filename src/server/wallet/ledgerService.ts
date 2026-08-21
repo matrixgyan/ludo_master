@@ -93,8 +93,8 @@ export class LedgerService {
         try {
           // 1. Ensure user row exists in users table
           await client.query(
-            `INSERT INTO users (id, username) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`,
-            [userId, `User_${userId.slice(0, 6)}`]
+            `INSERT INTO users (id, username, display_name) VALUES ($1, $1, $1) ON CONFLICT (id) DO NOTHING`,
+            [userId]
           );
 
           // 2. Fetch or create wallet_accounts
@@ -202,14 +202,21 @@ export class LedgerService {
             [txId, idempotencyKey, `Deposit of ${amountUsdt} USDT`, JSON.stringify(metadata || {})]
           );
 
-          // Update user wallet available balance
+          // 1. Ensure user row exists in users table
           await client.query(
-            `UPDATE wallet_accounts
-             SET available_balance = available_balance + $1,
-                 total_balance = total_balance + $1,
-                 updated_at = NOW()
-             WHERE user_id = $2`,
-            [amountUsdt, userId]
+            `INSERT INTO users (id, username, display_name) VALUES ($1, $1, $1) ON CONFLICT (id) DO NOTHING`,
+            [userId]
+          );
+
+          // 2. Ensure wallet_accounts row exists with UPSERT
+          await client.query(
+            `INSERT INTO wallet_accounts (id, user_id, asset, available_balance, locked_balance, total_balance, status)
+             VALUES ($1, $2, 'USDT', $3, '0.00000000', $3, 'ACTIVE')
+             ON CONFLICT (user_id) DO UPDATE
+             SET available_balance = wallet_accounts.available_balance + EXCLUDED.available_balance,
+                 total_balance = wallet_accounts.total_balance + EXCLUDED.total_balance,
+                 updated_at = NOW()`,
+            [`w_${uuidv4()}`, userId, amountUsdt]
           );
 
           // Fetch updated balance for entry audit

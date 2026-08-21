@@ -9,6 +9,8 @@ import { closeDbPool } from './src/server/db/client';
 import { closeRedis } from './src/server/redis/client';
 import { BackgroundWorkerManager } from './src/server/queues/workerRunner';
 import { QueueRegistry } from './src/server/queues/queueManager';
+import { RoomManager } from './src/server/game/roomManager';
+import { ReconnectService } from './src/server/game/reconnectService';
 
 async function bootstrap() {
   const server = http.createServer(app);
@@ -20,7 +22,11 @@ async function bootstrap() {
   // 2. Initialize BullMQ Background Workers if Redis is configured
   BackgroundWorkerManager.initialize();
 
-  // 3. Attach WebSocket Server
+  // 3. Initialize Demand-Aware Automated Match Room Manager & Startup Recovery
+  await RoomManager.initialize().catch((err) => Logger.warn('RoomManager init error', err));
+  await ReconnectService.runStartupRecovery().catch((err) => Logger.warn('Recovery error', err));
+
+  // 4. Attach WebSocket Server
   wsServerInstance.initialize(server);
 
   // 4. Mount Vite middleware for development, or static files in production

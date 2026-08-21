@@ -1,25 +1,48 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Info, Check, Play, Trophy, Sparkles } from 'lucide-react';
+import {
+  X,
+  Check,
+  Trophy,
+  Play,
+  Sparkles,
+  RefreshCw,
+  Info,
+  ShieldCheck,
+  Flame,
+  Crown,
+  Zap,
+} from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
+import { PlayerModeOption, GameVariation, PlayerConfig } from './LudoModeSelectorModal';
 import arabAvatarImg from '../../assets/images/arab_avatar_man_1787143002600.jpg';
 import woodBgImg from '../../assets/images/wood_plank_bg_1787143024792.jpg';
 
-export type PlayerModeOption = 2 | 3 | 4;
-export type GameVariation = 'Classic' | 'Master' | 'Quick';
-
-export interface PlayerConfig {
-  id: string;
-  name: string;
-  color: 'red' | 'yellow' | 'green' | 'blue';
-  avatarUrl: string;
-  isHuman: boolean;
+export interface MatchRoomItem {
+  roomId: string;
+  matchCode: string;
+  poolId: string;
+  gameMode: 'ONLINE_ARENA' | 'LUDO_SUPREME';
+  playerCount: number;
+  entryFee: string;
+  entryFeeUsdt: number;
+  grossPrizePool: string;
+  platformFee: string;
+  netPrizePool: string;
+  status: 'OPEN' | 'FILLING' | 'STARTING';
+  joinedPlayers: number;
+  maxPlayers: number;
+  remainingSlots: number;
+  fillPercentage: number;
+  createdAt: string;
 }
 
-interface LudoModeSelectorModalProps {
+interface MatchArenaListViewProps {
   isOpen: boolean;
+  initialMode?: 'classic' | 'supreme';
+  balance: number;
   onClose: () => void;
-  onSelectMode: (
+  onSelectAndJoinMatch: (
     mode: PlayerModeOption,
     entryFee: number,
     prizePool: number,
@@ -27,44 +50,46 @@ interface LudoModeSelectorModalProps {
     variation?: GameVariation,
     playersConfig?: PlayerConfig[]
   ) => void;
-  balance: number;
-  gameType?: 'classic' | 'supreme';
+  onOpenDeposit?: () => void;
+  onOpenLocalPassAndPlay?: () => void;
 }
 
-interface MatchTierItem {
-  title: string;
+// Deterministic Pool Tier Definitions
+interface PoolTier {
   fee: number;
+  title: string;
+  tag?: string;
   isHot?: boolean;
   colorName: 'red' | 'yellow' | 'green' | 'blue';
 }
 
-const POOLS_BY_PLAYER_COUNT: Record<PlayerModeOption, MatchTierItem[]> = {
+const POOLS_BY_PLAYER_COUNT: Record<PlayerModeOption, PoolTier[]> = {
   2: [
-    { fee: 0, title: 'Free Training', colorName: 'red' },
-    { fee: 1, title: 'Micro Duel', isHot: true, colorName: 'yellow' },
-    { fee: 5, title: 'Popular Duel', isHot: true, colorName: 'red' },
-    { fee: 10, title: 'High Stakes 1v1', colorName: 'yellow' },
-    { fee: 25, title: 'Grand Arena', colorName: 'red' },
-    { fee: 50, title: 'VIP Championship', colorName: 'yellow' },
-    { fee: 100, title: 'High Roller Legend', colorName: 'red' },
+    { fee: 0, title: 'Free Training', tag: 'Practice', colorName: 'red' },
+    { fee: 1, title: 'Micro Duel', tag: 'Beginner', isHot: true, colorName: 'yellow' },
+    { fee: 5, title: 'Popular Duel', tag: 'Popular', isHot: true, colorName: 'red' },
+    { fee: 10, title: 'High Stakes 1v1', tag: 'High Roller', colorName: 'yellow' },
+    { fee: 25, title: 'Grand Arena', tag: 'Pro League', colorName: 'red' },
+    { fee: 50, title: 'VIP Championship', tag: 'VIP Elite', colorName: 'yellow' },
+    { fee: 100, title: 'High Roller Legend', tag: 'Supreme', colorName: 'red' },
   ],
   3: [
-    { fee: 0, title: 'Free Trio Arena', colorName: 'red' },
-    { fee: 1, title: 'Trio Micro Clash', isHot: true, colorName: 'yellow' },
-    { fee: 5, title: 'Trio Showdown', isHot: true, colorName: 'green' },
-    { fee: 10, title: 'Master 3P Clash', colorName: 'red' },
-    { fee: 25, title: 'Grand Trio League', colorName: 'yellow' },
-    { fee: 50, title: 'VIP 3P Royal', colorName: 'green' },
-    { fee: 100, title: 'VIP 3P Supreme', colorName: 'yellow' },
+    { fee: 0, title: 'Free Trio Arena', tag: 'Practice', colorName: 'red' },
+    { fee: 1, title: 'Trio Micro Clash', tag: 'Quick 3P', isHot: true, colorName: 'yellow' },
+    { fee: 5, title: 'Trio Showdown', tag: 'Popular', isHot: true, colorName: 'green' },
+    { fee: 10, title: 'Master 3P Clash', tag: 'High Stakes', colorName: 'red' },
+    { fee: 25, title: 'Grand Trio League', tag: 'Pro', colorName: 'yellow' },
+    { fee: 50, title: 'VIP 3P Royal', tag: 'VIP', colorName: 'green' },
+    { fee: 100, title: 'VIP 3P Supreme', tag: 'High Roller', colorName: 'yellow' },
   ],
   4: [
-    { fee: 0, title: 'Free 4P Rumble', colorName: 'red' },
-    { fee: 1, title: '4P Mini Rumble', isHot: true, colorName: 'yellow' },
-    { fee: 5, title: 'Classic 4P Battle', isHot: true, colorName: 'green' },
-    { fee: 10, title: 'Supreme 4P Rumble', colorName: 'blue' },
-    { fee: 25, title: 'Master 4P League', colorName: 'red' },
-    { fee: 50, title: 'VIP 4P Championship', colorName: 'yellow' },
-    { fee: 100, title: 'Ultimate 4P Crown', colorName: 'green' },
+    { fee: 0, title: 'Free 4P Rumble', tag: 'Practice', colorName: 'red' },
+    { fee: 1, title: '4P Mini Rumble', tag: 'Beginner', isHot: true, colorName: 'yellow' },
+    { fee: 5, title: 'Classic 4P Battle', tag: 'Most Popular', isHot: true, colorName: 'green' },
+    { fee: 10, title: 'Supreme 4P Rumble', tag: 'Stakes', colorName: 'blue' },
+    { fee: 25, title: 'Master 4P League', tag: 'Grand Prize', colorName: 'red' },
+    { fee: 50, title: 'VIP 4P Championship', tag: 'High Roller', colorName: 'yellow' },
+    { fee: 100, title: 'Ultimate 4P Crown', tag: 'Supreme Royal', colorName: 'green' },
   ],
 };
 
@@ -75,52 +100,165 @@ const COLOR_MAP: Record<string, { bg: string; border: string }> = {
   blue: { bg: '#3498db', border: '#1d4ed8' },
 };
 
-export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
+export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
   isOpen,
-  onClose,
-  onSelectMode,
+  initialMode = 'classic',
   balance,
-  gameType = 'supreme',
+  onClose,
+  onSelectAndJoinMatch,
+  onOpenDeposit,
 }) => {
+  const [activeGameType, setActiveGameType] = useState<'classic' | 'supreme'>(initialMode);
   const [variation, setVariation] = useState<GameVariation>('Classic');
-  const [selectedMode, setSelectedMode] = useState<PlayerModeOption>(2);
+  const [selectedPlayerCount, setSelectedPlayerCount] = useState<PlayerModeOption>(2);
+  const [rooms, setRooms] = useState<MatchRoomItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [joiningPoolKey, setJoiningPoolKey] = useState<string | null>(null);
   const [showInfoModal, setShowInfoModal] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Sync initialMode when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setActiveGameType(initialMode);
+    }
+  }, [isOpen, initialMode]);
+
+  // Fetch Rooms from API
+  const fetchLobbyRooms = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const apiEndpoint =
+        activeGameType === 'classic'
+          ? '/api/lobby/ludo-arena'
+          : '/api/lobby/ludo-supreme';
+
+      const url = `${apiEndpoint}?playerCount=${selectedPlayerCount}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.rooms && Array.isArray(data.rooms)) {
+          setRooms(data.rooms);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch server rooms:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [activeGameType, selectedPlayerCount]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetchLobbyRooms();
+    const interval = setInterval(fetchLobbyRooms, 5000);
+    return () => clearInterval(interval);
+  }, [isOpen, fetchLobbyRooms]);
+
   if (!isOpen) return null;
 
-  const calculatePrize = (mode: PlayerModeOption, fee: number): number => {
-    if (fee === 0) return 0;
-    const totalCollected = fee * mode;
-    return Number((totalCollected * 0.9).toFixed(2));
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const handleStartGame = (fee: number) => {
-    SoundManager.play('click');
-    const prize = calculatePrize(selectedMode, fee);
+  // Calculate Net Prize with 10% platform fee
+  const calculateNetPrize = (count: number, fee: number) => {
+    if (fee === 0) return 0;
+    const gross = count * fee;
+    return Number((gross * 0.9).toFixed(2));
+  };
 
-    if (fee > 0 && balance < fee) {
-      setToastMessage(`⚠️ Insufficient USDT balance ($${balance.toFixed(2)}). Please try Free Practice or deposit USDT!`);
-      setTimeout(() => setToastMessage(null), 3000);
+  // Join Match Arena
+  const handleJoinMatchRoom = async (
+    count: PlayerModeOption,
+    entryFee: number,
+    prizePool: number,
+    roomId?: string
+  ) => {
+    SoundManager.play('click');
+    const poolKey = `${count}p_${entryFee}_${roomId || 'pool'}`;
+    setJoiningPoolKey(poolKey);
+
+    // If entry fee > 0 and balance is lower, notify and redirect to deposit if available
+    if (entryFee > 0 && balance < entryFee) {
+      showToast(`⚠️ Insufficient USDT balance ($${balance.toFixed(2)}). Deposit USDT or try free practice!`);
+      if (onOpenDeposit) {
+        setTimeout(() => onOpenDeposit(), 700);
+      }
+      setJoiningPoolKey(null);
       return;
     }
 
-    const defaultPlayers: PlayerConfig[] = [
-      { id: 'p1', name: 'Muonimoon', color: 'red', avatarUrl: arabAvatarImg, isHuman: true },
-      { id: 'p2', name: 'Player 2', color: 'yellow', avatarUrl: arabAvatarImg, isHuman: false },
-      { id: 'p3', name: 'Player 3', color: 'green', avatarUrl: arabAvatarImg, isHuman: false },
-      { id: 'p4', name: 'Player 4', color: 'blue', avatarUrl: arabAvatarImg, isHuman: false },
-    ];
+    try {
+      // Direct API Call to reserve room
+      await fetch('/api/matches/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: `user_guest_${Date.now().toString().slice(-6)}`,
+          username: 'Muonimoon',
+          gameMode: activeGameType === 'classic' ? 'ONLINE_ARENA' : 'LUDO_SUPREME',
+          playerCount: count,
+          entryFee: entryFee,
+          roomId: roomId,
+        }),
+      });
 
-    onSelectMode(selectedMode, fee, prize, gameType, variation, defaultPlayers.slice(0, selectedMode));
+      showToast('✓ Match found! Starting arena...');
+      setTimeout(() => {
+        onSelectAndJoinMatch(
+          count,
+          entryFee,
+          prizePool,
+          activeGameType,
+          variation,
+          [
+            {
+              id: 'p1',
+              name: 'Muonimoon',
+              color: 'red',
+              avatarUrl: arabAvatarImg,
+              isHuman: true,
+            },
+            {
+              id: 'p2',
+              name: 'Player 2',
+              color: 'yellow',
+              avatarUrl: arabAvatarImg,
+              isHuman: false,
+            },
+            {
+              id: 'p3',
+              name: 'Player 3',
+              color: 'green',
+              avatarUrl: arabAvatarImg,
+              isHuman: false,
+            },
+            {
+              id: 'p4',
+              name: 'Player 4',
+              color: 'blue',
+              avatarUrl: arabAvatarImg,
+              isHuman: false,
+            },
+          ]
+        );
+      }, 350);
+    } catch {
+      // Fallback
+      onSelectAndJoinMatch(count, entryFee, prizePool, activeGameType, variation);
+    } finally {
+      setJoiningPoolKey(null);
+    }
   };
 
-  const currentPools = POOLS_BY_PLAYER_COUNT[selectedMode] || POOLS_BY_PLAYER_COUNT[2];
+  const currentPoolTiers = POOLS_BY_PLAYER_COUNT[selectedPlayerCount] || POOLS_BY_PLAYER_COUNT[2];
 
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 select-none overflow-y-auto">
-        {/* Backdrop overlay */}
+        {/* Backdrop Overlay */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -246,7 +384,7 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
                       setShowInfoModal(true);
                     }}
                     className="absolute -top-1 right-0 w-8 h-8 rounded-lg bg-gradient-to-b from-[#38bdf8] via-[#0284c7] to-[#0369a1] border-2 border-[#7dd3fc] shadow-[0_3px_8px_rgba(2,132,199,0.5),inset_0_2px_3px_rgba(255,255,255,0.7)] flex items-center justify-center text-white font-serif font-black text-sm active:scale-95 transition-transform cursor-pointer"
-                    title="Variation Rules"
+                    title="Rules Information"
                   >
                     i
                   </button>
@@ -255,7 +393,7 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
                     GAME MODE
                   </h2>
                   <h1 className="text-2xl sm:text-3xl font-black text-[#5c2411] tracking-tight leading-none mt-0.5">
-                    {gameType === 'supreme' ? 'Ludo Supreme' : 'Local Arena'}
+                    {activeGameType === 'classic' ? 'Online Arena' : 'Ludo Supreme'}
                   </h1>
                 </div>
 
@@ -290,7 +428,7 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
                   </div>
                 </div>
 
-                {/* 5. PLAYER INFORMATION (2P / 3P / 4P Checkbox Capsules - Exact Screenshot Match) */}
+                {/* 5. PLAYER SELECTION (2P / 3P / 4P Checkbox Capsules - Exact Screenshot Match) */}
                 <div className="mb-3">
                   <h3 className="text-xs sm:text-sm font-black text-[#5c2411] uppercase tracking-wider text-center mb-1.5 drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)]">
                     PLAYER INFORMATION
@@ -298,19 +436,19 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
 
                   {/* 2P, 3P, 4P Capsule Selectors */}
                   <div className="flex items-center justify-center gap-2 sm:gap-3 mb-2.5">
-                    {([2, 3, 4] as PlayerModeOption[]).map((mode) => {
-                      const isSelected = selectedMode === mode;
+                    {([2, 3, 4] as PlayerModeOption[]).map((count) => {
+                      const isSelected = selectedPlayerCount === count;
                       return (
                         <motion.button
-                          key={`mode-${mode}`}
+                          key={`count-${count}`}
                           whileTap={{ scale: 0.95 }}
                           onClick={() => {
                             SoundManager.play('click');
-                            setSelectedMode(mode);
+                            setSelectedPlayerCount(count);
                           }}
                           className="flex items-center gap-1.5 bg-gradient-to-b from-[#944a69] via-[#813a58] to-[#6a2b45] text-white px-3 py-1.5 rounded-full border-2 border-[#b86d8c] shadow-[0_4px_8px_rgba(0,0,0,0.35),inset_0_2px_3px_rgba(255,255,255,0.4)] cursor-pointer"
                         >
-                          <span className="font-black text-xs sm:text-sm tracking-wide">{mode}P</span>
+                          <span className="font-black text-xs sm:text-sm tracking-wide">{count}P</span>
 
                           {/* Checkbox Square (Green with check when selected, lavender box when unselected) */}
                           <div
@@ -337,16 +475,17 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
 
                   {/* 6. DYNAMIC PRIZE POOL MATCH LIST (NO INPUT BOXES - Filtered by 2P, 3P, or 4P) */}
                   <div className="space-y-2 max-h-[230px] overflow-y-auto pr-0.5 custom-scroll">
-                    {currentPools.map((tier, idx) => {
-                      const netPrize = calculatePrize(selectedMode, tier.fee);
+                    {currentPoolTiers.map((pool, idx) => {
+                      const netPrize = calculateNetPrize(selectedPlayerCount, pool.fee);
+                      const isJoining = joiningPoolKey === `${selectedPlayerCount}p_${pool.fee}_pool`;
 
                       return (
                         <motion.div
-                          key={`${selectedMode}p-${tier.fee}-${idx}`}
+                          key={`${selectedPlayerCount}p-${pool.fee}-${idx}`}
                           initial={{ opacity: 0, y: 6 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: idx * 0.03 }}
-                          onClick={() => handleStartGame(tier.fee)}
+                          onClick={() => handleJoinMatchRoom(selectedPlayerCount, pool.fee, netPrize)}
                           className="w-full cursor-pointer group select-none"
                         >
                           {/* Caramel Wood Match Info Banner */}
@@ -354,9 +493,9 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
                             <div className="flex flex-col text-left">
                               <div className="flex items-center gap-1.5">
                                 <span className="font-black text-sm tracking-wide text-white leading-tight drop-shadow-[0_1px_1px_rgba(0,0,0,0.4)]">
-                                  {tier.title}
+                                  {pool.title}
                                 </span>
-                                {tier.isHot && (
+                                {pool.isHot && (
                                   <span className="bg-rose-600 text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-wider text-white shadow-sm animate-pulse">
                                     HOT
                                   </span>
@@ -365,7 +504,7 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
                               <div className="text-xs text-amber-100 font-bold leading-tight mt-1 flex items-center gap-1">
                                 <span className="text-amber-200/80 font-normal">Entry:</span>
                                 <span className="text-amber-100 font-black font-mono">
-                                  {tier.fee === 0 ? 'FREE PRACTICE' : `$${tier.fee.toFixed(2)} USDT`}
+                                  {pool.fee === 0 ? 'FREE PRACTICE' : `$${pool.fee.toFixed(2)} USDT`}
                                 </span>
                               </div>
                             </div>
@@ -381,7 +520,11 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
                               </div>
 
                               <div className="w-8 h-8 rounded-lg bg-gradient-to-b from-[#38bdf8] via-[#0284c7] to-[#0369a1] border border-[#7dd3fc] shadow-[0_2px_4px_rgba(0,0,0,0.3),inset_0_1px_2px_rgba(255,255,255,0.5)] flex items-center justify-center text-white group-hover:scale-105 active:scale-95 transition-transform">
-                                <Play className="w-4 h-4 fill-white translate-x-0.5" />
+                                {isJoining ? (
+                                  <RefreshCw className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Play className="w-4 h-4 fill-white translate-x-0.5" />
+                                )}
                               </div>
                             </div>
                           </div>
@@ -393,8 +536,20 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
 
                 {/* 7. BOTTOM STAKES FOOTER */}
                 <div className="pt-2 border-t border-[#dfb35e]/70 flex items-center justify-between text-[11px] font-bold text-[#5c2411]">
-                  <span>Double-entry locked until victory</span>
-                  <span className="font-mono text-[#78350f]">Balance: ${balance.toFixed(2)}</span>
+                  <div className="flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Balance: ${balance.toFixed(2)} USDT</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      SoundManager.play('click');
+                      fetchLobbyRooms();
+                    }}
+                    className="text-[10px] text-[#78350f] hover:text-[#5c2411] underline font-black cursor-pointer flex items-center gap-1"
+                  >
+                    <RefreshCw className={`w-2.5 h-2.5 ${isLoading ? 'animate-spin' : ''}`} />
+                    <span>Refresh Pools</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -413,7 +568,7 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
             <div className="flex items-center justify-between border-b border-amber-500/30 pb-2">
               <h3 className="font-black text-sm text-amber-300 uppercase tracking-wide flex items-center gap-1.5">
                 <Info className="w-4 h-4" />
-                Game Variation Rules
+                Game Variation Guide
               </h3>
               <button
                 onClick={() => setShowInfoModal(false)}

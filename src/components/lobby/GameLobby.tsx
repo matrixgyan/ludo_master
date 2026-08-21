@@ -14,6 +14,7 @@ import { ReferModal } from './ReferModal';
 import { ProfileModal } from './ProfileModal';
 import { NotificationsModal } from './NotificationsModal';
 import { PlayerModeOption, LudoModeSelectorModal, GameVariation, PlayerConfig } from './LudoModeSelectorModal';
+import { MatchArenaListView } from './MatchArenaListView';
 import { AssetsView } from '../wallet/AssetsView';
 import { useLiveTheme } from '../../hooks/useLiveTheme';
 import { Sparkles, Shield, Crown } from 'lucide-react';
@@ -51,19 +52,24 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   // Dynamic Theme state
   const { lobbyTheme } = useLiveTheme();
 
-  // Mode Selection Modal State
+  // Match Arena List View Modal State (Real Online Match List)
+  const [isMatchListOpen, setIsMatchListOpen] = useState(false);
+  const [matchListMode, setMatchListMode] = useState<'classic' | 'supreme'>('classic');
+
+  // Local Pass & Play Customizer Modal State
   const [isModeSelectorOpen, setIsModeSelectorOpen] = useState(false);
-  const [modalGameType, setModalGameType] = useState<'classic' | 'supreme'>('supreme');
+  const [modalGameType, setModalGameType] = useState<'classic' | 'supreme'>('classic');
 
   const handleSelectTab = (tab: NavTab) => {
     setActiveTab(tab);
-    if (tab === 'studio') setIsStudioOpen(true);
+    if (tab === 'studio') handleOpenOnlineMatchList('classic');
+    if (tab === 'battle') handleOpenOnlineMatchList('supreme');
     if (tab === 'refer') setIsReferOpen(true);
   };
 
-  const handleOpenModeSelect = (gameType: 'classic' | 'supreme') => {
-    setModalGameType(gameType);
-    setIsModeSelectorOpen(true);
+  const handleOpenOnlineMatchList = (gameType: 'classic' | 'supreme') => {
+    setMatchListMode(gameType);
+    setIsMatchListOpen(true);
   };
 
   const handleSelectGameModeAndStart = (
@@ -74,6 +80,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     variation?: GameVariation,
     playersConfig?: PlayerConfig[]
   ) => {
+    setIsMatchListOpen(false);
     setIsModeSelectorOpen(false);
     onStartOnlineMatch(mode, entryFee, prizePool, gameType, variation, playersConfig);
   };
@@ -101,14 +108,19 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
         <AssetsView
           userId="user_guest_default"
           onBack={() => setActiveTab('home')}
-          onBalanceUpdate={(newBal) => setUsdtBalance(`$${Number(newBal).toFixed(2)}`)}
+          onBalanceUpdate={(newBal) => {
+            const parsed = parseFloat(newBal);
+            if (!isNaN(parsed)) {
+              onAddFunds(parsed - balance);
+            }
+          }}
         />
       ) : (
         <>
           {/* 1. TOP HEADER (Brand | Bell | USDT Vault | Profile) */}
           <div className="w-full max-w-lg z-10">
             <LobbyHeader
-              usdtBalance={usdtBalance}
+              usdtBalance={`$${balance.toFixed(2)}`}
               onOpenNotifications={() => setIsNotificationsOpen(true)}
               onOpenProfile={() => setIsProfileOpen(true)}
               onOpenWallet={() => setActiveTab('assets')}
@@ -117,14 +129,14 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
 
           {/* 2. MAIN SCROLLABLE LOBBY CONTAINER */}
           <main className="w-full max-w-lg px-3.5 pt-3.5 space-y-3.5 flex-1 flex flex-col items-center z-10">
-            {/* CARD 1: LUDO ONLINE ARENA */}
-            <LobbyCardOnlineMultiplayer onOpenModeSelect={() => handleOpenModeSelect('classic')} />
+            {/* CARD 1: LUDO ONLINE ARENA (CLICK TO VIEW ONLINE MATCH ROOMS & POOLS) */}
+            <LobbyCardOnlineMultiplayer onOpenModeSelect={() => handleOpenOnlineMatchList('classic')} />
 
             {/* CARD 2: SNAKE LUDO */}
             <LobbyCardSnakeLudo onPlay={onPlaySnakeLudo} />
 
-            {/* CARD 3: LUDO SUPREME */}
-            <LobbyCardLudoSupreme onPlay={() => handleOpenModeSelect('supreme')} />
+            {/* CARD 3: LUDO SUPREME (CLICK TO VIEW SUPREME 5-MIN MATCH ROOMS & POOLS) */}
+            <LobbyCardLudoSupreme onPlay={() => handleOpenOnlineMatchList('supreme')} />
 
             {/* CARD 4: BIG REWARDS - LUDO SUPREME LEAGUE */}
             <LobbyCardBigRewards onOpenLeague={() => setIsLeagueModalOpen(true)} />
@@ -133,7 +145,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
             <LobbyCardFeaturedTrio
               onPlaySupreme={() => setIsLeagueModalOpen(true)}
               onPlaySnakesLadders={onPlaySnakeLudo}
-              onPlayLudoTurbo={() => handleOpenModeSelect('supreme')}
+              onPlayLudoTurbo={() => handleOpenOnlineMatchList('supreme')}
             />
           </main>
 
@@ -146,10 +158,24 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
       <BottomNav
         activeTab={activeTab}
         onSelectTab={handleSelectTab}
-        onBattle={() => handleOpenModeSelect('supreme')}
+        onBattle={() => handleOpenOnlineMatchList('supreme')}
       />
 
-      {/* 4. DEDICATED 3D GAME MODE SELECTION SECTION WITH 3 SEPARATE 3D TILES */}
+      {/* 4. REAL ONLINE MATCH ARENA LIST VIEW (ROOMS & DETERMINISTIC POOLS) */}
+      <MatchArenaListView
+        isOpen={isMatchListOpen}
+        initialMode={matchListMode}
+        balance={balance}
+        onClose={() => setIsMatchListOpen(false)}
+        onSelectAndJoinMatch={handleSelectGameModeAndStart}
+        onOpenDeposit={() => setActiveTab('assets')}
+        onOpenLocalPassAndPlay={() => {
+          setModalGameType(matchListMode);
+          setIsModeSelectorOpen(true);
+        }}
+      />
+
+      {/* 5. LOCAL PASS & PLAY CUSTOMIZER */}
       <LudoModeSelectorModal
         isOpen={isModeSelectorOpen}
         onClose={() => setIsModeSelectorOpen(false)}

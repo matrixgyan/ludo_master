@@ -729,3 +729,16 @@ adminRouter.post('/api/admin/system/flush-cache', requireAdminAuth, async (req: 
 
   res.json({ success: true, message: 'Local caches reset successfully' });
 });
+
+// Run automated system & match arena test suite
+adminRouter.post('/api/admin/tests/run-all', async (req: Request, res: Response) => {
+  try {
+    const { AutomatedMatchArenaTests } = await import('../tests/automatedMatchArenaTests');
+    const results = await AutomatedMatchArenaTests.runAllTests();
+    res.json(results);
+  } catch (err: any) {
+    Logger.error('Failed to run automated match arena test suite', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+

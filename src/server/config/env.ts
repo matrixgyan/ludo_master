@@ -30,35 +30,77 @@ export type AppConfig = z.infer<typeof envSchema>;
 function parseEnv(): AppConfig {
   const isVercel = Boolean(process.env.VERCEL || process.env.NOW_REGION);
 
+  // 1. Resolve Neon PostgreSQL Database URL
+  const databaseUrl =
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRESQL_URL ||
+    process.env.NEON_DATABASE_URL ||
+    process.env.DIRECT_URL;
+
+  // 2. Resolve Redis / Upstash Connection URL
+  const redisUrl =
+    process.env.REDIS_URL ||
+    process.env.REDIS_TLS_URL ||
+    process.env.UPSTASH_REDIS_URL ||
+    process.env.KV_URL;
+
+  // 3. Resolve Cloudflare R2 Storage credentials & endpoint
+  const accountId =
+    process.env.R2_ACCOUNT_ID ||
+    process.env.CLOUDFLARE_ACCOUNT_ID ||
+    process.env.CLOUDFLARE_R2_ACCOUNT_ID ||
+    process.env.ACCOUNT_ID;
+
+  const r2Endpoint =
+    process.env.R2_ENDPOINT ||
+    process.env.CLOUDFLARE_R2_ENDPOINT ||
+    process.env.CLOUDFLARE_ENDPOINT ||
+    process.env.AWS_ENDPOINT_URL_S3 ||
+    (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : undefined);
+
+  const r2AccessKeyId =
+    process.env.R2_ACCESS_KEY_ID ||
+    process.env.CLOUDFLARE_R2_ACCESS_KEY_ID ||
+    process.env.CLOUDFLARE_ACCESS_KEY_ID ||
+    process.env.R2_KEY_ID ||
+    process.env.CLOUDFLARE_KEY_ID ||
+    process.env.R2_KEY ||
+    process.env.AWS_ACCESS_KEY_ID ||
+    process.env.ACCESS_KEY_ID;
+
+  const r2SecretAccessKey =
+    process.env.R2_SECRET_ACCESS_KEY ||
+    process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY ||
+    process.env.CLOUDFLARE_SECRET_ACCESS_KEY ||
+    process.env.R2_SECRET_KEY ||
+    process.env.CLOUDFLARE_SECRET_KEY ||
+    process.env.R2_SECRET ||
+    process.env.AWS_SECRET_ACCESS_KEY ||
+    process.env.SECRET_ACCESS_KEY;
+
+  const r2BucketName =
+    process.env.R2_BUCKET_NAME ||
+    process.env.CLOUDFLARE_R2_BUCKET_NAME ||
+    process.env.CLOUDFLARE_BUCKET_NAME ||
+    process.env.CLOUDFLARE_R2_BUCKET ||
+    process.env.CLOUDFLARE_BUCKET ||
+    process.env.R2_BUCKET ||
+    process.env.AWS_BUCKET_NAME ||
+    process.env.BUCKET_NAME;
+
   const raw = {
     NODE_ENV: process.env.NODE_ENV || 'development',
     PORT: process.env.PORT ? parseInt(process.env.PORT, 10) : 3000,
     IS_VERCEL: isVercel,
 
-    // Neon PostgreSQL resolution
-    DATABASE_URL: process.env.DATABASE_URL,
+    DATABASE_URL: databaseUrl,
+    REDIS_URL: redisUrl,
 
-    // Redis / Upstash resolution
-    REDIS_URL: process.env.REDIS_URL,
-
-    // Cloudflare R2 resolution
-    R2_ENDPOINT:
-      process.env.R2_ENDPOINT ||
-      process.env.CLOUDFLARE_R2_ENDPOINT ||
-      process.env.AWS_ENDPOINT_URL_S3,
-    R2_ACCESS_KEY_ID:
-      process.env.R2_ACCESS_KEY_ID ||
-      process.env.CLOUDFLARE_R2_ACCESS_KEY_ID ||
-      process.env.AWS_ACCESS_KEY_ID,
-    R2_SECRET_ACCESS_KEY:
-      process.env.R2_SECRET_ACCESS_KEY ||
-      process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY ||
-      process.env.AWS_SECRET_ACCESS_KEY,
-    R2_BUCKET_NAME:
-      process.env.R2_BUCKET_NAME ||
-      process.env.CLOUDFLARE_R2_BUCKET ||
-      process.env.R2_BUCKET ||
-      process.env.AWS_BUCKET_NAME,
+    R2_ENDPOINT: r2Endpoint,
+    R2_ACCESS_KEY_ID: r2AccessKeyId,
+    R2_SECRET_ACCESS_KEY: r2SecretAccessKey,
+    R2_BUCKET_NAME: r2BucketName,
 
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   };

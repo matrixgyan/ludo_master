@@ -1,7 +1,10 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { Server as HttpServer } from 'http';
 import { AuthoritativeLudoEngine } from '../game/authoritativeEngine';
+import { LudoSupremeEngine } from '../game/ludoSupremeEngine';
 import { GamePersistenceService } from '../game/persistenceService';
+import { ReconnectService } from '../game/reconnectService';
+import { MatchSettlementService } from '../wallet/matchSettlementService';
 import { PresenceManager } from '../redis/presence';
 import { Logger } from '../config/env';
 
@@ -113,32 +116,73 @@ export class ProductionWebSocketServer {
         break;
       }
 
-      case 'JOIN_GAME': {
-        const { gameId, color } = msg as unknown as { gameId: string; color?: string };
-        if (!gameId) return;
+      case 'JOIN_GAME':
+      case 'JOIN_MATCH': {
+        const { gameId, matchId, color, gameMode } = msg as unknown as {
+          gameId?: string;
+          matchId?: string;
+          color?: string;
+          gameMode?: string;
+        };
+        const targetId = matchId || gameId;
+        if (!targetId) return;
 
-        client.gameId = gameId;
+        client.gameId = targetId;
         client.color = color;
-        this.joinGameRoom(ws, gameId);
+        this.joinGameRoom(ws, targetId);
 
-        PresenceManager.heartbeat(client.userId, client.username, 'IN_GAME', gameId);
+        PresenceManager.heartbeat(client.userId, client.username, 'IN_GAME', targetId);
 
-        // Fetch or create authoritative session
-        let session = await GamePersistenceService.getGameState(gameId);
-        if (!session) {
-          session = AuthoritativeLudoEngine.createNewGame(gameId, '2_PLAYER', [
-            { userId: client.userId, username: client.username, color: 'red', isHuman: true },
-            { userId: 'bot-blue', username: 'Player 2 (AI)', color: 'blue', isHuman: false },
-          ]);
-          await GamePersistenceService.saveActiveGameState(session);
-          await GamePersistenceService.appendGameEvent(gameId, 1, 'GAME_CREATED', client.userId, { gameId }, 1);
+        if (gameMode === 'LUDO_SUPREME') {
+          let supremeSession = ReconnectService.getSupremeSession(targetId);
+          if (!supremeSession) {
+            supremeSession = LudoSupremeEngine.createSupremeSession(targetId, [
+              { userId: client.userId, username: client.username, color: (color as any) || 'red', seatIndex: 0, isHuman: true },
+              { userId: 'bot-blue', username: 'Opponent', color: 'blue', seatIndex: 1, isHuman: false },
+            ]);
+            ReconnectService.setSupremeSession(targetId, supremeSession);
+          }
+
+          this.broadcastToRoom(targetId, {
+            type: 'GAME_STATE_UPDATE',
+            session: supremeSession,
+            gameMode: 'LUDO_SUPREME',
+          });
+        } else {
+          // Online Arena Engine
+          let session = await GamePersistenceService.getGameState(targetId);
+          if (!session) {
+            session = AuthoritativeLudoEngine.createNewGame(targetId, '2_PLAYER', [
+              { userId: client.userId, username: client.username, color: (color as any) || 'red', isHuman: true },
+              { userId: 'bot-blue', username: 'Player 2 (AI)', color: 'blue', isHuman: false },
+            ]);
+            await GamePersistenceService.saveActiveGameState(session);
+            await GamePersistenceService.appendGameEvent(targetId, 1, 'GAME_CREATED', client.userId, { gameId: targetId }, 1);
+          }
+
+          this.broadcastToRoom(targetId, {
+            type: 'GAME_STATE_UPDATE',
+            session,
+            gameMode: 'ONLINE_ARENA',
+          });
         }
+        break;
+      }
 
-        // Broadcast current authoritative state
-        this.broadcastToRoom(gameId, {
-          type: 'GAME_STATE_UPDATE',
-          session,
-        });
+      case 'RECONNECT': {
+        const targetId = (msg.matchId || msg.gameId || client.gameId) as string;
+        if (!targetId) return;
+
+        client.gameId = targetId;
+        this.joinGameRoom(ws, targetId);
+
+        const recoveredState = await ReconnectService.getMatchAuthoritativeState(targetId, client.userId);
+        if (recoveredState) {
+          this.send(ws, {
+            type: 'RECONNECT_STATE',
+            state: recoveredState,
+          });
+        }
         break;
       }
 
@@ -149,6 +193,25 @@ export class ProductionWebSocketServer {
           return;
         }
 
+        // 1. Check Supreme Session
+        const supremeSession = ReconnectService.getSupremeSession(gameId);
+        if (supremeSession) {
+          try {
+            const result = LudoSupremeEngine.rollDice(supremeSession, client.userId);
+            this.broadcastToRoom(gameId, {
+              type: 'DICE_ROLLED_AUTHORITATIVE',
+              rollValue: result.rollValue,
+              movablePawnIds: result.movablePawnIds,
+              session: result.session,
+              gameMode: 'LUDO_SUPREME',
+            });
+          } catch (err: any) {
+            this.send(ws, { type: 'ERROR', message: err.message || String(err) });
+          }
+          return;
+        }
+
+        // 2. Check Arena Session
         const session = await GamePersistenceService.getGameState(gameId);
         if (!session) {
           this.send(ws, { type: 'ERROR', message: 'Game not found' });
@@ -172,6 +235,7 @@ export class ProductionWebSocketServer {
             rollValue: result.rollValue,
             movablePawnIds: result.movablePawnIds,
             session: result.session,
+            gameMode: 'ONLINE_ARENA',
           });
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
@@ -185,6 +249,50 @@ export class ProductionWebSocketServer {
         const pawnId = msg.pawnId as string;
         if (!gameId || !pawnId) return;
 
+        // 1. Check Supreme Session
+        const supremeSession = ReconnectService.getSupremeSession(gameId);
+        if (supremeSession) {
+          try {
+            const result = LudoSupremeEngine.moveToken(supremeSession, client.userId, pawnId);
+
+            this.broadcastToRoom(gameId, {
+              type: 'TOKEN_MOVED_AUTHORITATIVE',
+              movedPawn: result.movedPawn,
+              capturedPawn: result.capturedPawn,
+              deltaScore: result.deltaScore,
+              totalScore: result.totalScore,
+              reachedGoal: result.reachedGoal,
+              isGameWon: result.isGameWon,
+              session: result.session,
+              gameMode: 'LUDO_SUPREME',
+            });
+
+            if (result.isGameWon && supremeSession.finalRankings && supremeSession.winnerUserId) {
+              MatchSettlementService.settleMatch(
+                gameId,
+                supremeSession.winnerUserId,
+                supremeSession.finalRankings.map((r) => ({
+                  userId: r.userId,
+                  rank: r.rank,
+                  finalScore: r.score,
+                  tokensHome: r.tokensHome,
+                  capturesMade: r.captures,
+                  totalDistanceMoved: r.distance,
+                }))
+              ).then((settleRes) => {
+                this.broadcastToRoom(gameId, {
+                  type: 'MATCH_SETTLED',
+                  settlement: settleRes,
+                });
+              }).catch((err) => Logger.error('Supreme WS settlement error', err));
+            }
+          } catch (err: any) {
+            this.send(ws, { type: 'ERROR', message: err.message || String(err) });
+          }
+          return;
+        }
+
+        // 2. Check Arena Session
         const session = await GamePersistenceService.getGameState(gameId);
         if (!session) return;
 
@@ -193,6 +301,26 @@ export class ProductionWebSocketServer {
 
           if (result.isGameWon) {
             await GamePersistenceService.finalizeGame(result.session);
+            if (result.session.winner) {
+              const winnerPlayer = result.session.players[result.session.winner];
+              if (winnerPlayer) {
+                const rankings = Object.values(result.session.players).map((p, idx) => ({
+                  userId: p.id,
+                  rank: p.id === winnerPlayer.id ? 1 : idx + 2,
+                  finalScore: p.score || 0,
+                  tokensHome: p.pawns.filter((pw) => pw.state === 'goal').length,
+                  capturesMade: 0,
+                  totalDistanceMoved: p.pawns.reduce((sum, pw) => sum + (pw.pathStep >= 0 ? pw.pathStep : 0), 0),
+                }));
+
+                MatchSettlementService.settleMatch(gameId, winnerPlayer.id, rankings).then((settleRes) => {
+                  this.broadcastToRoom(gameId, {
+                    type: 'MATCH_SETTLED',
+                    settlement: settleRes,
+                  });
+                }).catch((err) => Logger.error('Arena WS settlement error', err));
+              }
+            }
           } else {
             await GamePersistenceService.saveActiveGameState(result.session);
           }
@@ -219,6 +347,7 @@ export class ProductionWebSocketServer {
             reachedGoal: result.reachedGoal,
             isGameWon: result.isGameWon,
             session: result.session,
+            gameMode: 'ONLINE_ARENA',
           });
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);

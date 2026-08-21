@@ -17,7 +17,7 @@ export const TopBarHUD: React.FC<TopBarHUDProps> = ({
   onOpenMenu,
   isMuted,
   onToggleMute,
-  balance = 0.50,
+  balance = 0.0,
   onBackToLobby,
   gameType = 'supreme',
   matchTimeLeft = 180,

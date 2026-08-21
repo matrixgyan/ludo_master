@@ -22,6 +22,7 @@ export async function ensureDatabaseTables(): Promise<void> {
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         username TEXT NOT NULL,
+        display_name TEXT,
         email TEXT,
         avatar_url TEXT,
         wallet_address TEXT,
@@ -30,6 +31,12 @@ export async function ensureDatabaseTables(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      -- Ensure display_name column compatibility and relax username unique constraint
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
+      ALTER TABLE users ALTER COLUMN display_name DROP NOT NULL;
+      ALTER TABLE users DROP CONSTRAINT IF EXISTS users_username_key;
+      ALTER TABLE users DROP CONSTRAINT IF EXISTS users_username_unique;
 
       -- 2. Wallet Accounts (Unified USDT Balance Account)
       CREATE TABLE IF NOT EXISTS wallet_accounts (
@@ -238,6 +245,11 @@ export async function ensureDatabaseTables(): Promise<void> {
         completed_at TIMESTAMPTZ,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE games ADD COLUMN IF NOT EXISTS winner_user_id TEXT;
+      ALTER TABLE games ADD COLUMN IF NOT EXISTS total_turns INTEGER DEFAULT 0;
+      ALTER TABLE games ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;
+      ALTER TABLE match_history DROP CONSTRAINT IF EXISTS match_history_game_id_fkey;
+      ALTER TABLE score_events DROP CONSTRAINT IF EXISTS score_events_match_id_fkey;
       CREATE INDEX IF NOT EXISTS games_status_idx ON games(status);
       CREATE INDEX IF NOT EXISTS games_created_at_idx ON games(created_at);
 
@@ -314,6 +326,119 @@ export async function ensureDatabaseTables(): Promise<void> {
         size_bytes INTEGER NOT NULL DEFAULT 0,
         url TEXT NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      -- 15. Match Pools (Deterministic Match Pools)
+      CREATE TABLE IF NOT EXISTS match_pools (
+        id TEXT PRIMARY KEY,
+        pool_key TEXT NOT NULL UNIQUE,
+        game_mode TEXT NOT NULL,
+        player_count INTEGER NOT NULL,
+        entry_fee NUMERIC(28, 8) NOT NULL,
+        rule_version TEXT NOT NULL DEFAULT 'v1',
+        platform_fee_rate NUMERIC(5, 4) NOT NULL DEFAULT '0.1000',
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        min_buffer_rooms INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS match_pools_mode_fee_idx ON match_pools(game_mode, player_count, entry_fee);
+
+      -- 16. Matches (Automated Match Rooms & State Machine)
+      CREATE TABLE IF NOT EXISTS matches (
+        id TEXT PRIMARY KEY,
+        match_code TEXT NOT NULL,
+        pool_id TEXT NOT NULL REFERENCES match_pools(id),
+        game_mode TEXT NOT NULL,
+        player_count INTEGER NOT NULL,
+        entry_fee NUMERIC(28, 8) NOT NULL,
+        gross_prize_pool NUMERIC(28, 8) NOT NULL DEFAULT '0.00000000',
+        platform_fee NUMERIC(28, 8) NOT NULL DEFAULT '0.00000000',
+        net_prize_pool NUMERIC(28, 8) NOT NULL DEFAULT '0.00000000',
+        status TEXT NOT NULL DEFAULT 'OPEN',
+        joined_players INTEGER NOT NULL DEFAULT 0,
+        max_players INTEGER NOT NULL DEFAULT 4,
+        server_seed TEXT,
+        current_turn_color TEXT,
+        turn_number INTEGER NOT NULL DEFAULT 0,
+        started_at TIMESTAMPTZ,
+        ends_at TIMESTAMPTZ,
+        completed_at TIMESTAMPTZ,
+        settled_at TIMESTAMPTZ,
+        winner_user_id TEXT,
+        version INTEGER NOT NULL DEFAULT 1,
+        metadata JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS matches_status_mode_idx ON matches(status, game_mode, player_count, entry_fee);
+      CREATE INDEX IF NOT EXISTS matches_created_at_idx ON matches(created_at);
+      CREATE INDEX IF NOT EXISTS matches_pool_status_idx ON matches(pool_id, status);
+
+      -- 17. Match Players (Atomic Membership & Financial Locks)
+      CREATE TABLE IF NOT EXISTS match_players (
+        id TEXT PRIMARY KEY,
+        match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        color TEXT NOT NULL,
+        seat_index INTEGER NOT NULL,
+        entry_fee NUMERIC(28, 8) NOT NULL,
+        reservation_tx_id TEXT,
+        status TEXT NOT NULL DEFAULT 'RESERVED',
+        final_rank INTEGER,
+        final_score INTEGER NOT NULL DEFAULT 0,
+        tokens_home INTEGER NOT NULL DEFAULT 0,
+        total_distance_moved INTEGER NOT NULL DEFAULT 0,
+        captures_made INTEGER NOT NULL DEFAULT 0,
+        prize_payout NUMERIC(28, 8) NOT NULL DEFAULT '0.00000000',
+        payout_tx_id TEXT,
+        joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT match_players_match_user_uniq UNIQUE (match_id, user_id),
+        CONSTRAINT match_players_match_color_uniq UNIQUE (match_id, color),
+        CONSTRAINT match_players_match_seat_uniq UNIQUE (match_id, seat_index)
+      );
+      CREATE INDEX IF NOT EXISTS match_players_match_idx ON match_players(match_id);
+      CREATE INDEX IF NOT EXISTS match_players_user_idx ON match_players(user_id);
+
+      -- 18. Score Events (Authoritative Score Ledger for Supreme)
+      CREATE TABLE IF NOT EXISTS score_events (
+        id TEXT PRIMARY KEY,
+        match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+        sequence_number INTEGER NOT NULL,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        pawn_id TEXT,
+        event_type TEXT NOT NULL,
+        delta_score INTEGER NOT NULL,
+        resulting_score INTEGER NOT NULL,
+        details JSONB,
+        timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT score_events_match_seq_uniq UNIQUE (match_id, sequence_number)
+      );
+      CREATE INDEX IF NOT EXISTS score_events_match_id_idx ON score_events(match_id);
+
+      -- 19. Match Settlements (Immutable Double-Entry Settlement Audit)
+      CREATE TABLE IF NOT EXISTS match_settlements (
+        id TEXT PRIMARY KEY,
+        match_id TEXT NOT NULL UNIQUE REFERENCES matches(id) ON DELETE CASCADE,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        gross_pool NUMERIC(28, 8) NOT NULL,
+        platform_fee NUMERIC(28, 8) NOT NULL,
+        prize_pool NUMERIC(28, 8) NOT NULL,
+        winner_user_id TEXT,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        settlement_details JSONB,
+        processed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS match_settlements_idemp_idx ON match_settlements(idempotency_key);
+
+      -- 20. Game Configurations
+      CREATE TABLE IF NOT EXISTS game_configurations (
+        key TEXT PRIMARY KEY,
+        value JSONB NOT NULL,
+        description TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
 
