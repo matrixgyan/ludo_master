@@ -1,6 +1,6 @@
 import { getDb, withTransaction, isPostgresConfigured } from '../db/client';
 import { games, gamePlayers, gameEvents, playerStatistics, leaderboards, matchHistory } from '../db/schema';
-import { getRedisClient, isRedisConfigured } from '../redis/client';
+import { getRedisClient, isRedisConfigured, reportRedisError } from '../redis/client';
 import { RedisKeys } from '../redis/keys';
 import { DistributedLock } from '../redis/locks';
 import { QueueRegistry } from '../queues/queueManager';
@@ -31,7 +31,7 @@ export class GamePersistenceService {
       pipeline.set(RedisKeys.gameTurn(session.gameId), session.currentTurn, 'EX', ttlSeconds);
       await pipeline.exec();
     } catch (err) {
-      Logger.warn(`Redis state save notice for game ${session.gameId}: ${String(err)}`);
+      reportRedisError(err);
     }
   }
 
@@ -46,8 +46,8 @@ export class GamePersistenceService {
         if (cached) {
           return JSON.parse(cached) as AuthoritativeGameSession;
         }
-      } catch {
-        // Fall through
+      } catch (err) {
+        reportRedisError(err);
       }
     }
 

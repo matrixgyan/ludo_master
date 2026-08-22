@@ -1,4 +1,4 @@
-import { getRedisClient } from './client';
+import { getRedisClient, reportRedisError } from './client';
 import { Logger } from '../config/env';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -20,11 +20,11 @@ export class DistributedLock {
         }
         return null;
       } catch (err) {
-        Logger.warn(`Redis lock acquire error on key ${key}: ${String(err)}`);
+        reportRedisError(err);
       }
     }
 
-    // Local in-memory lock fallback when Redis is absent
+    // Local in-memory lock fallback when Redis is absent or in backoff
     if (this.localLocks.has(key)) {
       return null;
     }
@@ -48,7 +48,7 @@ export class DistributedLock {
         const result = await redis.eval(luaScript, 1, key, token);
         return result === 1;
       } catch (err) {
-        Logger.warn(`Redis lock release error on key ${key}: ${String(err)}`);
+        reportRedisError(err);
       }
     }
 

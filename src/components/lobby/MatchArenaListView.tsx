@@ -40,14 +40,14 @@ export interface MatchRoomItem {
 
 interface MatchArenaListViewProps {
   isOpen: boolean;
-  initialMode?: 'classic' | 'supreme';
+  initialMode?: 'classic' | 'supreme' | 'snake';
   balance: number;
   onClose: () => void;
   onSelectAndJoinMatch: (
     mode: PlayerModeOption,
     entryFee: number,
     prizePool: number,
-    gameType: 'classic' | 'supreme',
+    gameType: 'classic' | 'supreme' | 'snake',
     variation?: GameVariation,
     playersConfig?: PlayerConfig[]
   ) => void;
@@ -109,7 +109,7 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
   onSelectAndJoinMatch,
   onOpenDeposit,
 }) => {
-  const [activeGameType, setActiveGameType] = useState<'classic' | 'supreme'>(initialMode);
+  const [activeGameType, setActiveGameType] = useState<'classic' | 'supreme' | 'snake'>(initialMode);
   const [variation, setVariation] = useState<GameVariation>('Classic');
   const [selectedPlayerCount, setSelectedPlayerCount] = useState<PlayerModeOption>(2);
   const [rooms, setRooms] = useState<MatchRoomItem[]>([]);
@@ -132,6 +132,8 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
       const apiEndpoint =
         activeGameType === 'classic'
           ? '/api/lobby/ludo-arena'
+          : activeGameType === 'snake'
+          ? '/api/lobby/snake-ludo'
           : '/api/lobby/ludo-supreme';
 
       const url = `${apiEndpoint}?playerCount=${selectedPlayerCount}`;
@@ -397,7 +399,11 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
                     GAME MODE
                   </h2>
                   <h1 className="text-2xl sm:text-3xl font-black text-[#5c2411] tracking-tight leading-none mt-0.5">
-                    {activeGameType === 'classic' ? 'Online Arena' : 'Ludo Supreme'}
+                    {activeGameType === 'snake'
+                      ? 'Snake Ludo'
+                      : activeGameType === 'classic'
+                      ? 'Online Arena'
+                      : 'Ludo Supreme'}
                   </h1>
                 </div>
 
@@ -406,7 +412,9 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
                   <div className="bg-gradient-to-r from-[#2e1307]/95 via-[#421b0b]/95 to-[#2e1307]/95 rounded-2xl p-2 sm:p-2.5 border border-[#dfb35e]/60 shadow-[0_3px_8px_rgba(0,0,0,0.35),inset_0_1px_2px_rgba(255,255,255,0.12)] flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-[#ffd166] via-[#f59e0b] to-[#b45309] border border-amber-300 shadow-[0_2px_4px_rgba(0,0,0,0.3),inset_0_1px_2px_rgba(255,255,255,0.6)] flex items-center justify-center text-slate-950 shrink-0">
-                        {activeGameType === 'classic' ? (
+                        {activeGameType === 'snake' ? (
+                          <Flame className="w-4 h-4 fill-slate-950 text-slate-950" />
+                        ) : activeGameType === 'classic' ? (
                           <Trophy className="w-4 h-4 fill-slate-950 text-slate-950" />
                         ) : (
                           <Zap className="w-4 h-4 fill-slate-950 text-slate-950" />
@@ -414,13 +422,25 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
                       </div>
                       <div className="text-left">
                         <div className="text-xs font-black text-amber-300 uppercase tracking-wider leading-none flex items-center gap-1.5">
-                          <span>{activeGameType === 'classic' ? 'Full Classic Match' : '3-Min Speed Battle'}</span>
+                          <span>
+                            {activeGameType === 'snake'
+                              ? 'Snake Ludo Race'
+                              : activeGameType === 'classic'
+                              ? 'Full Classic Match'
+                              : '3-Min Speed Battle'}
+                          </span>
                           <span className="bg-emerald-600/90 text-white text-[8.5px] px-1.5 py-0.5 rounded font-mono font-black shadow-sm">
-                            {activeGameType === 'classic' ? '4 PAWNS HOME' : '3 MIN RACE'}
+                            {activeGameType === 'snake'
+                              ? 'TILE 100 FINISH'
+                              : activeGameType === 'classic'
+                              ? '4 PAWNS HOME'
+                              : '3 MIN RACE'}
                           </span>
                         </div>
                         <div className="text-[10px] text-amber-100/85 font-semibold leading-tight mt-0.5">
-                          {activeGameType === 'classic'
+                          {activeGameType === 'snake'
+                            ? 'First to reach Tile 100 wins • Ladders & Snakes • 90% Net Payout'
+                            : activeGameType === 'classic'
                             ? 'First to clear 4 pawns wins • Safe Stars • 90% Net Payout'
                             : 'Highest score in 3 min wins • Points Race • 90% Net Payout'}
                         </div>

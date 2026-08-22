@@ -28,7 +28,7 @@ interface MatchConfig {
   mode: PlayerModeOption;
   entryFee: number;
   prizePool: number;
-  gameType?: 'classic' | 'supreme';
+  gameType?: 'classic' | 'supreme' | 'snake';
   variation?: GameVariation;
   playersConfig?: PlayerConfig[];
 }
@@ -377,7 +377,7 @@ export default function App() {
     mode: PlayerModeOption,
     entryFee: number,
     prizePool: number,
-    gameType: 'classic' | 'supreme' = 'supreme',
+    gameType: 'classic' | 'supreme' | 'snake' = 'supreme',
     variation: GameVariation = 'Classic',
     playersConfig?: PlayerConfig[]
   ) => {
@@ -391,6 +391,11 @@ export default function App() {
 
   // Match Complete -> Prepare Board for 2P, 3P, or 4P
   const handleMatchComplete = (matchedOpponents: MatchedOpponent[]) => {
+    if (currentMatchConfig?.gameType === 'snake') {
+      setViewMode('snake_ludo');
+      return;
+    }
+
     const isSupreme = currentMatchConfig?.gameType !== 'classic';
     const customPlayers = currentMatchConfig?.playersConfig;
     
@@ -1048,6 +1053,10 @@ export default function App() {
 
   // 3. SNAKE LUDO MINI-GAME VIEW
   if (viewMode === 'snake_ludo') {
+    const p1Config = currentMatchConfig?.playersConfig?.[0];
+    const userAvatar = p1Config?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+    const userName = p1Config?.name || 'Player 1';
+
     return (
       <SnakeLudoGame
         onBackToLobby={() => {
@@ -1056,6 +1065,15 @@ export default function App() {
         }}
         isMuted={gameState.isMuted}
         onToggleMute={handleToggleMute}
+        entryFee={currentMatchConfig?.entryFee || 0}
+        prizePool={currentMatchConfig?.prizePool || 0}
+        userName={userName}
+        userAvatar={userAvatar}
+        playerCount={currentMatchConfig?.mode || playerMode || 2}
+        playersConfig={currentMatchConfig?.playersConfig}
+        onMatchWon={(prize) => {
+          handleUpdateBalance(prize);
+        }}
       />
     );
   }

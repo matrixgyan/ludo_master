@@ -15,7 +15,7 @@ import { SoundManager } from '../../audio/soundManager';
 interface ArenaRulesInfoModalProps {
   isOpen: boolean;
   onClose: () => void;
-  gameType?: 'classic' | 'supreme';
+  gameType?: 'classic' | 'supreme' | 'snake';
 }
 
 export const ArenaRulesInfoModal: React.FC<ArenaRulesInfoModalProps> = ({
@@ -26,6 +26,31 @@ export const ArenaRulesInfoModal: React.FC<ArenaRulesInfoModalProps> = ({
   if (!isOpen) return null;
 
   const isClassic = gameType === 'classic';
+  const isSnake = gameType === 'snake';
+
+  const modalTitle = isSnake
+    ? 'Snake Ludo (Tile 100 Race)'
+    : isClassic
+    ? 'Online Arena (Classic)'
+    : 'Ludo Supreme (3-Min)';
+
+  const modalSubtitle = isSnake
+    ? 'First to Reach Tile 100 Rules'
+    : isClassic
+    ? 'Full 4-Pawns Home Game Rules'
+    : '3-Minute Speed Score Rules';
+
+  const ruleBadge = isSnake
+    ? 'Reach 100 Win'
+    : isClassic
+    ? 'Classic Rule'
+    : 'Score Based';
+
+  const ruleTitle = isSnake
+    ? 'How to Win (First to 100)'
+    : isClassic
+    ? 'How to Win (Full Match)'
+    : 'How to Win (3-Min Speed)';
 
   return (
     <AnimatePresence>
@@ -54,10 +79,10 @@ export const ArenaRulesInfoModal: React.FC<ArenaRulesInfoModalProps> = ({
               </div>
               <div>
                 <h3 className="font-black text-sm sm:text-base text-amber-300 tracking-wide">
-                  {isClassic ? 'Online Arena (Classic)' : 'Ludo Supreme (3-Min)'}
+                  {modalTitle}
                 </h3>
                 <p className="text-[10px] text-amber-200/70 font-medium">
-                  {isClassic ? 'Full 4-Pawns Home Game Rules' : '3-Minute Speed Score Rules'}
+                  {modalSubtitle}
                 </p>
               </div>
             </div>
@@ -78,15 +103,30 @@ export const ArenaRulesInfoModal: React.FC<ArenaRulesInfoModalProps> = ({
             <div className="bg-black/45 p-3 rounded-2xl border border-amber-500/25 space-y-1.5">
               <div className="flex items-center justify-between text-amber-300 font-black text-xs">
                 <span className="flex items-center gap-1.5">
-                  {isClassic ? <Trophy className="w-4 h-4 text-amber-400" /> : <Clock className="w-4 h-4 text-amber-400" />}
-                  {isClassic ? 'How to Win (Full Match)' : 'How to Win (3-Min Speed)'}
+                  {isSnake ? (
+                    <Trophy className="w-4 h-4 text-emerald-400" />
+                  ) : isClassic ? (
+                    <Trophy className="w-4 h-4 text-amber-400" />
+                  ) : (
+                    <Clock className="w-4 h-4 text-amber-400" />
+                  )}
+                  {ruleTitle}
                 </span>
                 <span className="bg-amber-500/20 text-amber-300 text-[9px] px-2 py-0.5 rounded-full font-bold border border-amber-500/30">
-                  {isClassic ? 'Classic Rule' : 'Score Based'}
+                  {ruleBadge}
                 </span>
               </div>
 
-              {isClassic ? (
+              {isSnake ? (
+                <div className="space-y-1 text-[11px] text-amber-100/90 leading-relaxed">
+                  <p>
+                    • <strong>First to 100:</strong> The player who reaches <strong>Tile 100 first</strong> wins the match!
+                  </p>
+                  <p>
+                    • <strong>Ladders & Snakes:</strong> Climb ladders to jump ahead fast; avoid snake heads that slide you down. Rolling a <strong>6</strong> gives an extra turn.
+                  </p>
+                </div>
+              ) : isClassic ? (
                 <div className="space-y-1 text-[11px] text-amber-100/90 leading-relaxed">
                   <p>
                     • <strong>Full Game:</strong> The first player to bring all <strong>4 pawns safely into Home</strong> wins the match!

@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { getRedisClient } from './client';
+import { getRedisClient, reportRedisError } from './client';
 import { RedisKeys } from './keys';
 import { Logger } from '../config/env';
 
@@ -38,7 +38,7 @@ export function rateLimiter(options: { maxRequests: number; windowSeconds: numbe
         next();
         return;
       } catch (err) {
-        Logger.warn(`Redis rate limiter bypassed due to error: ${String(err)}`);
+        reportRedisError(err);
       }
     }
 

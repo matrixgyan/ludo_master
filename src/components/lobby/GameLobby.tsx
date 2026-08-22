@@ -28,7 +28,7 @@ interface GameLobbyProps {
     mode: PlayerModeOption,
     entryFee: number,
     prizePool: number,
-    gameType?: 'classic' | 'supreme',
+    gameType?: 'classic' | 'supreme' | 'snake',
     variation?: GameVariation,
     playersConfig?: PlayerConfig[]
   ) => void;
@@ -54,11 +54,11 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
 
   // Match Arena List View Modal State (Real Online Match List)
   const [isMatchListOpen, setIsMatchListOpen] = useState(false);
-  const [matchListMode, setMatchListMode] = useState<'classic' | 'supreme'>('classic');
+  const [matchListMode, setMatchListMode] = useState<'classic' | 'supreme' | 'snake'>('classic');
 
   // Local Pass & Play Customizer Modal State
   const [isModeSelectorOpen, setIsModeSelectorOpen] = useState(false);
-  const [modalGameType, setModalGameType] = useState<'classic' | 'supreme'>('classic');
+  const [modalGameType, setModalGameType] = useState<'classic' | 'supreme' | 'snake'>('classic');
 
   const handleSelectTab = (tab: NavTab) => {
     setActiveTab(tab);
@@ -67,7 +67,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     if (tab === 'refer') setIsReferOpen(true);
   };
 
-  const handleOpenOnlineMatchList = (gameType: 'classic' | 'supreme') => {
+  const handleOpenOnlineMatchList = (gameType: 'classic' | 'supreme' | 'snake') => {
     setMatchListMode(gameType);
     setIsMatchListOpen(true);
   };
@@ -76,7 +76,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     mode: PlayerModeOption,
     entryFee: number,
     prizePool: number,
-    gameType: 'classic' | 'supreme',
+    gameType: 'classic' | 'supreme' | 'snake',
     variation?: GameVariation,
     playersConfig?: PlayerConfig[]
   ) => {
@@ -132,8 +132,8 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
             {/* CARD 1: LUDO ONLINE ARENA (CLICK TO VIEW ONLINE MATCH ROOMS & POOLS) */}
             <LobbyCardOnlineMultiplayer onOpenModeSelect={() => handleOpenOnlineMatchList('classic')} />
 
-            {/* CARD 2: SNAKE LUDO */}
-            <LobbyCardSnakeLudo onPlay={onPlaySnakeLudo} />
+            {/* CARD 2: SNAKE LUDO (CLICK TO VIEW SNAKE MATCH ROOMS & POOLS) */}
+            <LobbyCardSnakeLudo onPlay={() => handleOpenOnlineMatchList('snake')} />
 
             {/* CARD 3: LUDO SUPREME (CLICK TO VIEW SUPREME 5-MIN MATCH ROOMS & POOLS) */}
             <LobbyCardLudoSupreme onPlay={() => handleOpenOnlineMatchList('supreme')} />
@@ -144,7 +144,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
             {/* CARD 5: 3-TYPE ASYMMETRICAL FEATURED TRIO (LUDO SUPREME LEAGUE + SNAKES & LADDERS + LUDO TURBO) */}
             <LobbyCardFeaturedTrio
               onPlaySupreme={() => setIsLeagueModalOpen(true)}
-              onPlaySnakesLadders={onPlaySnakeLudo}
+              onPlaySnakesLadders={() => handleOpenOnlineMatchList('snake')}
               onPlayLudoTurbo={() => handleOpenOnlineMatchList('supreme')}
             />
           </main>

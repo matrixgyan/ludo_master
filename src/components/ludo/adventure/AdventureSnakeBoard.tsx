@@ -10,12 +10,20 @@ import {
 import { AdventureTile } from './AdventureTile';
 import { RealisticStairs } from './RealisticStairs';
 import { RealisticSnakes } from './RealisticSnakes';
-import { AdventurePawn3D } from './AdventurePawn3D';
+import { AdventurePawn3D, AdventurePawnColor } from './AdventurePawn3D';
+
+export interface BoardPlayerItem {
+  id: string;
+  color: AdventurePawnColor;
+  position: number;
+}
 
 export interface AdventureSnakeBoardProps {
-  player1Pos: number;
-  player2Pos: number;
-  activeTurn: 'p1' | 'p2';
+  player1Pos?: number;
+  player2Pos?: number;
+  players?: BoardPlayerItem[];
+  activeTurn?: string; // 'p1' | 'p2' | 'p3' | 'p4' or active player id
+  activePlayerIndex?: number;
   isMoving?: boolean;
   highlightTile?: number | null;
   highlightLadderId?: string | null;
@@ -25,9 +33,11 @@ export interface AdventureSnakeBoardProps {
 }
 
 export const AdventureSnakeBoard: React.FC<AdventureSnakeBoardProps> = ({
-  player1Pos,
-  player2Pos,
-  activeTurn,
+  player1Pos = 1,
+  player2Pos = 1,
+  players,
+  activeTurn = 'p1',
+  activePlayerIndex = 0,
   isMoving = false,
   highlightTile = null,
   highlightLadderId = null,
@@ -71,7 +81,24 @@ export const AdventureSnakeBoard: React.FC<AdventureSnakeBoardProps> = ({
     return list;
   }, []);
 
-  const hasCoOccupant = player1Pos === player2Pos;
+  // Standardize players list (supporting 2, 3, or 4 players)
+  const activePlayers: BoardPlayerItem[] = useMemo(() => {
+    if (players && players.length > 0) return players;
+    return [
+      { id: 'p1', color: 'red', position: player1Pos },
+      { id: 'p2', color: 'green', position: player2Pos },
+    ];
+  }, [players, player1Pos, player2Pos]);
+
+  // Compute co-occupants mapping per tile position
+  const posMap = useMemo(() => {
+    const map: Record<number, number[]> = {};
+    activePlayers.forEach((p, idx) => {
+      if (!map[p.position]) map[p.position] = [];
+      map[p.position].push(idx);
+    });
+    return map;
+  }, [activePlayers]);
 
   return (
     <motion.div
@@ -127,21 +154,30 @@ export const AdventureSnakeBoard: React.FC<AdventureSnakeBoardProps> = ({
         {/* 4. REALISTIC LIVING SERPENTS & PIT TRAPS OVERLAY */}
         <RealisticSnakes highlightId={highlightSnakeId} />
 
-        {/* 5. SEPARATE 3D ADVENTURER PAWNS LAYER */}
-        <AdventurePawn3D
-          player="p1"
-          position={player1Pos}
-          isActiveTurn={activeTurn === 'p1'}
-          isMoving={isMoving}
-          hasCoOccupant={hasCoOccupant}
-        />
-        <AdventurePawn3D
-          player="p2"
-          position={player2Pos}
-          isActiveTurn={activeTurn === 'p2'}
-          isMoving={isMoving}
-          hasCoOccupant={hasCoOccupant}
-        />
+        {/* 5. SEPARATE 3D ADVENTURER PAWNS LAYER (DYNAMIC 2, 3, 4 PLAYERS) */}
+        {activePlayers.map((playerItem, idx) => {
+          const occupants = posMap[playerItem.position] || [idx];
+          const totalOccupants = occupants.length;
+          const occupantIndex = occupants.indexOf(idx);
+          const isCurrentActive =
+            activePlayerIndex !== undefined
+              ? activePlayerIndex === idx
+              : activeTurn === playerItem.id;
+
+          return (
+            <AdventurePawn3D
+              key={playerItem.id}
+              player={playerItem.id}
+              color={playerItem.color}
+              position={playerItem.position}
+              isActiveTurn={isCurrentActive}
+              isMoving={isMoving}
+              hasCoOccupant={totalOccupants > 1}
+              occupantIndex={occupantIndex >= 0 ? occupantIndex : 0}
+              totalOccupants={totalOccupants}
+            />
+          );
+        })}
       </div>
     </motion.div>
   );

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Info, Check, Play, Trophy, Sparkles, Zap, ShieldCheck } from 'lucide-react';
+import { X, Info, Check, Play, Trophy, Sparkles, Zap, ShieldCheck, Flame } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
 import { ArenaRulesInfoModal } from './ArenaRulesInfoModal';
 import arabAvatarImg from '../../assets/images/arab_avatar_man_1787143002600.jpg';
@@ -24,12 +24,12 @@ interface LudoModeSelectorModalProps {
     mode: PlayerModeOption,
     entryFee: number,
     prizePool: number,
-    gameType: 'classic' | 'supreme',
+    gameType: 'classic' | 'supreme' | 'snake',
     variation?: GameVariation,
     playersConfig?: PlayerConfig[]
   ) => void;
   balance: number;
-  gameType?: 'classic' | 'supreme';
+  gameType?: 'classic' | 'supreme' | 'snake';
 }
 
 interface MatchTierItem {
@@ -259,7 +259,11 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
                     GAME MODE
                   </h2>
                   <h1 className="text-2xl sm:text-3xl font-black text-[#5c2411] tracking-tight leading-none mt-0.5">
-                    {gameType === 'supreme' ? 'Ludo Supreme' : 'Online Arena'}
+                    {gameType === 'snake'
+                      ? 'Snake Ludo'
+                      : gameType === 'supreme'
+                      ? 'Ludo Supreme'
+                      : 'Online Arena'}
                   </h1>
                 </div>
 
@@ -268,7 +272,9 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
                   <div className="bg-gradient-to-r from-[#2e1307]/95 via-[#421b0b]/95 to-[#2e1307]/95 rounded-2xl p-2 sm:p-2.5 border border-[#dfb35e]/60 shadow-[0_3px_8px_rgba(0,0,0,0.35),inset_0_1px_2px_rgba(255,255,255,0.12)] flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-[#ffd166] via-[#f59e0b] to-[#b45309] border border-amber-300 shadow-[0_2px_4px_rgba(0,0,0,0.3),inset_0_1px_2px_rgba(255,255,255,0.6)] flex items-center justify-center text-slate-950 shrink-0">
-                        {gameType === 'supreme' ? (
+                        {gameType === 'snake' ? (
+                          <Flame className="w-4 h-4 fill-slate-950 text-slate-950" />
+                        ) : gameType === 'supreme' ? (
                           <Zap className="w-4 h-4 fill-slate-950 text-slate-950" />
                         ) : (
                           <Trophy className="w-4 h-4 fill-slate-950 text-slate-950" />
@@ -276,13 +282,25 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
                       </div>
                       <div className="text-left">
                         <div className="text-xs font-black text-amber-300 uppercase tracking-wider leading-none flex items-center gap-1.5">
-                          <span>{gameType === 'supreme' ? '3-Min Speed Battle' : 'Full Classic Match'}</span>
+                          <span>
+                            {gameType === 'snake'
+                              ? 'Snake Ludo Race'
+                              : gameType === 'supreme'
+                              ? '3-Min Speed Battle'
+                              : 'Full Classic Match'}
+                          </span>
                           <span className="bg-emerald-600/90 text-white text-[8.5px] px-1.5 py-0.5 rounded font-mono font-black shadow-sm">
-                            {gameType === 'supreme' ? '3 MIN RACE' : '4 PAWNS HOME'}
+                            {gameType === 'snake'
+                              ? 'TILE 100 FINISH'
+                              : gameType === 'supreme'
+                              ? '3 MIN RACE'
+                              : '4 PAWNS HOME'}
                           </span>
                         </div>
                         <div className="text-[10px] text-amber-100/85 font-semibold leading-tight mt-0.5">
-                          {gameType === 'supreme'
+                          {gameType === 'snake'
+                            ? 'First to reach Tile 100 wins • Ladders & Snakes • 90% Net Payout'
+                            : gameType === 'supreme'
                             ? 'Highest score in 3 min wins • Points Race • 90% Net Payout'
                             : 'First to clear 4 pawns wins • Safe Stars • 90% Net Payout'}
                         </div>

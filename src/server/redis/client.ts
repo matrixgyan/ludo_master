@@ -10,6 +10,9 @@ declare global {
 }
 
 let lastConnectionError: string | null = null;
+let isQuotaExceeded = false;
+let quotaExceededResetTime = 0;
+let consecutiveErrors = 0;
 
 export function isRedisConfigured(): boolean {
   return Boolean(
@@ -17,6 +20,52 @@ export function isRedisConfigured(): boolean {
     config.REDIS_URL.trim().length > 0 &&
     !config.REDIS_URL.includes('samplepassword')
   );
+}
+
+export function isRedisAvailable(): boolean {
+  if (!isRedisConfigured()) {
+    return false;
+  }
+  if (isQuotaExceeded) {
+    if (Date.now() < quotaExceededResetTime) {
+      return false;
+    }
+    // Attempt re-probe after backoff window
+    isQuotaExceeded = false;
+    consecutiveErrors = 0;
+  }
+  return true;
+}
+
+/**
+ * Report an error encountered during a Redis operation to automatically trigger backoff
+ */
+export function reportRedisError(err: unknown): void {
+  const msg = err instanceof Error ? err.message : String(err);
+  lastConnectionError = msg;
+
+  const isLimitError =
+    msg.includes('max requests limit exceeded') ||
+    msg.includes('ERR max requests limit') ||
+    msg.includes('quota') ||
+    msg.includes('OVER_LIMIT') ||
+    msg.includes('daily request limit') ||
+    msg.includes('OOM');
+
+  if (isLimitError) {
+    if (!isQuotaExceeded) {
+      Logger.warn('⚡ Upstash / Redis max requests quota reached. Safely falling back to in-memory state.');
+    }
+    isQuotaExceeded = true;
+    quotaExceededResetTime = Date.now() + 5 * 60 * 1000; // 5-minute backoff
+    return;
+  }
+
+  consecutiveErrors++;
+  if (consecutiveErrors >= 5) {
+    isQuotaExceeded = true;
+    quotaExceededResetTime = Date.now() + 60 * 1000; // 1-minute backoff for intermittent network drops
+  }
 }
 
 export function getRedisConfig(): RedisOptions {
@@ -61,7 +110,7 @@ export function getRedisConfig(): RedisOptions {
 }
 
 export function getRedisClient(): Redis | null {
-  if (!isRedisConfigured()) {
+  if (!isRedisAvailable()) {
     return null;
   }
 
@@ -71,21 +120,22 @@ export function getRedisClient(): Redis | null {
 
       client.on('connect', () => {
         lastConnectionError = null;
+        consecutiveErrors = 0;
         Logger.info('Redis / Upstash client connected successfully');
       });
 
       client.on('ready', () => {
         lastConnectionError = null;
+        consecutiveErrors = 0;
       });
 
       client.on('error', (err: any) => {
-        lastConnectionError = err?.message || String(err);
-        Logger.warn('Redis client error notice', { error: lastConnectionError });
+        reportRedisError(err);
       });
 
       globalThis.__ludo_redis_client = client;
     } catch (err: any) {
-      lastConnectionError = err?.message || String(err);
+      reportRedisError(err);
       return null;
     }
   }
@@ -93,7 +143,7 @@ export function getRedisClient(): Redis | null {
 }
 
 export function getRedisSubscriber(): Redis | null {
-  if (!isRedisConfigured()) {
+  if (!isRedisAvailable()) {
     return null;
   }
 
@@ -105,12 +155,13 @@ export function getRedisSubscriber(): Redis | null {
         Logger.info('Redis subscriber connected successfully');
       });
 
-      sub.on('error', () => {
-        // Silent error handler for pub/sub channel
+      sub.on('error', (err: any) => {
+        reportRedisError(err);
       });
 
       globalThis.__ludo_redis_sub = sub;
-    } catch {
+    } catch (err: any) {
+      reportRedisError(err);
       return null;
     }
   }
@@ -127,6 +178,14 @@ export async function checkRedisHealth(): Promise<{
 }> {
   if (!isRedisConfigured()) {
     return { status: 'unconfigured', latencyMs: 0 };
+  }
+
+  if (isQuotaExceeded) {
+    return {
+      status: 'unhealthy',
+      latencyMs: 0,
+      error: 'Upstash / Redis max requests quota reached (active memory fallback)',
+    };
   }
 
   const start = Date.now();
@@ -162,6 +221,7 @@ export async function checkRedisHealth(): Promise<{
       latencyMs,
     };
   } catch (err: unknown) {
+    reportRedisError(err);
     const latencyMs = Date.now() - start;
     const msg = err instanceof Error ? err.message : String(err);
     return {

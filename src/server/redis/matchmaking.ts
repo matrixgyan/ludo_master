@@ -1,4 +1,4 @@
-import { getRedisClient } from './client';
+import { getRedisClient, reportRedisError } from './client';
 import { RedisKeys } from './keys';
 import { DistributedLock } from './locks';
 import { Logger } from '../config/env';
@@ -46,7 +46,7 @@ export class MatchmakingService {
           return { success: true };
         });
       } catch (err) {
-        Logger.warn(`Redis matchmaking enqueue error for ${userId}: ${String(err)}`);
+        reportRedisError(err);
       }
     }
 
@@ -68,7 +68,7 @@ export class MatchmakingService {
         await pipeline.exec();
         return true;
       } catch (err) {
-        Logger.warn(`Failed to cancel matchmaking for ${userId}: ${String(err)}`);
+        reportRedisError(err);
       }
     }
 
