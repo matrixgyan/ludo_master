@@ -18,6 +18,7 @@ import { PlayerModeOption, GameVariation, PlayerConfig } from './LudoModeSelecto
 import { ArenaRulesInfoModal } from './ArenaRulesInfoModal';
 import arabAvatarImg from '../../assets/images/arab_avatar_man_1787143002600.jpg';
 import woodBgImg from '../../assets/images/wood_plank_bg_1787143024792.jpg';
+import { useGameSettings } from '../../hooks/useGameSettings';
 
 export interface MatchRoomItem {
   roomId: string;
@@ -109,6 +110,7 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
   onSelectAndJoinMatch,
   onOpenDeposit,
 }) => {
+  const { getPoolsForCount, calculateNetPrize, prizePoolPercentage } = useGameSettings();
   const [activeGameType, setActiveGameType] = useState<'classic' | 'supreme' | 'snake'>(initialMode);
   const [variation, setVariation] = useState<GameVariation>('Classic');
   const [selectedPlayerCount, setSelectedPlayerCount] = useState<PlayerModeOption>(2);
@@ -163,13 +165,6 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
-  };
-
-  // Calculate Net Prize with 10% platform fee
-  const calculateNetPrize = (count: number, fee: number) => {
-    if (fee === 0) return 0;
-    const gross = count * fee;
-    return Number((gross * 0.9).toFixed(2));
   };
 
   // Join Match Arena
@@ -256,7 +251,7 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
     }
   };
 
-  const currentPoolTiers = POOLS_BY_PLAYER_COUNT[selectedPlayerCount] || POOLS_BY_PLAYER_COUNT[2];
+  const currentPoolTiers = getPoolsForCount(selectedPlayerCount, activeGameType);
 
   return (
     <>

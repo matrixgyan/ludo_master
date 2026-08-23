@@ -21,6 +21,7 @@ import { OnlineMatchmakingScreen, MatchedOpponent } from './components/lobby/Onl
 import { VictoryModal } from './components/ludo/effects/VictoryModal';
 import { GameSettingsModal } from './components/lobby/GameSettingsModal';
 import { UnifiedWalletService } from './services/unifiedWalletService';
+import { useGameSettings } from './hooks/useGameSettings';
 
 type ViewMode = 'lobby' | 'ludo_game' | 'snake_ludo' | 'admin' | 'matchmaking';
 
@@ -115,6 +116,7 @@ const getNextTurnColor = (current: PlayerColor, activeCols: PlayerColor[]): Play
 };
 
 export default function App() {
+  const { ludoPawnSpeedMs, supremePawnSpeedMs, turnTimeoutSeconds } = useGameSettings();
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window === 'undefined') return 'lobby';
     const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
@@ -284,7 +286,7 @@ export default function App() {
   useEffect(() => {
     if (viewMode !== 'ludo_game' || Boolean(gameState.winner)) return;
 
-    setTurnTimeLeft(30);
+    setTurnTimeLeft(turnTimeoutSeconds || 30);
 
     const timerInterval = setInterval(() => {
       setTurnTimeLeft((prev) => {
@@ -296,7 +298,7 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(timerInterval);
-  }, [viewMode, gameState.currentTurn, Boolean(gameState.winner)]);
+  }, [viewMode, gameState.currentTurn, Boolean(gameState.winner), turnTimeoutSeconds]);
 
   // 2 Minutes 60 Seconds (180s) Supreme Match Countdown Timer Effect (Continuously running)
   useEffect(() => {
@@ -769,7 +771,7 @@ export default function App() {
 
     let stepCount = 0;
     const stepsToPerform = startStep === -1 ? 1 : diceValue;
-    const STEP_DURATION_MS = 320; // Snappy, responsive hops for speed gameplay
+    const stepDuration = (currentMatchConfig?.gameType === 'supreme' ? supremePawnSpeedMs : ludoPawnSpeedMs) || 320;
 
     const doStep = () => {
       stepCount++;
@@ -800,14 +802,14 @@ export default function App() {
         const coord = getPawnGridCoord(color, pawnIndex, currentStep);
         const cellKey = `${Math.round(coord.x)}-${Math.round(coord.y)}`;
         setBouncingCellKey(cellKey);
-      }, 180);
+      }, Math.min(180, Math.floor(stepDuration * 0.55)));
 
       if (stepCount < stepsToPerform) {
-        setTimeout(doStep, STEP_DURATION_MS);
+        setTimeout(doStep, stepDuration);
       } else {
         setTimeout(() => {
           finalizeMove(clickedPawn, targetStep, diceValue);
-        }, STEP_DURATION_MS + 180);
+        }, stepDuration + Math.min(180, Math.floor(stepDuration * 0.55)));
       }
     };
 

@@ -24,6 +24,7 @@ import {
 } from '../ludo/adventure/types';
 import { PlayerConfig } from './LudoModeSelectorModal';
 import confetti from 'canvas-confetti';
+import { useGameSettings } from '../../hooks/useGameSettings';
 
 export interface SnakePlayerState {
   id: string; // 'p1' | 'p2' | 'p3' | 'p4'
@@ -112,6 +113,7 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
   playersConfig,
   onMatchWon,
 }) => {
+  const { snakeLudoPawnSpeedMs } = useGameSettings();
   const actualPlayerCount = Math.max(2, Math.min(4, playerCount));
 
   // Initialize Players dynamically for 2, 3, or 4 players with realistic career stats
@@ -211,7 +213,7 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
       });
 
       SoundManager.play('pawn-step');
-      await sleep(160);
+      await sleep(snakeLudoPawnSpeedMs || 160);
     }
 
     // Check if landed on a ladder/stairway

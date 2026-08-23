@@ -13,20 +13,13 @@ import { config, Logger } from '../config/env';
 import { eq, desc, sql, like, or } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 
-export const adminRouter = Router();
+import {
+  PlatformGameSettings,
+  DEFAULT_PLATFORM_SETTINGS,
+  MatchPoolTier,
+} from '../../types/settings';
 
-// In-memory persistent platform settings fallback
-interface PlatformSettings {
-  adminUrlAlias: string;
-  maintenanceMode: boolean;
-  turnTimeoutSeconds: number;
-  maxConsecutiveSixes: number;
-  entryFee2Player: number;
-  entryFee4Player: number;
-  entryFeeSnakeLudo: number;
-  prizePoolPercentage: number;
-  allowedOrigins: string[];
-}
+export const adminRouter = Router();
 
 export interface ActiveThemeConfig {
   activeLobbyId: string;
@@ -42,17 +35,13 @@ export interface ActiveThemeConfig {
   deployedBy?: string;
 }
 
-let platformSettings: PlatformSettings = {
-  adminUrlAlias: 'admin',
-  maintenanceMode: false,
-  turnTimeoutSeconds: 30,
-  maxConsecutiveSixes: 3,
-  entryFee2Player: 100,
-  entryFee4Player: 250,
-  entryFeeSnakeLudo: 50,
-  prizePoolPercentage: 85,
-  allowedOrigins: ['https://ludo.omyra.org', 'http://localhost:3000'],
+let platformSettings: PlatformGameSettings = {
+  ...DEFAULT_PLATFORM_SETTINGS,
 };
+
+export function getPlatformSettings(): PlatformGameSettings {
+  return platformSettings;
+}
 
 let activeThemeConfig: ActiveThemeConfig = {
   activeLobbyId: 'dubai_prestige_gold',
@@ -142,8 +131,16 @@ adminRouter.post('/api/admin/auth/logout', requireAdminAuth, (req: Request, res:
 });
 
 // -----------------------------------------------------------------------------
-// 2. PLATFORM SETTINGS & URL ALIAS MANAGEMENT
+// 2. PLATFORM SETTINGS, PAWN SPEEDS & ENTRY FEES MANAGEMENT
 // -----------------------------------------------------------------------------
+
+// Public endpoint for game clients and lobbies to fetch live speed and entry fee configuration
+adminRouter.get('/api/game-settings', (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    settings: platformSettings,
+  });
+});
 
 adminRouter.get('/api/admin/settings', (req: Request, res: Response) => {
   res.json({
@@ -162,10 +159,18 @@ adminRouter.post('/api/admin/settings', requireAdminAuth, (req: Request, res: Re
     maintenanceMode,
     turnTimeoutSeconds,
     maxConsecutiveSixes,
+    ludoPawnSpeedMs,
+    snakeLudoPawnSpeedMs,
+    supremePawnSpeedMs,
     entryFee2Player,
     entryFee4Player,
     entryFeeSnakeLudo,
     prizePoolPercentage,
+    platformFeePercentage,
+    matchPools2P,
+    matchPools3P,
+    matchPools4P,
+    matchPoolsSnake,
   } = req.body;
 
   if (adminUrlAlias) {
@@ -194,14 +199,42 @@ adminRouter.post('/api/admin/settings', requireAdminAuth, (req: Request, res: Re
 
   if (turnTimeoutSeconds !== undefined) platformSettings.turnTimeoutSeconds = Number(turnTimeoutSeconds);
   if (maxConsecutiveSixes !== undefined) platformSettings.maxConsecutiveSixes = Number(maxConsecutiveSixes);
+
+  // Pawn Movement Speeds (ms per step)
+  if (ludoPawnSpeedMs !== undefined) {
+    platformSettings.ludoPawnSpeedMs = Math.max(50, Math.min(2000, Number(ludoPawnSpeedMs)));
+  }
+  if (snakeLudoPawnSpeedMs !== undefined) {
+    platformSettings.snakeLudoPawnSpeedMs = Math.max(50, Math.min(2000, Number(snakeLudoPawnSpeedMs)));
+  }
+  if (supremePawnSpeedMs !== undefined) {
+    platformSettings.supremePawnSpeedMs = Math.max(50, Math.min(2000, Number(supremePawnSpeedMs)));
+  }
+
+  // Entry fees and platform rates
   if (entryFee2Player !== undefined) platformSettings.entryFee2Player = Number(entryFee2Player);
   if (entryFee4Player !== undefined) platformSettings.entryFee4Player = Number(entryFee4Player);
   if (entryFeeSnakeLudo !== undefined) platformSettings.entryFeeSnakeLudo = Number(entryFeeSnakeLudo);
   if (prizePoolPercentage !== undefined) platformSettings.prizePoolPercentage = Number(prizePoolPercentage);
+  if (platformFeePercentage !== undefined) platformSettings.platformFeePercentage = Number(platformFeePercentage);
+
+  // Dynamic match pools arrays
+  if (Array.isArray(matchPools2P)) platformSettings.matchPools2P = matchPools2P;
+  if (Array.isArray(matchPools3P)) platformSettings.matchPools3P = matchPools3P;
+  if (Array.isArray(matchPools4P)) platformSettings.matchPools4P = matchPools4P;
+  if (Array.isArray(matchPoolsSnake)) platformSettings.matchPoolsSnake = matchPoolsSnake;
+
+  Logger.info(`Admin updated platform game settings: LudoSpeed=${platformSettings.ludoPawnSpeedMs}ms, SnakeSpeed=${platformSettings.snakeLudoPawnSpeedMs}ms, 2P_Pools=${platformSettings.matchPools2P.length}`);
+
+  // Broadcast settings change to all active game rooms and connected sockets
+  wsServerInstance.broadcastToRoom('global', {
+    type: 'GAME_SETTINGS_UPDATED',
+    settings: platformSettings,
+  });
 
   res.json({
     success: true,
-    message: 'Platform configuration updated successfully',
+    message: 'Platform configuration, pawn movement speeds & entry fees updated successfully!',
     settings: platformSettings,
     adminUrls: {
       defaultUrl: 'https://ludo.omyra.org/admin',
