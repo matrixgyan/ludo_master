@@ -56,22 +56,27 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const [copiedAliasUrl, setCopiedAliasUrl] = useState(false);
 
   const fetchMetrics = async () => {
+    if (!token) return;
     try {
       const res = await fetch('/api/admin/metrics', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.status === 401) {
+      if (res.status === 401 || res.status === 403) {
+        // Token is genuinely invalid or revoked
         onLogout();
         return;
       }
-      const data = await res.json();
-      setMetrics(data);
+      if (res.ok) {
+        const data = await res.json();
+        setMetrics(data);
+      }
     } catch {
-      // Fallback
+      // Keep existing metrics on network latency, do not logout
     }
   };
 
   useEffect(() => {
+    if (!token) return;
     fetchMetrics();
     const interval = setInterval(fetchMetrics, 8000);
     return () => clearInterval(interval);

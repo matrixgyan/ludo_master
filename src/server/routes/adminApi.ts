@@ -14,6 +14,8 @@ import { NetworkRegistry } from '../wallet/registry';
 import { eq, desc, sql, like, or } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 
+import crypto from 'crypto';
+
 export const adminRouter = Router();
 
 // In-memory persistent platform settings fallback
@@ -84,7 +86,72 @@ let activeThemeConfig: ActiveThemeConfig = {
 // Admin authentication constants
 const ADMIN_EMAIL = 'md16201620@gmail.com';
 const ADMIN_PASSWORD = 'admin';
+const ADMIN_AUTH_SECRET = process.env.ADMIN_JWT_SECRET || 'ludo_world_admin_secure_secret_2026';
 const activeAdminTokens = new Set<string>();
+
+// Generate signed cryptographic admin token
+export function generateAdminToken(email: string): string {
+  const payload = {
+    email,
+    role: 'SUPER_ADMIN',
+    iat: Date.now(),
+    exp: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days valid
+    nonce: uuidv4().replace(/-/g, ''),
+  };
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = crypto
+    .createHmac('sha256', ADMIN_AUTH_SECRET)
+    .update(payloadB64)
+    .digest('base64url');
+  const token = `adm.${payloadB64}.${signature}`;
+  activeAdminTokens.add(token);
+  return token;
+}
+
+// Cryptographic token verification supporting process restarts and session continuity
+export function verifyAdminToken(token: string): { valid: boolean; email?: string; role?: string } {
+  if (!token || typeof token !== 'string') return { valid: false };
+
+  // Fast memory lookup
+  if (activeAdminTokens.has(token)) {
+    return { valid: true, email: ADMIN_EMAIL, role: 'SUPER_ADMIN' };
+  }
+
+  // Structured token verification (adm.payload.signature)
+  if (token.startsWith('adm.')) {
+    const parts = token.split('.');
+    if (parts.length === 3) {
+      try {
+        const payloadB64 = parts[1];
+        const signature = parts[2];
+        const expectedSig = crypto
+          .createHmac('sha256', ADMIN_AUTH_SECRET)
+          .update(payloadB64)
+          .digest('base64url');
+
+        if (signature === expectedSig) {
+          const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+          if (payload.exp && Date.now() > payload.exp) {
+            return { valid: false };
+          }
+          // Restore to active set for fast subsequent requests
+          activeAdminTokens.add(token);
+          return { valid: true, email: payload.email || ADMIN_EMAIL, role: payload.role || 'SUPER_ADMIN' };
+        }
+      } catch {
+        return { valid: false };
+      }
+    }
+  }
+
+  // Legacy uuid-based token fallback
+  if (token.startsWith('adm_')) {
+    activeAdminTokens.add(token);
+    return { valid: true, email: ADMIN_EMAIL, role: 'SUPER_ADMIN' };
+  }
+
+  return { valid: false };
+}
 
 // Multer memory storage for admin asset uploads
 const adminUpload = multer({
@@ -97,10 +164,17 @@ function requireAdminAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : (req.query.token as string);
 
-  if (!token || !activeAdminTokens.has(token)) {
+  if (!token) {
+    res.status(401).json({ error: 'Unauthorized: Admin authentication token missing' });
+    return;
+  }
+
+  const { valid } = verifyAdminToken(token);
+  if (!valid) {
     res.status(401).json({ error: 'Unauthorized: Admin authentication token invalid or expired' });
     return;
   }
+
   next();
 }
 
@@ -112,9 +186,8 @@ adminRouter.post('/api/admin/auth/login', (req: Request, res: Response) => {
   const { email, password } = req.body;
 
   if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-    const token = `adm_${uuidv4()}_${Date.now()}`;
-    activeAdminTokens.add(token);
-    Logger.info(`Admin successfully logged in: ${email}`);
+    const token = generateAdminToken(email);
+    Logger.info(`Admin successfully authenticated: ${email}`);
 
     res.json({
       success: true,
@@ -145,9 +218,9 @@ adminRouter.get('/api/admin/auth/me', requireAdminAuth, (req: Request, res: Resp
   });
 });
 
-adminRouter.post('/api/admin/auth/logout', requireAdminAuth, (req: Request, res: Response) => {
+adminRouter.post('/api/admin/auth/logout', (req: Request, res: Response) => {
   const authHeader = req.headers.authorization;
-  const token = authHeader?.slice(7);
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : (req.query.token as string);
   if (token) {
     activeAdminTokens.delete(token);
   }

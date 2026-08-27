@@ -167,7 +167,13 @@ export default function App() {
     });
     fetchRealWalletBalance();
   }, [fetchRealWalletBalance]);
-  const [adminToken, setAdminToken] = useState<string | null>(() => localStorage.getItem('ludo_admin_token'));
+  const [adminToken, setAdminToken] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('ludo_admin_token') || sessionStorage.getItem('ludo_admin_token');
+    } catch {
+      return null;
+    }
+  });
   const [adminData, setAdminData] = useState<any | null>(null);
   const [adminAlias, setAdminAlias] = useState<string>('admin');
 
@@ -175,7 +181,7 @@ export default function App() {
   const [playerMode, setPlayerMode] = useState<PlayerModeOption>(4);
   const [currentMatchConfig, setCurrentMatchConfig] = useState<MatchConfig | null>(null);
 
-  // URL Path & Query Detection for Admin Portal
+  // URL Path & Query Detection for Admin Portal (Runs once on mount)
   useEffect(() => {
     fetch('/api/admin/settings')
       .then((res) => res.json())
@@ -206,27 +212,35 @@ export default function App() {
         }
       });
 
-    const cachedToken = localStorage.getItem('ludo_admin_token');
+    // Validate cached admin token on startup
+    const cachedToken = localStorage.getItem('ludo_admin_token') || sessionStorage.getItem('ludo_admin_token');
     if (cachedToken) {
       fetch('/api/admin/auth/me', {
         headers: { Authorization: `Bearer ${cachedToken}` },
       })
-        .then((res) => {
-          if (res.ok) return res.json();
-          throw new Error('Invalid token');
-        })
-        .then((data) => {
-          setAdminData(data.admin);
+        .then(async (res) => {
+          if (res.status === 401 || res.status === 403) {
+            localStorage.removeItem('ludo_admin_token');
+            sessionStorage.removeItem('ludo_admin_token');
+            setAdminToken(null);
+            setAdminData(null);
+            return;
+          }
+          if (res.ok) {
+            const data = await res.json();
+            if (data.admin) {
+              setAdminData(data.admin);
+            }
+          }
         })
         .catch(() => {
-          localStorage.removeItem('ludo_admin_token');
-          setAdminToken(null);
+          // Never invalidate auth on network hiccups or server reboot
         });
     }
 
     const handlePopState = () => {
       const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
-      if (path === 'admin' || path === 'custom' || path === adminAlias) {
+      if (path === 'admin' || path === 'custom') {
         setViewMode('admin');
       } else if (path === '') {
         setViewMode('lobby');
@@ -235,7 +249,7 @@ export default function App() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [adminAlias]);
+  }, []);
 
   const [gameState, setGameState] = useState<GameState>({
     players: DEFAULT_PLAYERS,
@@ -988,6 +1002,7 @@ export default function App() {
         adminAlias={adminAlias}
         onLogout={() => {
           localStorage.removeItem('ludo_admin_token');
+          sessionStorage.removeItem('ludo_admin_token');
           setAdminToken(null);
           setAdminData(null);
         }}

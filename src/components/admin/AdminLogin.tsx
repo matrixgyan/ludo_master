@@ -32,6 +32,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, adminAli
       }
 
       localStorage.setItem('ludo_admin_token', data.token);
+      sessionStorage.setItem('ludo_admin_token', data.token);
       onLoginSuccess(data.token, data.admin);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
