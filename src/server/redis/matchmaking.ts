@@ -46,7 +46,7 @@ export class MatchmakingService {
           return { success: true };
         });
       } catch (err) {
-        reportRedisError(err);
+        reportRedisError(err, `matchmaking enqueue for ${userId}`);
       }
     }
 
@@ -68,7 +68,7 @@ export class MatchmakingService {
         await pipeline.exec();
         return true;
       } catch (err) {
-        reportRedisError(err);
+        reportRedisError(err, `cancel matchmaking for ${userId}`);
       }
     }
 
@@ -116,7 +116,7 @@ export class MatchmakingService {
           return null;
         });
       } catch (err) {
-        Logger.warn(`Error during match attempt for ${mode}: ${String(err)}`);
+        reportRedisError(err, `match attempt for ${mode}`);
       }
     }
 

@@ -1,4 +1,4 @@
-import { JsonRpcProvider, Contract, parseUnits, formatUnits, getAddress, isAddress, formatEther } from 'ethers';
+import { JsonRpcProvider, Contract, parseUnits, formatUnits, getAddress, isAddress, formatEther, Network } from 'ethers';
 import { NetworkRegistry } from './registry';
 import { ServerCustodyManager } from './custody';
 import { SupportedNetworkConfig } from './types';
@@ -36,7 +36,9 @@ export class BlockchainService {
   }
 
   /**
-   * Returns a connected JsonRpcProvider for the specified network with static network configuration
+   * Returns a connected JsonRpcProvider for the specified network with pre-defined static Network object.
+   * Passing Network.from({ chainId, name }) and staticNetwork: Network ensures ethers v6 NEVER performs
+   * background getNetwork() RPC calls that fail and spam "failed to detect network, retry in 1s".
    */
   public static getProvider(networkKeyOrChainId: string | number, rpcIndex = 0): JsonRpcProvider {
     const config = NetworkRegistry.getNetwork(networkKeyOrChainId);
@@ -46,9 +48,15 @@ export class BlockchainService {
     if (!this.providers.has(key)) {
       const urls = config.rpcUrls;
       const rpcUrl = urls[rpcIndex % urls.length] || urls[0];
-      const provider = new JsonRpcProvider(rpcUrl, config.chainId, {
-        staticNetwork: true,
+      const staticNet = Network.from({
+        chainId: config.chainId,
+        name: config.networkKey,
+      });
+
+      const provider = new JsonRpcProvider(rpcUrl, staticNet, {
+        staticNetwork: staticNet,
         batchMaxCount: 1,
+        cacheTimeout: -1,
       });
       this.providers.set(key, provider);
     }

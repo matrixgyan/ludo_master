@@ -44,7 +44,7 @@ export class PresenceManager {
       pipeline.zadd(RedisKeys.onlineUsers(), Date.now(), userId);
       await pipeline.exec();
     } catch (err) {
-      reportRedisError(err);
+      reportRedisError(err, `presence update for ${userId}`);
     }
   }
 
@@ -60,7 +60,7 @@ export class PresenceManager {
           return JSON.parse(raw) as UserPresenceData;
         }
       } catch (err) {
-        reportRedisError(err);
+        reportRedisError(err, `getPresence for ${userId}`);
       }
     }
     return this.localPresence.get(userId) || null;
@@ -81,7 +81,7 @@ export class PresenceManager {
       pipeline.zrem(RedisKeys.onlineUsers(), userId);
       await pipeline.exec();
     } catch (err) {
-      reportRedisError(err);
+      reportRedisError(err, `remove presence for ${userId}`);
     }
   }
 
@@ -96,7 +96,7 @@ export class PresenceManager {
         await redis.zremrangebyscore(RedisKeys.onlineUsers(), '-inf', twoMinutesAgo);
         return await redis.zcard(RedisKeys.onlineUsers());
       } catch (err) {
-        reportRedisError(err);
+        reportRedisError(err, 'getOnlineCount');
       }
     }
     return this.localPresence.size;

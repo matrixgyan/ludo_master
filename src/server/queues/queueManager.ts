@@ -1,5 +1,5 @@
 import { Queue, QueueOptions } from 'bullmq';
-import { getRedisConfig, isRedisConfigured } from '../redis/client';
+import { getRedisConfig, isRedisAvailable, reportRedisError } from '../redis/client';
 import { Logger } from '../config/env';
 
 function createQueueOptions(): QueueOptions {
@@ -37,17 +37,17 @@ function createDummyQueue<T>(name: string): Queue<T> {
 }
 
 function safeInstantiateQueue<T>(name: string): Queue<T> {
-  if (!isRedisConfigured()) {
+  if (!isRedisAvailable()) {
     return createDummyQueue<T>(name);
   }
   try {
     const q = new Queue<T>(name, createQueueOptions());
     q.on('error', (err) => {
-      Logger.warn(`BullMQ queue ${name} notice: ${err.message}`);
+      reportRedisError(err, `BullMQ queue ${name}`);
     });
     return q;
   } catch (err) {
-    Logger.warn(`Falling back to memory queue for ${name}`);
+    reportRedisError(err, `Queue instantiation ${name}`);
     return createDummyQueue<T>(name);
   }
 }
@@ -97,7 +97,7 @@ export class QueueRegistry {
   }
 
   static async getQueueMetrics(): Promise<Record<string, { waiting: number; active: number; failed: number }>> {
-    if (!isRedisConfigured()) {
+    if (!isRedisAvailable()) {
       return {
         gameProcessing: { waiting: 0, active: 0, failed: 0 },
         leaderboard: { waiting: 0, active: 0, failed: 0 },

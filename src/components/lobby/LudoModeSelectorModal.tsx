@@ -5,7 +5,6 @@ import { SoundManager } from '../../audio/soundManager';
 import { ArenaRulesInfoModal } from './ArenaRulesInfoModal';
 import arabAvatarImg from '../../assets/images/arab_avatar_man_1787143002600.jpg';
 import woodBgImg from '../../assets/images/wood_plank_bg_1787143024792.jpg';
-import { useGameSettings } from '../../hooks/useGameSettings';
 
 export type PlayerModeOption = 2 | 3 | 4;
 export type GameVariation = 'Classic' | 'Master' | 'Quick';
@@ -84,7 +83,6 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
   balance,
   gameType = 'supreme',
 }) => {
-  const { getPoolsForCount, calculateNetPrize } = useGameSettings();
   const [variation, setVariation] = useState<GameVariation>('Classic');
   const [selectedMode, setSelectedMode] = useState<PlayerModeOption>(2);
   const [showInfoModal, setShowInfoModal] = useState<boolean>(false);
@@ -92,9 +90,15 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
 
   if (!isOpen) return null;
 
+  const calculatePrize = (mode: PlayerModeOption, fee: number): number => {
+    if (fee === 0) return 0;
+    const totalCollected = fee * mode;
+    return Number((totalCollected * 0.9).toFixed(2));
+  };
+
   const handleStartGame = (fee: number) => {
     SoundManager.play('click');
-    const prize = calculateNetPrize(selectedMode, fee);
+    const prize = calculatePrize(selectedMode, fee);
 
     if (fee > 0 && balance < fee) {
       setToastMessage(`⚠️ Insufficient USDT balance ($${balance.toFixed(2)}). Please try Free Practice or deposit USDT!`);
@@ -109,12 +113,10 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
       { id: 'p4', name: 'Player 4', color: 'blue', avatarUrl: arabAvatarImg, isHuman: false },
     ];
 
-    const actualGameType: 'classic' | 'supreme' | 'snake' = gameType === 'classic' || gameType === 'snake' ? gameType : 'supreme';
-    onSelectMode(selectedMode, fee, prize, actualGameType, variation, defaultPlayers.slice(0, selectedMode));
+    onSelectMode(selectedMode, fee, prize, gameType, variation, defaultPlayers.slice(0, selectedMode));
   };
 
-  const actualType: 'classic' | 'supreme' | 'snake' = gameType === 'classic' || gameType === 'snake' ? gameType : 'supreme';
-  const currentPools = getPoolsForCount(selectedMode, actualType);
+  const currentPools = POOLS_BY_PLAYER_COUNT[selectedMode] || POOLS_BY_PLAYER_COUNT[2];
 
   return (
     <>
@@ -360,7 +362,7 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
                   {/* 6. DYNAMIC PRIZE POOL MATCH LIST (NO INPUT BOXES - Filtered by 2P, 3P, or 4P) */}
                   <div className="space-y-2 max-h-[230px] overflow-y-auto pr-0.5 custom-scroll">
                     {currentPools.map((tier, idx) => {
-                      const netPrize = calculateNetPrize(selectedMode, tier.fee);
+                      const netPrize = calculatePrize(selectedMode, tier.fee);
 
                       return (
                         <motion.div

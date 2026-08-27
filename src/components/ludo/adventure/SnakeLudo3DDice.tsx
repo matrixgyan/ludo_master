@@ -2,16 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { SoundManager } from '../../../audio/soundManager';
 
-export interface SnakeLudo3DDiceProps {
+interface SnakeLudo3DDiceProps {
   value: number;
   isRolling: boolean;
-  disabled?: boolean;
-  currentTurn?: string;
-  color?: 'red' | 'green' | 'yellow' | 'blue';
-  isActiveTurn?: boolean;
-  isHuman?: boolean;
-  size?: 'sm' | 'md' | 'normal';
-  onRoll?: () => void;
+  disabled: boolean;
+  currentTurn: 'p1' | 'p2';
+  onRoll: () => void;
 }
 
 // 3D rotation angles to face the camera for each dice value
@@ -27,12 +23,8 @@ const FACE_ROTATIONS: Record<number, { x: number; y: number }> = {
 export const SnakeLudo3DDice: React.FC<SnakeLudo3DDiceProps> = ({
   value,
   isRolling,
-  disabled = false,
+  disabled,
   currentTurn,
-  color = 'red',
-  isActiveTurn = false,
-  isHuman = false,
-  size = 'normal',
   onRoll,
 }) => {
   const [rotation, setRotation] = useState<{ x: number; y: number; z: number }>({
@@ -41,9 +33,9 @@ export const SnakeLudo3DDice: React.FC<SnakeLudo3DDiceProps> = ({
     z: 0,
   });
   const [isTumbling, setIsTumbling] = useState(false);
+  const lastValRef = useRef<number>(value || 1);
 
-  // Slightly increased normal, clear dice dimensions (comfortable in multi-player layouts)
-  const cubeSize = size === 'sm' ? 38 : size === 'md' ? 42 : 46; // px
+  const cubeSize = 54; // px
   const translateZ = cubeSize / 2;
 
   const triggerTumble = (targetVal: number) => {
@@ -71,18 +63,19 @@ export const SnakeLudo3DDice: React.FC<SnakeLudo3DDiceProps> = ({
   }, [isRolling, value]);
 
   const handleClick = () => {
-    if (disabled || isRolling || isTumbling || !isActiveTurn || !isHuman) return;
-    onRoll?.();
+    if (disabled || isRolling || isTumbling) return;
+    onRoll();
   };
 
-  // Render authentic inlaid pips with optimal dot size for normal cube
+  // Render authentic inlaid pips
   const renderPips = (val: number) => {
-    const dotSize = cubeSize <= 38 ? 'w-2 h-2' : 'w-2.5 h-2.5';
-    const bigDotSize = cubeSize <= 38 ? 'w-3 h-3' : 'w-3.5 h-3.5';
-    const darkDot = `${dotSize} rounded-full bg-[#241e17] shadow-[inset_0_1px_1px_rgba(0,0,0,0.85)] ring-[0.5px] ring-[#3d3324]`;
-    const redDot = `${bigDotSize} rounded-full bg-gradient-to-br from-[#dc2626] to-[#7f1d1d] shadow-[inset_0_1px_1.5px_rgba(0,0,0,0.7)] ring-[0.5px] ring-[#fca5a5]`;
-    const redSmallDot = `${dotSize} rounded-full bg-gradient-to-br from-[#dc2626] to-[#7f1d1d] shadow-[inset_0_1px_1.5px_rgba(0,0,0,0.7)] ring-[0.5px] ring-[#fca5a5]`;
-    const pad = cubeSize <= 38 ? 'p-1.5' : 'p-2';
+    const darkDot =
+      'w-2.5 h-2.5 rounded-full bg-[#262017] shadow-[inset_0_1px_2px_rgba(0,0,0,0.85)] ring-[0.5px] ring-[#3d3324]';
+    const redDot =
+      'w-3.5 h-3.5 rounded-full bg-gradient-to-br from-[#dc2626] to-[#7f1d1d] shadow-[inset_0_1px_2px_rgba(0,0,0,0.7)] ring-[0.5px] ring-[#fca5a5]';
+    const redSmallDot =
+      'w-2.5 h-2.5 rounded-full bg-gradient-to-br from-[#dc2626] to-[#7f1d1d] shadow-[inset_0_1px_2px_rgba(0,0,0,0.7)] ring-[0.5px] ring-[#fca5a5]';
+    const pad = 'p-2';
 
     switch (val) {
       case 1:
@@ -162,10 +155,10 @@ export const SnakeLudo3DDice: React.FC<SnakeLudo3DDiceProps> = ({
     width: `${cubeSize}px`,
     height: `${cubeSize}px`,
     background: 'linear-gradient(135deg, #ffffff 0%, #f7f3e8 45%, #DCCBA7 100%)',
-    border: '1px solid #9c8c6f',
-    borderRadius: '7px',
+    border: '1.5px solid #a8997a',
+    borderRadius: '10px',
     boxShadow:
-      'inset 0 0 3px rgba(0,0,0,0.15), inset 0 1px 2px rgba(255,255,255,0.95), 0 2px 4px rgba(0,0,0,0.25)',
+      'inset 0 0 5px rgba(0,0,0,0.12), inset 0 2px 3px rgba(255,255,255,0.95), 0 2px 4px rgba(0,0,0,0.22)',
     backfaceVisibility: 'hidden',
     WebkitBackfaceVisibility: 'hidden',
     transform: transformStr,
@@ -175,60 +168,56 @@ export const SnakeLudo3DDice: React.FC<SnakeLudo3DDiceProps> = ({
     userSelect: 'none',
   });
 
-  const isInteractive = !disabled && !isRolling && !isTumbling && isActiveTurn && isHuman;
+  const isInteractive = !disabled && !isRolling && !isTumbling;
 
   return (
     <div
       className="relative flex items-center justify-center select-none"
-      style={{ perspective: '500px' }}
+      style={{ perspective: '600px' }}
     >
-      {/* Sleek Normal-Sized Interactive Dice Button (NO big border!) */}
+      {/* Interactive 3D Dice Button Container */}
       <motion.button
-        type="button"
+        id="snake-ludo-3d-dice-btn"
         role="button"
         tabIndex={0}
-        aria-label="Roll Dice"
-        whileHover={isInteractive ? { scale: 1.08, y: -2 } : {}}
-        whileTap={isInteractive ? { scale: 0.94, y: 1 } : {}}
+        aria-label="Roll 3D Dice"
+        whileHover={isInteractive ? { scale: 1.12, y: -4 } : {}}
+        whileTap={isInteractive ? { scale: 0.94, y: 2 } : {}}
         onClick={handleClick}
         disabled={!isInteractive}
-        className={`relative flex items-center justify-center p-1 bg-transparent border-0 outline-none transition-all duration-200 ${
+        className={`relative w-20 h-20 sm:w-22 sm:h-22 rounded-2xl flex items-center justify-center transition-all duration-300 ${
           isInteractive
             ? 'cursor-pointer'
-            : isActiveTurn
-            ? 'cursor-wait opacity-95'
-            : 'cursor-default opacity-85'
+            : 'cursor-not-allowed opacity-80'
         }`}
         style={{
-          width: `${cubeSize + 14}px`,
-          height: `${cubeSize + 14}px`,
-          perspective: '400px',
+          background:
+            currentTurn === 'p1'
+              ? 'radial-gradient(circle, rgba(239,68,68,0.22) 0%, rgba(20,15,12,0.8) 70%, transparent 100%)'
+              : 'radial-gradient(circle, rgba(16,185,129,0.22) 0%, rgba(20,15,12,0.8) 70%, transparent 100%)',
+          perspective: '500px',
         }}
       >
-        {/* Active Turn Gentle Aura Pulse (Subtle, no thick box border) */}
-        {isActiveTurn && (
+        {/* Active Player Radial Pulsing Glow Halo */}
+        {isInteractive && (
           <div
-            className={`absolute inset-1 rounded-full animate-pulse pointer-events-none ${
-              color === 'red'
-                ? 'shadow-[0_0_12px_rgba(239,68,68,0.5)]'
-                : color === 'green'
-                ? 'shadow-[0_0_12px_rgba(16,185,129,0.5)]'
-                : color === 'yellow'
-                ? 'shadow-[0_0_12px_rgba(234,179,8,0.5)]'
-                : 'shadow-[0_0_12px_rgba(59,130,246,0.5)]'
+            className={`absolute inset-0 rounded-2xl animate-pulse pointer-events-none ${
+              currentTurn === 'p1'
+                ? 'shadow-[0_0_24px_rgba(239,68,68,0.45)] ring-1 ring-red-500/40'
+                : 'shadow-[0_0_24px_rgba(16,185,129,0.45)] ring-1 ring-emerald-500/40'
             }`}
           />
         )}
 
-        {/* Dynamic Floor Shadow */}
+        {/* Dynamic Physical Floor Shadow */}
         <motion.div
           animate={
             isTumbling || isRolling
-              ? { scale: [1, 0.35, 0.8, 1.15, 1], opacity: [0.55, 0.12, 0.35, 0.65, 0.55] }
-              : { scale: 1, opacity: 0.55 }
+              ? { scale: [1, 0.35, 0.8, 1.15, 1], opacity: [0.6, 0.12, 0.4, 0.7, 0.6] }
+              : { scale: 1, opacity: 0.6 }
           }
           transition={{ duration: 0.75, ease: 'easeInOut' }}
-          className="absolute bottom-1 w-9 h-2.5 rounded-full bg-black/75 blur-[2px] pointer-events-none"
+          className="absolute bottom-2 w-12 h-3 rounded-full bg-black/80 blur-[3px] pointer-events-none"
         />
 
         {/* 3D Physical Cube Mesh */}
@@ -237,8 +226,8 @@ export const SnakeLudo3DDice: React.FC<SnakeLudo3DDiceProps> = ({
             rotateX: rotation.x,
             rotateY: rotation.y,
             rotateZ: rotation.z,
-            y: isTumbling || isRolling ? [0, -26, 3, -6, 2, 0] : 0,
-            scale: isTumbling || isRolling ? [1, 1.12, 0.94, 1.04, 0.98, 1] : 1,
+            y: isTumbling || isRolling ? [0, -32, 4, -8, 2, 0] : 0,
+            scale: isTumbling || isRolling ? [1, 1.15, 0.92, 1.06, 0.98, 1] : 1,
           }}
           transition={{
             duration: 0.75,

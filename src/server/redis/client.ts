@@ -10,9 +10,10 @@ declare global {
 }
 
 let lastConnectionError: string | null = null;
-let isQuotaExceeded = false;
-let quotaExceededResetTime = 0;
-let consecutiveErrors = 0;
+let isDegraded = false;
+let degradedUntil = 0;
+let degradedReason = '';
+let lastDegradedLogTime = 0;
 
 export function isRedisConfigured(): boolean {
   return Boolean(
@@ -22,49 +23,59 @@ export function isRedisConfigured(): boolean {
   );
 }
 
-export function isRedisAvailable(): boolean {
-  if (!isRedisConfigured()) {
-    return false;
+export function isRedisDegraded(): boolean {
+  if (isDegraded && Date.now() < degradedUntil) {
+    return true;
   }
-  if (isQuotaExceeded) {
-    if (Date.now() < quotaExceededResetTime) {
-      return false;
-    }
-    // Attempt re-probe after backoff window
-    isQuotaExceeded = false;
-    consecutiveErrors = 0;
+  if (isDegraded && Date.now() >= degradedUntil) {
+    isDegraded = false;
+    degradedReason = '';
   }
-  return true;
+  return false;
 }
 
-/**
- * Report an error encountered during a Redis operation to automatically trigger backoff
- */
-export function reportRedisError(err: unknown): void {
-  const msg = err instanceof Error ? err.message : String(err);
-  lastConnectionError = msg;
+export function isRedisAvailable(): boolean {
+  return isRedisConfigured() && !isRedisDegraded();
+}
 
-  const isLimitError =
+export function isQuotaExceededError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err || '')).toLowerCase();
+  return (
     msg.includes('max requests limit exceeded') ||
-    msg.includes('ERR max requests limit') ||
-    msg.includes('quota') ||
-    msg.includes('OVER_LIMIT') ||
-    msg.includes('daily request limit') ||
-    msg.includes('OOM');
+    msg.includes('err max requests limit') ||
+    msg.includes('limit: 500000') ||
+    msg.includes('quota exceeded') ||
+    msg.includes('max request limit') ||
+    msg.includes('oom command not allowed')
+  );
+}
 
-  if (isLimitError) {
-    if (!isQuotaExceeded) {
-      Logger.warn('⚡ Upstash / Redis max requests quota reached. Safely falling back to in-memory state.');
-    }
-    isQuotaExceeded = true;
-    quotaExceededResetTime = Date.now() + 5 * 60 * 1000; // 5-minute backoff
-    return;
+export function markRedisDegraded(reason: string, durationMs = 300000): void {
+  isDegraded = true;
+  degradedUntil = Date.now() + durationMs;
+  degradedReason = reason;
+
+  const now = Date.now();
+  if (now - lastDegradedLogTime > 60000) {
+    lastDegradedLogTime = now;
+    Logger.warn(
+      `Redis / Upstash entered degraded mode: ${reason}. Seamlessly falling back to robust in-memory coordination.`
+    );
   }
+}
 
-  consecutiveErrors++;
-  if (consecutiveErrors >= 5) {
-    isQuotaExceeded = true;
-    quotaExceededResetTime = Date.now() + 60 * 1000; // 1-minute backoff for intermittent network drops
+export function reportRedisError(err: unknown, context?: string): void {
+  const errMsg = err instanceof Error ? err.message : String(err || '');
+  lastConnectionError = errMsg;
+
+  if (isQuotaExceededError(err)) {
+    markRedisDegraded(`Upstash quota limit reached: ${errMsg}`, 5 * 60 * 1000);
+  } else {
+    const now = Date.now();
+    if (now - lastDegradedLogTime > 60000) {
+      lastDegradedLogTime = now;
+      Logger.warn(`Redis operation notice ${context ? `(${context})` : ''}: ${errMsg}`);
+    }
   }
 }
 
@@ -85,7 +96,7 @@ export function getRedisConfig(): RedisOptions {
         commandTimeout: 8000,
         tls: url.protocol === 'rediss:' || config.REDIS_URL.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
         retryStrategy(times) {
-          if (times > 3) {
+          if (times > 3 || isRedisDegraded()) {
             return null;
           }
           return Math.min(times * 300, 2000);
@@ -109,8 +120,12 @@ export function getRedisConfig(): RedisOptions {
   };
 }
 
-export function getRedisClient(): Redis | null {
-  if (!isRedisAvailable()) {
+export function getRedisClient(bypassCircuitBreaker = false): Redis | null {
+  if (!isRedisConfigured()) {
+    return null;
+  }
+
+  if (!bypassCircuitBreaker && isRedisDegraded()) {
     return null;
   }
 
@@ -120,30 +135,34 @@ export function getRedisClient(): Redis | null {
 
       client.on('connect', () => {
         lastConnectionError = null;
-        consecutiveErrors = 0;
-        Logger.info('Redis / Upstash client connected successfully');
+        if (!isRedisDegraded()) {
+          Logger.info('Redis / Upstash client connected successfully');
+        }
       });
 
       client.on('ready', () => {
         lastConnectionError = null;
-        consecutiveErrors = 0;
       });
 
       client.on('error', (err: any) => {
-        reportRedisError(err);
+        reportRedisError(err, 'client listener');
       });
 
       globalThis.__ludo_redis_client = client;
     } catch (err: any) {
-      reportRedisError(err);
+      reportRedisError(err, 'client instantiation');
       return null;
     }
   }
   return globalThis.__ludo_redis_client;
 }
 
-export function getRedisSubscriber(): Redis | null {
-  if (!isRedisAvailable()) {
+export function getRedisSubscriber(bypassCircuitBreaker = false): Redis | null {
+  if (!isRedisConfigured()) {
+    return null;
+  }
+
+  if (!bypassCircuitBreaker && isRedisDegraded()) {
     return null;
   }
 
@@ -152,16 +171,18 @@ export function getRedisSubscriber(): Redis | null {
       const sub = new Redis(config.REDIS_URL!, getRedisConfig());
 
       sub.on('connect', () => {
-        Logger.info('Redis subscriber connected successfully');
+        if (!isRedisDegraded()) {
+          Logger.info('Redis subscriber connected successfully');
+        }
       });
 
       sub.on('error', (err: any) => {
-        reportRedisError(err);
+        reportRedisError(err, 'subscriber listener');
       });
 
       globalThis.__ludo_redis_sub = sub;
     } catch (err: any) {
-      reportRedisError(err);
+      reportRedisError(err, 'subscriber instantiation');
       return null;
     }
   }
@@ -172,7 +193,7 @@ export function getRedisSubscriber(): Redis | null {
  * Health check test for Redis / Upstash connection
  */
 export async function checkRedisHealth(): Promise<{
-  status: 'healthy' | 'unhealthy' | 'unconfigured';
+  status: 'healthy' | 'degraded' | 'unhealthy' | 'unconfigured';
   latencyMs: number;
   error?: string;
 }> {
@@ -180,17 +201,17 @@ export async function checkRedisHealth(): Promise<{
     return { status: 'unconfigured', latencyMs: 0 };
   }
 
-  if (isQuotaExceeded) {
+  if (isRedisDegraded()) {
     return {
-      status: 'unhealthy',
+      status: 'degraded',
       latencyMs: 0,
-      error: 'Upstash / Redis max requests quota reached (active memory fallback)',
+      error: degradedReason || 'Redis in degraded mode (using in-memory fallback)',
     };
   }
 
   const start = Date.now();
   try {
-    const client = getRedisClient();
+    const client = getRedisClient(true);
     if (!client) {
       return { 
         status: 'unhealthy', 
@@ -203,7 +224,6 @@ export async function checkRedisHealth(): Promise<{
       try {
         await client.connect();
       } catch (connErr: any) {
-        // If already connecting or connected, ignore
         if (!connErr?.message?.includes('already connecting') && !connErr?.message?.includes('ready')) {
           // continue to ping test
         }
@@ -221,11 +241,11 @@ export async function checkRedisHealth(): Promise<{
       latencyMs,
     };
   } catch (err: unknown) {
-    reportRedisError(err);
     const latencyMs = Date.now() - start;
     const msg = err instanceof Error ? err.message : String(err);
+    reportRedisError(err, 'health check');
     return {
-      status: 'unhealthy',
+      status: isQuotaExceededError(err) ? 'degraded' : 'unhealthy',
       latencyMs,
       error: msg,
     };

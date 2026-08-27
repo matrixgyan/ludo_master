@@ -1,6 +1,6 @@
 import { Worker, Job } from 'bullmq';
 import { GameProcessingJobData } from '../queueManager';
-import { getRedisConfig } from '../../redis/client';
+import { getRedisConfig, reportRedisError } from '../../redis/client';
 import { getDb, isPostgresConfigured } from '../../db/client';
 import { playerStatistics, matchHistory, gamePlayers } from '../../db/schema';
 import { eq, sql } from 'drizzle-orm';
@@ -77,7 +77,7 @@ export function createGameProcessingWorker(): Worker<GameProcessingJobData> {
   );
 
   worker.on('error', (err) => {
-    Logger.warn(`Game processing worker notice: ${err.message}`);
+    reportRedisError(err, 'game processing worker');
   });
 
   return worker;

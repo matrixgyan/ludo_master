@@ -1,6 +1,6 @@
 import { getDb, withTransaction, isPostgresConfigured } from '../db/client';
 import { games, gamePlayers, gameEvents, playerStatistics, leaderboards, matchHistory } from '../db/schema';
-import { getRedisClient, isRedisConfigured, reportRedisError } from '../redis/client';
+import { getRedisClient, isRedisAvailable, reportRedisError } from '../redis/client';
 import { RedisKeys } from '../redis/keys';
 import { DistributedLock } from '../redis/locks';
 import { QueueRegistry } from '../queues/queueManager';
@@ -31,7 +31,7 @@ export class GamePersistenceService {
       pipeline.set(RedisKeys.gameTurn(session.gameId), session.currentTurn, 'EX', ttlSeconds);
       await pipeline.exec();
     } catch (err) {
-      reportRedisError(err);
+      reportRedisError(err, `saveActiveGameState for ${session.gameId}`);
     }
   }
 
@@ -47,7 +47,7 @@ export class GamePersistenceService {
           return JSON.parse(cached) as AuthoritativeGameSession;
         }
       } catch (err) {
-        reportRedisError(err);
+        reportRedisError(err, `getGameState for ${gameId}`);
       }
     }
 
@@ -181,8 +181,8 @@ export class GamePersistenceService {
         }
       }
 
-      // 3. Dispatch BullMQ jobs via Redis if configured
-      if (isRedisConfigured()) {
+      // 3. Dispatch BullMQ jobs via Redis if configured and available
+      if (isRedisAvailable()) {
         try {
           await QueueRegistry.getGameProcessingQueue().add(`process_game_${session.gameId}`, {
             type: 'GAME_COMPLETED',
@@ -198,7 +198,7 @@ export class GamePersistenceService {
             userId: winnerUserId || undefined,
           });
         } catch (err) {
-          Logger.warn(`BullMQ queue dispatch skipped: ${String(err)}`);
+          reportRedisError(err, 'BullMQ queue dispatch');
         }
       }
 

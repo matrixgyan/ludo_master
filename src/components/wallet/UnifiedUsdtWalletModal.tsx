@@ -341,6 +341,19 @@ export const UnifiedUsdtWalletModal: React.FC<UnifiedUsdtWalletModalProps> = ({
           {/* TAB 1: DEPOSIT */}
           {activeTab === 'deposit' && (
             <div className="space-y-5 animate-fadeIn">
+              {/* No Web3 Extension Needed Informational Banner */}
+              <div className="p-3.5 bg-gradient-to-r from-emerald-950/40 via-teal-950/30 to-slate-900 border border-emerald-500/30 rounded-xl flex items-start gap-3">
+                <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 shrink-0 mt-0.5">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div className="space-y-0.5">
+                  <h4 className="text-xs font-bold text-emerald-300">Universal Direct Deposit (No Web3 Extension Required)</h4>
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    Deposit USDT from <strong>any exchange or wallet</strong> (Binance, OKX, TrustWallet, Bybit, MetaMask, etc.) on any of the 7 supported chains. All deposits are merged automatically into your single <strong>Unified In-Game Balance</strong> with zero in-game signature popups.
+                  </p>
+                </div>
+              </div>
+
               {/* Network Selector */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
@@ -467,10 +480,23 @@ export const UnifiedUsdtWalletModal: React.FC<UnifiedUsdtWalletModalProps> = ({
           {/* TAB 2: WITHDRAW */}
           {activeTab === 'withdraw' && (
             <div className="space-y-5 animate-fadeIn">
+              {/* Omnichain All-in-USDT Settlement Explanation Banner */}
+              <div className="p-3.5 bg-gradient-to-r from-teal-950/40 via-slate-900 to-emerald-950/40 border border-teal-500/30 rounded-xl flex items-start gap-3">
+                <div className="p-1.5 rounded-lg bg-teal-500/20 text-teal-400 shrink-0 mt-0.5">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+                <div className="space-y-0.5">
+                  <h4 className="text-xs font-bold text-teal-300">Omnichain 1-Click Cashout (All Fees Deducted in USDT)</h4>
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    Even if you deposited across multiple chains (e.g. BNB, Avalanche, Polygon), you can withdraw your entire balance at once to <strong>any single chosen network</strong>. All 3 fees (Network Gas, Platform Fee, and Cross-Chain Bridge) are <strong>deducted directly from your USDT</strong> — zero native coins (ETH/BNB/POL/AVAX) required.
+                  </p>
+                </div>
+              </div>
+
               {/* Network Selector */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                  Select Payout Network (Withdraw to ANY of the 7 chains)
+                  Select Payout Destination Network (Withdraw to ANY of the 7 chains)
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {networks.map((net) => {
@@ -479,14 +505,17 @@ export const UnifiedUsdtWalletModal: React.FC<UnifiedUsdtWalletModalProps> = ({
                       <button
                         key={net.networkKey}
                         onClick={() => setSelectedWithdrawNet(net.networkKey)}
-                        className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                        className={`p-2.5 rounded-xl border text-left transition flex items-center gap-2.5 ${
                           isSelected
                             ? 'bg-emerald-950/40 border-emerald-500/80 text-white shadow-md shadow-emerald-500/10'
                             : 'bg-slate-800/50 border-slate-700/60 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                         }`}
                       >
-                        <span className="text-xs font-bold truncate">{net.name}</span>
-                        <span className="text-[10px] text-slate-500 mt-1">Fee: {net.withdrawalFeeUsdt} USDT</span>
+                        <NetworkLogo networkKey={net.networkKey} size="sm" showGlow={isSelected} />
+                        <div className="min-w-0 flex-1">
+                          <span className="text-xs font-bold truncate block">{net.name}</span>
+                          <span className="text-[10px] text-slate-400 block">Gas Fee: {net.withdrawalFeeUsdt} USDT</span>
+                        </div>
                       </button>
                     );
                   })}
@@ -550,30 +579,57 @@ export const UnifiedUsdtWalletModal: React.FC<UnifiedUsdtWalletModalProps> = ({
 
               {/* Live Fee Breakdown */}
               {withdrawQuote && (
-                <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-xl space-y-2 text-xs">
+                <div className="p-4 bg-slate-950/90 border border-slate-800 rounded-xl space-y-2.5 text-xs">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+                    <span className="font-bold text-slate-300">Live Fee Quote & Net Delivery</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-500/30">
+                      All-in-USDT
+                    </span>
+                  </div>
+
                   <div className="flex justify-between text-slate-400">
-                    <span>Requested Amount:</span>
+                    <span>Requested Cashout Amount:</span>
                     <span className="font-semibold text-slate-200">{withdrawQuote.amount} USDT</span>
                   </div>
-                  {withdrawQuote.networkGasFee && (
-                    <div className="flex justify-between text-slate-400">
-                      <span>Network Gas & Relayer Fee:</span>
-                      <span className="font-semibold text-amber-400">-{withdrawQuote.networkGasFee} USDT</span>
-                    </div>
-                  )}
-                  {withdrawQuote.adminServiceFee && (
-                    <div className="flex justify-between text-slate-400">
-                      <span>Platform Service Fee:</span>
-                      <span className="font-semibold text-teal-400">-{withdrawQuote.adminServiceFee} USDT</span>
-                    </div>
-                  )}
+                  
+                  {/* Fee 1: Network Gas & Relayer */}
                   <div className="flex justify-between text-slate-400">
-                    <span>Total Fee Deducted:</span>
-                    <span className="font-semibold text-slate-200">-{withdrawQuote.feeAmount} USDT</span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                      1. Network Gas & Relayer ({currentWithdrawNetwork?.name}):
+                    </span>
+                    <span className="font-semibold text-amber-400">-{withdrawQuote.networkGasFee || '0.25'} USDT</span>
                   </div>
-                  <div className="pt-2 border-t border-slate-800 flex justify-between text-emerald-400 font-bold text-sm">
-                    <span>Net Receive on Destination:</span>
-                    <span>{withdrawQuote.netAmount} USDT</span>
+
+                  {/* Fee 2: Platform Service */}
+                  <div className="flex justify-between text-slate-400">
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>
+                      2. Platform Withdrawal Fee:
+                    </span>
+                    <span className="font-semibold text-teal-400">-{withdrawQuote.adminServiceFee || '0.10'} USDT</span>
+                  </div>
+
+                  {/* Fee 3: Cross-Chain Liquidity Routing */}
+                  <div className="flex justify-between text-slate-400">
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                      3. Omnichain Pool Routing:
+                    </span>
+                    <span className="font-semibold text-indigo-300">-0.00 USDT</span>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-800/80 flex justify-between text-slate-300 font-medium">
+                    <span>Total USDT Deducted:</span>
+                    <span className="font-bold text-slate-100">-{withdrawQuote.feeAmount} USDT</span>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/30 flex justify-between items-center text-emerald-300 font-bold text-sm">
+                    <div className="flex flex-col">
+                      <span>Net Sent to Destination:</span>
+                      <span className="text-[10px] text-emerald-400/80 font-normal">Arrives directly as USDT on {currentWithdrawNetwork?.name}</span>
+                    </div>
+                    <span className="text-base text-emerald-400 font-mono font-extrabold">{withdrawQuote.netAmount} USDT</span>
                   </div>
                 </div>
               )}

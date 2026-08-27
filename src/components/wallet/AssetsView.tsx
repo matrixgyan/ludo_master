@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
 import { NetworkLogo } from './NetworkLogo';
+import { ManualFiatWalletView } from './ManualFiatWalletView';
 import {
   UnifiedWalletService,
   UserWalletData,
@@ -73,6 +74,39 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
   const [isTrackingTx, setIsTrackingTx] = useState<boolean>(false);
   const [trackMsg, setTrackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Platform Mode State
+  const [platformMode, setPlatformMode] = useState<{
+    cryptoWalletEnabled: boolean;
+    paymentMode: 'CRYPTO' | 'MANUAL';
+    platformCurrency: string;
+    currencySymbol: string;
+    currencyName: string;
+  }>({
+    cryptoWalletEnabled: true,
+    paymentMode: 'CRYPTO',
+    platformCurrency: 'INR',
+    currencySymbol: '₹',
+    currencyName: 'Indian Rupee',
+  });
+
+  const fetchPlatformMode = async () => {
+    try {
+      const res = await fetch('/api/admin/settings');
+      const data = await res.json();
+      if (data.settings) {
+        setPlatformMode({
+          cryptoWalletEnabled: data.settings.cryptoWalletEnabled ?? true,
+          paymentMode: data.settings.paymentMode || (data.settings.cryptoWalletEnabled ? 'CRYPTO' : 'MANUAL'),
+          platformCurrency: data.settings.platformCurrency || 'INR',
+          currencySymbol: data.settings.currencySymbol || '₹',
+          currencyName: data.settings.currencyName || 'Indian Rupee',
+        });
+      }
+    } catch {
+      // fallback
+    }
+  };
+
   // Instant local QR code generator
   useEffect(() => {
     if (depositInfo?.address) {
@@ -117,6 +151,7 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
   };
 
   useEffect(() => {
+    fetchPlatformMode();
     refreshData();
   }, [userId]);
 
@@ -296,16 +331,24 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
         </motion.button>
 
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500/20 to-teal-500/10 border border-emerald-400/40 px-2.5 py-1 rounded-full text-[11px] font-black text-emerald-300 uppercase tracking-wider shadow-sm">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
-            <span>7 EVM Testnets Live</span>
-          </div>
+          {platformMode.cryptoWalletEnabled ? (
+            <div className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500/20 to-teal-500/10 border border-emerald-400/40 px-2.5 py-1 rounded-full text-[11px] font-black text-emerald-300 uppercase tracking-wider shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
+              <span>7 EVM Networks Live</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 bg-gradient-to-r from-amber-500/20 to-orange-500/10 border border-amber-400/40 px-2.5 py-1 rounded-full text-[11px] font-black text-amber-300 uppercase tracking-wider shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shadow-[0_0_8px_#fbbf24]" />
+              <span>UPI / Bank Gateway Active</span>
+            </div>
+          )}
 
           <motion.button
             whileHover={{ scale: 1.1, rotate: 180 }}
             whileTap={{ scale: 0.9 }}
             onClick={() => {
               SoundManager.play('click');
+              fetchPlatformMode();
               refreshData();
             }}
             disabled={isLoading}
@@ -317,9 +360,19 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
         </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* 2. AAA HERO PORTFOLIO CARD (MATCHING LOBBY CARD ONLINE HERO & BIG REWARDS) */}
-      {/* ========================================================================= */}
+      {/* RENDER MANUAL FIAT MODE IF CRYPTO IS DISABLED */}
+      {!platformMode.cryptoWalletEnabled ? (
+        <ManualFiatWalletView
+          userId={userId}
+          currencySymbol={platformMode.currencySymbol}
+          currencyCode={platformMode.platformCurrency}
+          onBalanceUpdate={onBalanceUpdate}
+        />
+      ) : (
+        <>
+          {/* ========================================================================= */}
+          {/* 2. AAA HERO PORTFOLIO CARD (MATCHING LOBBY CARD ONLINE HERO & BIG REWARDS) */}
+          {/* ========================================================================= */}
       <motion.div
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
@@ -907,6 +960,8 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
+        </>
+      )}
     </div>
   );
 };

@@ -10,16 +10,30 @@ import { MatchmakingService } from '../redis/matchmaking';
 import { QueueRegistry } from '../queues/queueManager';
 import { wsServerInstance } from '../websocket/wsServer';
 import { config, Logger } from '../config/env';
+import { NetworkRegistry } from '../wallet/registry';
 import { eq, desc, sql, like, or } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 
-import {
-  PlatformGameSettings,
-  DEFAULT_PLATFORM_SETTINGS,
-  MatchPoolTier,
-} from '../../types/settings';
-
 export const adminRouter = Router();
+
+// In-memory persistent platform settings fallback
+export interface PlatformSettings {
+  adminUrlAlias: string;
+  maintenanceMode: boolean;
+  cryptoWalletEnabled: boolean; // Master Toggle: Crypto Wallet System (On/Off)
+  paymentMode: 'CRYPTO' | 'MANUAL'; // 'CRYPTO' when enabled, 'MANUAL' when disabled
+  platformCurrency: string; // e.g. 'INR', 'USD', 'AED', 'EUR'
+  currencySymbol: string; // e.g. '₹', '$', 'AED', '€'
+  currencyName: string; // e.g. 'Indian Rupee'
+  exchangeRateToUsdt: number; // e.g. 89.5 for INR (1 USDT = 89.5 INR)
+  turnTimeoutSeconds: number;
+  maxConsecutiveSixes: number;
+  entryFee2Player: number;
+  entryFee4Player: number;
+  entryFeeSnakeLudo: number;
+  prizePoolPercentage: number;
+  allowedOrigins: string[];
+}
 
 export interface ActiveThemeConfig {
   activeLobbyId: string;
@@ -35,13 +49,23 @@ export interface ActiveThemeConfig {
   deployedBy?: string;
 }
 
-let platformSettings: PlatformGameSettings = {
-  ...DEFAULT_PLATFORM_SETTINGS,
+export let platformSettings: PlatformSettings = {
+  adminUrlAlias: 'admin',
+  maintenanceMode: false,
+  cryptoWalletEnabled: true, // Default enabled (can be toggled in 1-click by Admin)
+  paymentMode: 'CRYPTO',
+  platformCurrency: 'INR',
+  currencySymbol: '₹',
+  currencyName: 'Indian Rupee',
+  exchangeRateToUsdt: 89.5,
+  turnTimeoutSeconds: 30,
+  maxConsecutiveSixes: 3,
+  entryFee2Player: 100,
+  entryFee4Player: 250,
+  entryFeeSnakeLudo: 50,
+  prizePoolPercentage: 85,
+  allowedOrigins: ['https://ludo.omyra.org', 'http://localhost:3000'],
 };
-
-export function getPlatformSettings(): PlatformGameSettings {
-  return platformSettings;
-}
 
 let activeThemeConfig: ActiveThemeConfig = {
   activeLobbyId: 'dubai_prestige_gold',
@@ -131,16 +155,8 @@ adminRouter.post('/api/admin/auth/logout', requireAdminAuth, (req: Request, res:
 });
 
 // -----------------------------------------------------------------------------
-// 2. PLATFORM SETTINGS, PAWN SPEEDS & ENTRY FEES MANAGEMENT
+// 2. PLATFORM SETTINGS & URL ALIAS MANAGEMENT
 // -----------------------------------------------------------------------------
-
-// Public endpoint for game clients and lobbies to fetch live speed and entry fee configuration
-adminRouter.get('/api/game-settings', (req: Request, res: Response) => {
-  res.json({
-    success: true,
-    settings: platformSettings,
-  });
-});
 
 adminRouter.get('/api/admin/settings', (req: Request, res: Response) => {
   res.json({
@@ -157,20 +173,17 @@ adminRouter.post('/api/admin/settings', requireAdminAuth, (req: Request, res: Re
   const {
     adminUrlAlias,
     maintenanceMode,
+    cryptoWalletEnabled,
+    platformCurrency,
+    currencySymbol,
+    currencyName,
+    exchangeRateToUsdt,
     turnTimeoutSeconds,
     maxConsecutiveSixes,
-    ludoPawnSpeedMs,
-    snakeLudoPawnSpeedMs,
-    supremePawnSpeedMs,
     entryFee2Player,
     entryFee4Player,
     entryFeeSnakeLudo,
     prizePoolPercentage,
-    platformFeePercentage,
-    matchPools2P,
-    matchPools3P,
-    matchPools4P,
-    matchPoolsSnake,
   } = req.body;
 
   if (adminUrlAlias) {
@@ -197,44 +210,35 @@ adminRouter.post('/api/admin/settings', requireAdminAuth, (req: Request, res: Re
     }
   }
 
+  if (typeof cryptoWalletEnabled === 'boolean') {
+    platformSettings.cryptoWalletEnabled = cryptoWalletEnabled;
+    platformSettings.paymentMode = cryptoWalletEnabled ? 'CRYPTO' : 'MANUAL';
+    Logger.warn(`⚡ [PLATFORM MODE TOGGLE] Admin changed Crypto Wallet Enabled to [${cryptoWalletEnabled}]. Active Mode: [${platformSettings.paymentMode}]`);
+    
+    // Broadcast mode update to all clients
+    wsServerInstance.broadcastToRoom('global', {
+      type: 'PLATFORM_MODE_UPDATED',
+      cryptoWalletEnabled: platformSettings.cryptoWalletEnabled,
+      paymentMode: platformSettings.paymentMode,
+      platformCurrency: platformSettings.platformCurrency,
+      currencySymbol: platformSettings.currencySymbol,
+    });
+  }
+
+  if (platformCurrency) platformSettings.platformCurrency = String(platformCurrency).toUpperCase();
+  if (currencySymbol) platformSettings.currencySymbol = String(currencySymbol);
+  if (currencyName) platformSettings.currencyName = String(currencyName);
+  if (exchangeRateToUsdt !== undefined) platformSettings.exchangeRateToUsdt = Number(exchangeRateToUsdt);
   if (turnTimeoutSeconds !== undefined) platformSettings.turnTimeoutSeconds = Number(turnTimeoutSeconds);
   if (maxConsecutiveSixes !== undefined) platformSettings.maxConsecutiveSixes = Number(maxConsecutiveSixes);
-
-  // Pawn Movement Speeds (ms per step)
-  if (ludoPawnSpeedMs !== undefined) {
-    platformSettings.ludoPawnSpeedMs = Math.max(50, Math.min(2000, Number(ludoPawnSpeedMs)));
-  }
-  if (snakeLudoPawnSpeedMs !== undefined) {
-    platformSettings.snakeLudoPawnSpeedMs = Math.max(50, Math.min(2000, Number(snakeLudoPawnSpeedMs)));
-  }
-  if (supremePawnSpeedMs !== undefined) {
-    platformSettings.supremePawnSpeedMs = Math.max(50, Math.min(2000, Number(supremePawnSpeedMs)));
-  }
-
-  // Entry fees and platform rates
   if (entryFee2Player !== undefined) platformSettings.entryFee2Player = Number(entryFee2Player);
   if (entryFee4Player !== undefined) platformSettings.entryFee4Player = Number(entryFee4Player);
   if (entryFeeSnakeLudo !== undefined) platformSettings.entryFeeSnakeLudo = Number(entryFeeSnakeLudo);
   if (prizePoolPercentage !== undefined) platformSettings.prizePoolPercentage = Number(prizePoolPercentage);
-  if (platformFeePercentage !== undefined) platformSettings.platformFeePercentage = Number(platformFeePercentage);
-
-  // Dynamic match pools arrays
-  if (Array.isArray(matchPools2P)) platformSettings.matchPools2P = matchPools2P;
-  if (Array.isArray(matchPools3P)) platformSettings.matchPools3P = matchPools3P;
-  if (Array.isArray(matchPools4P)) platformSettings.matchPools4P = matchPools4P;
-  if (Array.isArray(matchPoolsSnake)) platformSettings.matchPoolsSnake = matchPoolsSnake;
-
-  Logger.info(`Admin updated platform game settings: LudoSpeed=${platformSettings.ludoPawnSpeedMs}ms, SnakeSpeed=${platformSettings.snakeLudoPawnSpeedMs}ms, 2P_Pools=${platformSettings.matchPools2P.length}`);
-
-  // Broadcast settings change to all active game rooms and connected sockets
-  wsServerInstance.broadcastToRoom('global', {
-    type: 'GAME_SETTINGS_UPDATED',
-    settings: platformSettings,
-  });
 
   res.json({
     success: true,
-    message: 'Platform configuration, pawn movement speeds & entry fees updated successfully!',
+    message: 'Platform configuration updated successfully',
     settings: platformSettings,
     adminUrls: {
       defaultUrl: 'https://ludo.omyra.org/admin',
@@ -761,6 +765,107 @@ adminRouter.post('/api/admin/system/flush-cache', requireAdminAuth, async (req: 
   }
 
   res.json({ success: true, message: 'Local caches reset successfully' });
+});
+
+// -----------------------------------------------------------------------------
+// 9. BLOCKCHAIN MULTI-CHAIN RPC MANAGEMENT API (ALL 7 NETWORKS)
+// -----------------------------------------------------------------------------
+
+// Get all 7 blockchain networks and their active / custom RPC configurations
+adminRouter.get('/api/admin/rpc/networks', requireAdminAuth, async (req: Request, res: Response) => {
+  try {
+    const { RpcConfigService } = await import('../services/rpcConfigService');
+    const networks = await RpcConfigService.getNetworkRpcDetails();
+    const currentEnv = NetworkRegistry.getBlockchainEnv();
+
+    res.json({
+      success: true,
+      currentEnv,
+      networks,
+      lastUpdated: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    Logger.error('Failed to get RPC network details', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Test an RPC endpoint connection and latency
+adminRouter.post('/api/admin/rpc/test', requireAdminAuth, async (req: Request, res: Response) => {
+  try {
+    const { rpcUrl, expectedChainId } = req.body;
+    if (!rpcUrl || typeof rpcUrl !== 'string') {
+      res.status(400).json({ error: 'Valid rpcUrl is required' });
+      return;
+    }
+
+    const { RpcConfigService } = await import('../services/rpcConfigService');
+    const result = await RpcConfigService.testRpcEndpoint(rpcUrl, expectedChainId ? Number(expectedChainId) : undefined);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Save custom RPC endpoint(s) for a network
+adminRouter.post('/api/admin/rpc/save', requireAdminAuth, async (req: Request, res: Response) => {
+  try {
+    const { networkKey, primaryRpcUrl, fallbackUrls, overrides } = req.body;
+
+    if (!networkKey) {
+      res.status(400).json({ error: 'networkKey is required' });
+      return;
+    }
+
+    const { RpcConfigService } = await import('../services/rpcConfigService');
+
+    if (primaryRpcUrl) {
+      await RpcConfigService.updateNetworkRpc(networkKey, primaryRpcUrl, Array.isArray(fallbackUrls) ? fallbackUrls : []);
+    }
+
+    if (overrides && typeof overrides === 'object') {
+      const store = await RpcConfigService.getStore();
+      store.networkOverrides[networkKey] = {
+        ...store.networkOverrides[networkKey],
+        ...overrides,
+      };
+      await RpcConfigService.saveStore(store);
+    }
+
+    const networks = await RpcConfigService.getNetworkRpcDetails();
+    res.json({
+      success: true,
+      message: `RPC configuration updated successfully for ${networkKey}`,
+      networks,
+    });
+  } catch (err: any) {
+    Logger.error('Failed to save RPC settings', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reset RPC endpoint(s) for a network to defaults
+adminRouter.post('/api/admin/rpc/reset', requireAdminAuth, async (req: Request, res: Response) => {
+  try {
+    const { networkKey } = req.body;
+    if (!networkKey) {
+      res.status(400).json({ error: 'networkKey is required' });
+      return;
+    }
+
+    const { RpcConfigService } = await import('../services/rpcConfigService');
+    await RpcConfigService.resetNetworkRpcToDefault(networkKey);
+    const networks = await RpcConfigService.getNetworkRpcDetails();
+
+    res.json({
+      success: true,
+      message: `RPC endpoint for ${networkKey} reset to default provider list`,
+      networks,
+    });
+  } catch (err: any) {
+    Logger.error('Failed to reset RPC config', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Run automated system & match arena test suite

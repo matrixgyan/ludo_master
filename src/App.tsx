@@ -21,7 +21,6 @@ import { OnlineMatchmakingScreen, MatchedOpponent } from './components/lobby/Onl
 import { VictoryModal } from './components/ludo/effects/VictoryModal';
 import { GameSettingsModal } from './components/lobby/GameSettingsModal';
 import { UnifiedWalletService } from './services/unifiedWalletService';
-import { useGameSettings } from './hooks/useGameSettings';
 
 type ViewMode = 'lobby' | 'ludo_game' | 'snake_ludo' | 'admin' | 'matchmaking';
 
@@ -116,7 +115,6 @@ const getNextTurnColor = (current: PlayerColor, activeCols: PlayerColor[]): Play
 };
 
 export default function App() {
-  const { ludoPawnSpeedMs, supremePawnSpeedMs, turnTimeoutSeconds } = useGameSettings();
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window === 'undefined') return 'lobby';
     const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
@@ -286,7 +284,7 @@ export default function App() {
   useEffect(() => {
     if (viewMode !== 'ludo_game' || Boolean(gameState.winner)) return;
 
-    setTurnTimeLeft(turnTimeoutSeconds || 30);
+    setTurnTimeLeft(30);
 
     const timerInterval = setInterval(() => {
       setTurnTimeLeft((prev) => {
@@ -298,7 +296,7 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(timerInterval);
-  }, [viewMode, gameState.currentTurn, Boolean(gameState.winner), turnTimeoutSeconds]);
+  }, [viewMode, gameState.currentTurn, Boolean(gameState.winner)]);
 
   // 2 Minutes 60 Seconds (180s) Supreme Match Countdown Timer Effect (Continuously running)
   useEffect(() => {
@@ -771,7 +769,7 @@ export default function App() {
 
     let stepCount = 0;
     const stepsToPerform = startStep === -1 ? 1 : diceValue;
-    const stepDuration = (currentMatchConfig?.gameType === 'supreme' ? supremePawnSpeedMs : ludoPawnSpeedMs) || 320;
+    const STEP_DURATION_MS = 320; // Snappy, responsive hops for speed gameplay
 
     const doStep = () => {
       stepCount++;
@@ -802,14 +800,14 @@ export default function App() {
         const coord = getPawnGridCoord(color, pawnIndex, currentStep);
         const cellKey = `${Math.round(coord.x)}-${Math.round(coord.y)}`;
         setBouncingCellKey(cellKey);
-      }, Math.min(180, Math.floor(stepDuration * 0.55)));
+      }, 180);
 
       if (stepCount < stepsToPerform) {
-        setTimeout(doStep, stepDuration);
+        setTimeout(doStep, STEP_DURATION_MS);
       } else {
         setTimeout(() => {
           finalizeMove(clickedPawn, targetStep, diceValue);
-        }, stepDuration + Math.min(180, Math.floor(stepDuration * 0.55)));
+        }, STEP_DURATION_MS + 180);
       }
     };
 
@@ -1055,10 +1053,6 @@ export default function App() {
 
   // 3. SNAKE LUDO MINI-GAME VIEW
   if (viewMode === 'snake_ludo') {
-    const p1Config = currentMatchConfig?.playersConfig?.[0];
-    const userAvatar = p1Config?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
-    const userName = p1Config?.name || 'Player 1';
-
     return (
       <SnakeLudoGame
         onBackToLobby={() => {
@@ -1067,15 +1061,6 @@ export default function App() {
         }}
         isMuted={gameState.isMuted}
         onToggleMute={handleToggleMute}
-        entryFee={currentMatchConfig?.entryFee || 0}
-        prizePool={currentMatchConfig?.prizePool || 0}
-        userName={userName}
-        userAvatar={userAvatar}
-        playerCount={currentMatchConfig?.mode || playerMode || 2}
-        playersConfig={currentMatchConfig?.playersConfig}
-        onMatchWon={(prize) => {
-          handleUpdateBalance(prize);
-        }}
       />
     );
   }

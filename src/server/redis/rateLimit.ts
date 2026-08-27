@@ -38,7 +38,7 @@ export function rateLimiter(options: { maxRequests: number; windowSeconds: numbe
         next();
         return;
       } catch (err) {
-        reportRedisError(err);
+        reportRedisError(err, `rateLimiter for ${key}`);
       }
     }
 

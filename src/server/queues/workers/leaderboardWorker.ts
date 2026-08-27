@@ -1,6 +1,6 @@
 import { Worker, Job } from 'bullmq';
 import { LeaderboardJobData } from '../queueManager';
-import { getRedisConfig } from '../../redis/client';
+import { getRedisConfig, reportRedisError } from '../../redis/client';
 import { getDb, isPostgresConfigured } from '../../db/client';
 import { leaderboards, playerStatistics } from '../../db/schema';
 import { desc } from 'drizzle-orm';
@@ -64,7 +64,7 @@ export function createLeaderboardWorker(): Worker<LeaderboardJobData> {
   );
 
   worker.on('error', (err) => {
-    Logger.warn(`Leaderboard worker notice: ${err.message}`);
+    reportRedisError(err, 'leaderboard worker');
   });
 
   return worker;

@@ -11,6 +11,7 @@ import { BackgroundWorkerManager } from './src/server/queues/workerRunner';
 import { QueueRegistry } from './src/server/queues/queueManager';
 import { RoomManager } from './src/server/game/roomManager';
 import { ReconnectService } from './src/server/game/reconnectService';
+import { RpcConfigService } from './src/server/services/rpcConfigService';
 
 async function bootstrap() {
   const server = http.createServer(app);
@@ -19,7 +20,10 @@ async function bootstrap() {
   // 1. Initialize PostgreSQL Database Tables if configured
   await initializeDatabaseOnce();
 
-  // 2. Initialize BullMQ Background Workers if Redis is configured
+  // 2. Load and Apply Dynamic Multi-Chain RPC Configurations
+  await RpcConfigService.getStore().catch((err) => Logger.warn('RPC store load notice', err));
+
+  // 3. Initialize BullMQ Background Workers if Redis is configured
   BackgroundWorkerManager.initialize();
 
   // 3. Initialize Demand-Aware Automated Match Room Manager & Startup Recovery
