@@ -120,6 +120,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
           {/* 1. TOP HEADER (Brand | Bell | USDT Vault | Profile) */}
           <div className="w-full max-w-lg z-10">
             <LobbyHeader
+              balance={balance}
               usdtBalance={`$${balance.toFixed(2)}`}
               onOpenNotifications={() => setIsNotificationsOpen(true)}
               onOpenProfile={() => setIsProfileOpen(true)}

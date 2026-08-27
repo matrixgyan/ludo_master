@@ -13,75 +13,22 @@ import { config, Logger } from '../config/env';
 import { NetworkRegistry } from '../wallet/registry';
 import { eq, desc, sql, like, or } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
-
 import crypto from 'crypto';
+import { SettingsStore, PlatformSettings, ActiveThemeConfig } from '../storage/settingsStore';
 
 export const adminRouter = Router();
 
-// In-memory persistent platform settings fallback
-export interface PlatformSettings {
-  adminUrlAlias: string;
-  maintenanceMode: boolean;
-  cryptoWalletEnabled: boolean; // Master Toggle: Crypto Wallet System (On/Off)
-  paymentMode: 'CRYPTO' | 'MANUAL'; // 'CRYPTO' when enabled, 'MANUAL' when disabled
-  platformCurrency: string; // e.g. 'INR', 'USD', 'AED', 'EUR'
-  currencySymbol: string; // e.g. '₹', '$', 'AED', '€'
-  currencyName: string; // e.g. 'Indian Rupee'
-  exchangeRateToUsdt: number; // e.g. 89.5 for INR (1 USDT = 89.5 INR)
-  turnTimeoutSeconds: number;
-  maxConsecutiveSixes: number;
-  entryFee2Player: number;
-  entryFee4Player: number;
-  entryFeeSnakeLudo: number;
-  prizePoolPercentage: number;
-  allowedOrigins: string[];
-}
+export type { PlatformSettings, ActiveThemeConfig };
 
-export interface ActiveThemeConfig {
-  activeLobbyId: string;
-  activeBoardId: string;
-  activeDiceId: string;
-  activePawnId: string;
-  enabledLobbies: string[];
-  enabledBoards: string[];
-  enabledDice: string[];
-  enabledPawns: string[];
-  customThemes?: any[];
-  updatedAt: string;
-  deployedBy?: string;
-}
-
-export let platformSettings: PlatformSettings = {
-  adminUrlAlias: 'admin',
-  maintenanceMode: false,
-  cryptoWalletEnabled: true, // Default enabled (can be toggled in 1-click by Admin)
-  paymentMode: 'CRYPTO',
-  platformCurrency: 'INR',
-  currencySymbol: '₹',
-  currencyName: 'Indian Rupee',
-  exchangeRateToUsdt: 89.5,
-  turnTimeoutSeconds: 30,
-  maxConsecutiveSixes: 3,
-  entryFee2Player: 100,
-  entryFee4Player: 250,
-  entryFeeSnakeLudo: 50,
-  prizePoolPercentage: 85,
-  allowedOrigins: ['https://ludo.omyra.org', 'http://localhost:3000'],
-};
-
-let activeThemeConfig: ActiveThemeConfig = {
-  activeLobbyId: 'dubai_prestige_gold',
-  activeBoardId: 'dubai_royal_sunset',
-  activeDiceId: 'golden_high_roller',
-  activePawnId: 'royal_crowned',
-  enabledLobbies: ['dubai_prestige_gold', 'cyberpunk_neon_tokyo', 'monaco_vip_casino', 'emerald_palace_tournament', 'sunset_oasis_carnival'],
-  enabledBoards: ['dubai_royal_sunset', 'classic_emerald', 'cyber_neon', 'midnight_marble', 'candy_pastel', 'aztec_wood'],
-  enabledDice: ['golden_high_roller', 'classic_pearl', 'cyber_glass', 'ruby_royale', 'emerald_jade', 'dark_matter'],
-  enabledPawns: ['royal_crowned', 'classic_gloss', 'crystal_gem', 'cyber_mecha', 'golden_sovereign', 'dragon_shield'],
-  customThemes: [],
-  updatedAt: new Date().toISOString(),
-  deployedBy: 'SuperAdmin',
-};
+// Proxy getters for backwards compatibility
+export const getPlatformSettings = () => SettingsStore.getSettings();
+export const platformSettings = new Proxy({} as PlatformSettings, {
+  get: (_, prop: string) => (SettingsStore.getSettings() as any)[prop],
+  set: (_, prop: string, val: any) => {
+    SettingsStore.updateSettings({ [prop]: val });
+    return true;
+  },
+});
 
 // Admin authentication constants
 const ADMIN_EMAIL = 'md16201620@gmail.com';
@@ -232,12 +179,13 @@ adminRouter.post('/api/admin/auth/logout', (req: Request, res: Response) => {
 // -----------------------------------------------------------------------------
 
 adminRouter.get('/api/admin/settings', (req: Request, res: Response) => {
+  const current = SettingsStore.getSettings();
   res.json({
-    settings: platformSettings,
+    settings: current,
     adminUrls: {
       defaultUrl: 'https://ludo.omyra.org/admin',
-      currentAliasUrl: `https://ludo.omyra.org/${platformSettings.adminUrlAlias}`,
-      currentSlug: platformSettings.adminUrlAlias,
+      currentAliasUrl: `https://ludo.omyra.org/${current.adminUrlAlias}`,
+      currentSlug: current.adminUrlAlias,
     },
   });
 });
@@ -247,6 +195,7 @@ adminRouter.post('/api/admin/settings', requireAdminAuth, (req: Request, res: Re
     adminUrlAlias,
     maintenanceMode,
     cryptoWalletEnabled,
+    paymentMode,
     platformCurrency,
     currencySymbol,
     currencyName,
@@ -259,22 +208,22 @@ adminRouter.post('/api/admin/settings', requireAdminAuth, (req: Request, res: Re
     prizePoolPercentage,
   } = req.body;
 
+  const updates: Partial<PlatformSettings> = {};
+
   if (adminUrlAlias) {
-    // Sanitize alias slug (e.g. 'custom', 'control-panel', 'admin')
     const sanitizedSlug = String(adminUrlAlias)
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9_-]/g, '');
 
     if (sanitizedSlug.length > 0) {
-      platformSettings.adminUrlAlias = sanitizedSlug;
+      updates.adminUrlAlias = sanitizedSlug;
       Logger.info(`Admin URL alias updated to: /${sanitizedSlug}`);
     }
   }
 
   if (typeof maintenanceMode === 'boolean') {
-    platformSettings.maintenanceMode = maintenanceMode;
-    // Broadcast maintenance notification to all rooms
+    updates.maintenanceMode = maintenanceMode;
     if (maintenanceMode) {
       wsServerInstance.broadcastToRoom('global', {
         type: 'SYSTEM_ANNOUNCEMENT',
@@ -284,39 +233,47 @@ adminRouter.post('/api/admin/settings', requireAdminAuth, (req: Request, res: Re
   }
 
   if (typeof cryptoWalletEnabled === 'boolean') {
-    platformSettings.cryptoWalletEnabled = cryptoWalletEnabled;
-    platformSettings.paymentMode = cryptoWalletEnabled ? 'CRYPTO' : 'MANUAL';
-    Logger.warn(`⚡ [PLATFORM MODE TOGGLE] Admin changed Crypto Wallet Enabled to [${cryptoWalletEnabled}]. Active Mode: [${platformSettings.paymentMode}]`);
-    
-    // Broadcast mode update to all clients
+    updates.cryptoWalletEnabled = cryptoWalletEnabled;
+    updates.paymentMode = cryptoWalletEnabled ? 'CRYPTO' : 'MANUAL';
+    Logger.warn(`⚡ [PLATFORM MODE TOGGLE] Admin changed Crypto Wallet Enabled to [${cryptoWalletEnabled}]. Mode: [${updates.paymentMode}]`);
+  } else if (paymentMode === 'CRYPTO' || paymentMode === 'MANUAL') {
+    updates.paymentMode = paymentMode;
+    updates.cryptoWalletEnabled = paymentMode === 'CRYPTO';
+    Logger.warn(`⚡ [PLATFORM MODE TOGGLE] Admin changed Payment Mode to [${paymentMode}]`);
+  }
+
+  if (platformCurrency) updates.platformCurrency = String(platformCurrency).toUpperCase();
+  if (currencySymbol) updates.currencySymbol = String(currencySymbol);
+  if (currencyName) updates.currencyName = String(currencyName);
+  if (exchangeRateToUsdt !== undefined) updates.exchangeRateToUsdt = Number(exchangeRateToUsdt);
+  if (turnTimeoutSeconds !== undefined) updates.turnTimeoutSeconds = Number(turnTimeoutSeconds);
+  if (maxConsecutiveSixes !== undefined) updates.maxConsecutiveSixes = Number(maxConsecutiveSixes);
+  if (entryFee2Player !== undefined) updates.entryFee2Player = Number(entryFee2Player);
+  if (entryFee4Player !== undefined) updates.entryFee4Player = Number(entryFee4Player);
+  if (entryFeeSnakeLudo !== undefined) updates.entryFeeSnakeLudo = Number(entryFeeSnakeLudo);
+  if (prizePoolPercentage !== undefined) updates.prizePoolPercentage = Number(prizePoolPercentage);
+
+  const updatedSettings = SettingsStore.updateSettings(updates);
+
+  // Broadcast mode update to all clients if mode changed
+  if (updates.cryptoWalletEnabled !== undefined || updates.paymentMode !== undefined || updates.platformCurrency !== undefined) {
     wsServerInstance.broadcastToRoom('global', {
       type: 'PLATFORM_MODE_UPDATED',
-      cryptoWalletEnabled: platformSettings.cryptoWalletEnabled,
-      paymentMode: platformSettings.paymentMode,
-      platformCurrency: platformSettings.platformCurrency,
-      currencySymbol: platformSettings.currencySymbol,
+      cryptoWalletEnabled: updatedSettings.cryptoWalletEnabled,
+      paymentMode: updatedSettings.paymentMode,
+      platformCurrency: updatedSettings.platformCurrency,
+      currencySymbol: updatedSettings.currencySymbol,
     });
   }
 
-  if (platformCurrency) platformSettings.platformCurrency = String(platformCurrency).toUpperCase();
-  if (currencySymbol) platformSettings.currencySymbol = String(currencySymbol);
-  if (currencyName) platformSettings.currencyName = String(currencyName);
-  if (exchangeRateToUsdt !== undefined) platformSettings.exchangeRateToUsdt = Number(exchangeRateToUsdt);
-  if (turnTimeoutSeconds !== undefined) platformSettings.turnTimeoutSeconds = Number(turnTimeoutSeconds);
-  if (maxConsecutiveSixes !== undefined) platformSettings.maxConsecutiveSixes = Number(maxConsecutiveSixes);
-  if (entryFee2Player !== undefined) platformSettings.entryFee2Player = Number(entryFee2Player);
-  if (entryFee4Player !== undefined) platformSettings.entryFee4Player = Number(entryFee4Player);
-  if (entryFeeSnakeLudo !== undefined) platformSettings.entryFeeSnakeLudo = Number(entryFeeSnakeLudo);
-  if (prizePoolPercentage !== undefined) platformSettings.prizePoolPercentage = Number(prizePoolPercentage);
-
   res.json({
     success: true,
-    message: 'Platform configuration updated successfully',
-    settings: platformSettings,
+    message: 'Platform configuration updated and persisted successfully',
+    settings: updatedSettings,
     adminUrls: {
       defaultUrl: 'https://ludo.omyra.org/admin',
-      currentAliasUrl: `https://ludo.omyra.org/${platformSettings.adminUrlAlias}`,
-      currentSlug: platformSettings.adminUrlAlias,
+      currentAliasUrl: `https://ludo.omyra.org/${updatedSettings.adminUrlAlias}`,
+      currentSlug: updatedSettings.adminUrlAlias,
     },
   });
 });
@@ -329,14 +286,14 @@ adminRouter.post('/api/admin/settings', requireAdminAuth, (req: Request, res: Re
 adminRouter.get('/api/theme-config', (req: Request, res: Response) => {
   res.json({
     success: true,
-    themeConfig: activeThemeConfig,
+    themeConfig: SettingsStore.getThemeConfig(),
   });
 });
 
 adminRouter.get('/api/admin/theme-assets', (req: Request, res: Response) => {
   res.json({
     success: true,
-    themeConfig: activeThemeConfig,
+    themeConfig: SettingsStore.getThemeConfig(),
   });
 });
 
@@ -354,30 +311,32 @@ adminRouter.post('/api/admin/theme-assets', requireAdminAuth, (req: Request, res
     deployedBy,
   } = req.body;
 
-  if (activeLobbyId) activeThemeConfig.activeLobbyId = activeLobbyId;
-  if (activeBoardId) activeThemeConfig.activeBoardId = activeBoardId;
-  if (activeDiceId) activeThemeConfig.activeDiceId = activeDiceId;
-  if (activePawnId) activeThemeConfig.activePawnId = activePawnId;
-  if (Array.isArray(enabledLobbies)) activeThemeConfig.enabledLobbies = enabledLobbies;
-  if (Array.isArray(enabledBoards)) activeThemeConfig.enabledBoards = enabledBoards;
-  if (Array.isArray(enabledDice)) activeThemeConfig.enabledDice = enabledDice;
-  if (Array.isArray(enabledPawns)) activeThemeConfig.enabledPawns = enabledPawns;
-  if (Array.isArray(customThemes)) activeThemeConfig.customThemes = customThemes;
-  if (deployedBy) activeThemeConfig.deployedBy = deployedBy;
-  activeThemeConfig.updatedAt = new Date().toISOString();
+  const themeUpdates: Partial<ActiveThemeConfig> = {};
+  if (activeLobbyId) themeUpdates.activeLobbyId = activeLobbyId;
+  if (activeBoardId) themeUpdates.activeBoardId = activeBoardId;
+  if (activeDiceId) themeUpdates.activeDiceId = activeDiceId;
+  if (activePawnId) themeUpdates.activePawnId = activePawnId;
+  if (Array.isArray(enabledLobbies)) themeUpdates.enabledLobbies = enabledLobbies;
+  if (Array.isArray(enabledBoards)) themeUpdates.enabledBoards = enabledBoards;
+  if (Array.isArray(enabledDice)) themeUpdates.enabledDice = enabledDice;
+  if (Array.isArray(enabledPawns)) themeUpdates.enabledPawns = enabledPawns;
+  if (Array.isArray(customThemes)) themeUpdates.customThemes = customThemes;
+  if (deployedBy) themeUpdates.deployedBy = deployedBy;
 
-  Logger.info(`Admin deployed live platform theme: Lobby=${activeThemeConfig.activeLobbyId}, Board=${activeThemeConfig.activeBoardId}, Dice=${activeThemeConfig.activeDiceId}, Pawn=${activeThemeConfig.activePawnId}`);
+  const updatedTheme = SettingsStore.updateThemeConfig(themeUpdates);
+
+  Logger.info(`Admin deployed live platform theme: Lobby=${updatedTheme.activeLobbyId}, Board=${updatedTheme.activeBoardId}, Dice=${updatedTheme.activeDiceId}, Pawn=${updatedTheme.activePawnId}`);
 
   // Broadcast theme change to active live games and lobbies
   wsServerInstance.broadcastToRoom('global', {
     type: 'THEME_UPDATED',
-    themeConfig: activeThemeConfig,
+    themeConfig: updatedTheme,
   });
 
   res.json({
     success: true,
     message: 'Platform lobby, ludo boards, pawns & dice configuration deployed to live platform successfully!',
-    themeConfig: activeThemeConfig,
+    themeConfig: updatedTheme,
   });
 });
 

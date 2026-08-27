@@ -26,6 +26,7 @@ import {
 import { SoundManager } from '../../audio/soundManager';
 import { NetworkLogo } from './NetworkLogo';
 import { ManualFiatWalletView } from './ManualFiatWalletView';
+import { usePlatformMode } from '../../hooks/usePlatformMode';
 import {
   UnifiedWalletService,
   UserWalletData,
@@ -74,38 +75,8 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
   const [isTrackingTx, setIsTrackingTx] = useState<boolean>(false);
   const [trackMsg, setTrackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Platform Mode State
-  const [platformMode, setPlatformMode] = useState<{
-    cryptoWalletEnabled: boolean;
-    paymentMode: 'CRYPTO' | 'MANUAL';
-    platformCurrency: string;
-    currencySymbol: string;
-    currencyName: string;
-  }>({
-    cryptoWalletEnabled: true,
-    paymentMode: 'CRYPTO',
-    platformCurrency: 'INR',
-    currencySymbol: '₹',
-    currencyName: 'Indian Rupee',
-  });
-
-  const fetchPlatformMode = async () => {
-    try {
-      const res = await fetch('/api/admin/settings');
-      const data = await res.json();
-      if (data.settings) {
-        setPlatformMode({
-          cryptoWalletEnabled: data.settings.cryptoWalletEnabled ?? true,
-          paymentMode: data.settings.paymentMode || (data.settings.cryptoWalletEnabled ? 'CRYPTO' : 'MANUAL'),
-          platformCurrency: data.settings.platformCurrency || 'INR',
-          currencySymbol: data.settings.currencySymbol || '₹',
-          currencyName: data.settings.currencyName || 'Indian Rupee',
-        });
-      }
-    } catch {
-      // fallback
-    }
-  };
+  // Synchronized Platform Mode State (Instant zero-delay cache + background server sync)
+  const { platformMode, refreshPlatformMode } = usePlatformMode();
 
   // Instant local QR code generator
   useEffect(() => {
@@ -151,7 +122,7 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
   };
 
   useEffect(() => {
-    fetchPlatformMode();
+    refreshPlatformMode();
     refreshData();
   }, [userId]);
 
@@ -348,7 +319,7 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
             whileTap={{ scale: 0.9 }}
             onClick={() => {
               SoundManager.play('click');
-              fetchPlatformMode();
+              refreshPlatformMode();
               refreshData();
             }}
             disabled={isLoading}

@@ -1,7 +1,8 @@
 import React from 'react';
-import { Bell, User, Sparkles, Zap, ShieldCheck } from 'lucide-react';
+import { Bell, User, Sparkles, Zap, ShieldCheck, Landmark } from 'lucide-react';
 import { motion } from 'motion/react';
 import { SoundManager } from '../../audio/soundManager';
+import { usePlatformMode } from '../../hooks/usePlatformMode';
 
 interface LobbyHeaderProps {
   balance?: number;
@@ -12,11 +13,14 @@ interface LobbyHeaderProps {
 }
 
 export const LobbyHeader: React.FC<LobbyHeaderProps> = ({
+  balance = 0,
   usdtBalance = '$0.00',
   onOpenNotifications,
   onOpenProfile,
   onOpenWallet,
 }) => {
+  const { platformMode, isCryptoMode } = usePlatformMode();
+
   return (
     <header className="sticky top-0 z-30 w-full bg-[#0a0d24]/95 backdrop-blur-md px-3.5 py-2.5 border-b border-white/10 flex items-center justify-between shadow-lg select-none">
       {/* Left: Brand Badge */}
@@ -31,11 +35,13 @@ export const LobbyHeader: React.FC<LobbyHeaderProps> = ({
             </span>
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           </div>
-          <span className="text-[9px] font-bold text-slate-400 tracking-tight">On-Chain Arena</span>
+          <span className="text-[9px] font-bold text-slate-400 tracking-tight">
+            {isCryptoMode ? 'On-Chain Arena' : 'Pro Gaming Arena'}
+          </span>
         </div>
       </div>
 
-      {/* Right Controls: Notifications, USDT Vault, Profile Avatar */}
+      {/* Right Controls: Notifications, USDT/Fiat Vault, Profile Avatar */}
       <div className="flex items-center gap-2 sm:gap-3">
         {/* Notifications Bell */}
         <motion.button
@@ -52,7 +58,7 @@ export const LobbyHeader: React.FC<LobbyHeaderProps> = ({
           <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-[#0a0d24]" />
         </motion.button>
 
-        {/* Unified USDT Multi-Chain Vault Pill */}
+        {/* Dynamic Multi-Chain / Fiat Vault Pill */}
         <motion.button
           id="lobby-usdt-vault-btn"
           whileTap={{ scale: 0.95 }}
@@ -61,18 +67,34 @@ export const LobbyHeader: React.FC<LobbyHeaderProps> = ({
             SoundManager.play('click');
             if (onOpenWallet) onOpenWallet();
           }}
-          className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/70 hover:from-emerald-900 hover:to-teal-900 border border-emerald-500/50 rounded-full pl-2 pr-2.5 py-1 shadow-[0_2px_12px_rgba(16,185,129,0.25)] transition-all group cursor-pointer"
-          title="Unified USDT Multi-Chain Vault"
+          className={`flex items-center gap-1.5 border rounded-full pl-2 pr-2.5 py-1 transition-all group cursor-pointer ${
+            isCryptoMode
+              ? 'bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/70 hover:from-emerald-900 hover:to-teal-900 border-emerald-500/50 shadow-[0_2px_12px_rgba(16,185,129,0.25)]'
+              : 'bg-gradient-to-r from-amber-950/80 via-slate-900 to-orange-950/70 hover:from-amber-900 hover:to-orange-900 border-amber-500/50 shadow-[0_2px_12px_rgba(245,158,11,0.25)]'
+          }`}
+          title={isCryptoMode ? 'Unified USDT Multi-Chain Vault' : 'Manual Fiat Wallet & Gateway'}
         >
-          {/* Emerald USDT Icon */}
-          <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-emerald-400 to-teal-300 border border-emerald-200 flex items-center justify-center text-slate-950 font-black text-[10px] shadow-sm">
-            ₮
-          </div>
+          {/* Icon Badge */}
+          {isCryptoMode ? (
+            <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-emerald-400 to-teal-300 border border-emerald-200 flex items-center justify-center text-slate-950 font-black text-[10px] shadow-sm">
+              ₮
+            </div>
+          ) : (
+            <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-300 border border-amber-200 flex items-center justify-center text-slate-950 font-black text-[11px] shadow-sm">
+              {platformMode.currencySymbol || '₹'}
+            </div>
+          )}
 
-          {/* USDT Amount */}
-          <span className="text-emerald-300 font-black text-xs sm:text-sm tracking-tight flex items-center">
-            {usdtBalance} <span className="text-[10px] text-emerald-400/90 font-extrabold ml-1">USDT</span>
-          </span>
+          {/* Amount and Currency */}
+          {isCryptoMode ? (
+            <span className="text-emerald-300 font-black text-xs sm:text-sm tracking-tight flex items-center">
+              {usdtBalance} <span className="text-[10px] text-emerald-400/90 font-extrabold ml-1">USDT</span>
+            </span>
+          ) : (
+            <span className="text-amber-300 font-black text-xs sm:text-sm tracking-tight flex items-center">
+              {platformMode.currencySymbol}{balance.toFixed(2)} <span className="text-[10px] text-amber-400/90 font-extrabold ml-1">{platformMode.platformCurrency}</span>
+            </span>
+          )}
         </motion.button>
 
         {/* User Profile Avatar */}
@@ -96,3 +118,4 @@ export const LobbyHeader: React.FC<LobbyHeaderProps> = ({
     </header>
   );
 };
+

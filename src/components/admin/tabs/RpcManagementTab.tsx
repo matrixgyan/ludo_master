@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { saveLocalPlatformMode } from '../../../hooks/usePlatformMode';
 import {
   Server,
   RefreshCw,
@@ -214,6 +215,10 @@ export const RpcManagementTab: React.FC<RpcManagementTabProps> = ({ token }) => 
       });
       const data = await res.json();
       if (data.success && data.settings) {
+        saveLocalPlatformMode({
+          cryptoWalletEnabled: enabled,
+          paymentMode: enabled ? 'CRYPTO' : 'MANUAL',
+        });
         setPlatformSettings((prev) => ({
           ...prev,
           cryptoWalletEnabled: enabled,
@@ -251,6 +256,12 @@ export const RpcManagementTab: React.FC<RpcManagementTabProps> = ({ token }) => 
       });
       const data = await res.json();
       if (data.success) {
+        saveLocalPlatformMode({
+          platformCurrency: curr,
+          currencySymbol: symbol,
+          currencyName: name,
+          exchangeRateToUsdt: rate,
+        });
         setPlatformSettings((prev) => ({
           ...prev,
           platformCurrency: curr,
