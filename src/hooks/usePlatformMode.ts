@@ -68,7 +68,7 @@ export function usePlatformMode() {
   const refreshPlatformMode = useCallback(async () => {
     try {
       setIsLoading(true);
-      const res = await fetch('/api/admin/settings');
+      const res = await fetch('/api/platform/settings');
       if (res.ok) {
         const data = await res.json();
         if (data.settings) {

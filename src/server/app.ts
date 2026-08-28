@@ -7,6 +7,7 @@ import { manualPaymentRouter } from './routes/manualPaymentRoutes';
 import { matchApiRouter } from './routes/matchApi';
 import { ensureDatabaseTables } from './db/migrator';
 import { isPostgresConfigured } from './db/client';
+import { SettingsStore } from './storage/settingsStore';
 import { Logger } from './config/env';
 
 // Track if database schema migration has already been executed in this process instance
@@ -19,8 +20,10 @@ export async function initializeDatabaseOnce(): Promise<void> {
   }
   if (!dbInitPromise) {
     dbInitPromise = ensureDatabaseTables()
-      .then(() => {
+      .then(async () => {
         isDbSchemaInitialized = true;
+        // Load persistent settings directly from PostgreSQL
+        await SettingsStore.initializeFromDb();
       })
       .catch((err) => {
         dbInitPromise = null;

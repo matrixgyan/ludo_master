@@ -175,8 +175,31 @@ adminRouter.post('/api/admin/auth/logout', (req: Request, res: Response) => {
 });
 
 // -----------------------------------------------------------------------------
-// 2. PLATFORM SETTINGS & URL ALIAS MANAGEMENT
+// 2. PLATFORM SETTINGS & URL ALIAS MANAGEMENT (DATABASE BACKED & PROTECTED)
 // -----------------------------------------------------------------------------
+
+// Fast public endpoint for game frontend to query active platform settings (payment mode, currency, rules)
+adminRouter.get('/api/platform/settings', (req: Request, res: Response) => {
+  const current = SettingsStore.getSettings();
+  res.json({
+    success: true,
+    settings: {
+      cryptoWalletEnabled: current.cryptoWalletEnabled,
+      paymentMode: current.paymentMode,
+      platformCurrency: current.platformCurrency,
+      currencySymbol: current.currencySymbol,
+      currencyName: current.currencyName,
+      exchangeRateToUsdt: current.exchangeRateToUsdt,
+      turnTimeoutSeconds: current.turnTimeoutSeconds,
+      maxConsecutiveSixes: current.maxConsecutiveSixes,
+      entryFee2Player: current.entryFee2Player,
+      entryFee4Player: current.entryFee4Player,
+      entryFeeSnakeLudo: current.entryFeeSnakeLudo,
+      prizePoolPercentage: current.prizePoolPercentage,
+      maintenanceMode: current.maintenanceMode,
+    },
+  });
+});
 
 adminRouter.get('/api/admin/settings', (req: Request, res: Response) => {
   const current = SettingsStore.getSettings();

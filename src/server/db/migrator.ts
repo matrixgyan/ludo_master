@@ -440,6 +440,82 @@ export async function ensureDatabaseTables(): Promise<void> {
         description TEXT,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      -- 21. Platform System Settings (Central Source of Truth for Crypto/Manual Gateways & Rates)
+      CREATE TABLE IF NOT EXISTS platform_system_settings (
+        key TEXT PRIMARY KEY,
+        value JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      -- 22. Payment Gateways (Admin Managed UPI / Bank / QR / Custom Channels)
+      CREATE TABLE IF NOT EXISTS payment_gateways (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        account_holder_name TEXT NOT NULL,
+        upi_id TEXT,
+        account_number TEXT,
+        ifsc_code TEXT,
+        bank_name TEXT,
+        branch_name TEXT,
+        qr_code_url TEXT,
+        min_deposit_amount NUMERIC(28, 8) NOT NULL DEFAULT 100.00,
+        max_deposit_amount NUMERIC(28, 8) NOT NULL DEFAULT 100000.00,
+        deposit_instructions TEXT,
+        is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        display_order INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      -- 23. Manual Fiat Deposit Requests
+      CREATE TABLE IF NOT EXISTS manual_deposit_requests (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        gateway_id TEXT NOT NULL REFERENCES payment_gateways(id),
+        amount NUMERIC(28, 8) NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'INR',
+        utr_number TEXT NOT NULL,
+        sender_name TEXT,
+        sender_upi_or_account TEXT,
+        screenshot_url TEXT,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        admin_notes TEXT,
+        reviewed_by TEXT,
+        reviewed_at TIMESTAMPTZ,
+        ledger_tx_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS manual_deposits_user_status_idx ON manual_deposit_requests(user_id, status);
+      CREATE INDEX IF NOT EXISTS manual_deposits_utr_idx ON manual_deposit_requests(utr_number);
+
+      -- 24. Manual Fiat Withdrawal Requests
+      CREATE TABLE IF NOT EXISTS manual_withdrawal_requests (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        amount NUMERIC(28, 8) NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'INR',
+        payout_method TEXT NOT NULL,
+        payout_upi_id TEXT,
+        payout_account_number TEXT,
+        payout_ifsc_code TEXT,
+        payout_account_name TEXT,
+        payout_bank_name TEXT,
+        fee_amount NUMERIC(28, 8) NOT NULL DEFAULT 0.00,
+        net_amount NUMERIC(28, 8) NOT NULL,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        payout_reference TEXT,
+        payout_receipt_url TEXT,
+        admin_notes TEXT,
+        reviewed_by TEXT,
+        reviewed_at TIMESTAMPTZ,
+        ledger_tx_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS manual_withdrawals_user_status_idx ON manual_withdrawal_requests(user_id, status);
     `);
 
     Logger.info('PostgreSQL schema migration completed successfully.');

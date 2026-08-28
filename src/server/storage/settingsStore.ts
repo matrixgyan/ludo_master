@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Logger } from '../config/env';
+import { getDbPool, isPostgresConfigured } from '../db/client';
 
 export interface PlatformSettings {
   adminUrlAlias: string;
@@ -83,15 +84,15 @@ function ensureDataDir() {
 // In-memory active runtime copies
 let currentSettings: PlatformSettings = { ...DEFAULT_SETTINGS };
 let currentThemeConfig: ActiveThemeConfig = { ...DEFAULT_THEME_CONFIG };
+let isDbInitialized = false;
 
-// Load initially from disk
+// Initial fast bootstrap from disk fallback
 try {
   ensureDataDir();
   if (fs.existsSync(settingsFilePath)) {
     const raw = fs.readFileSync(settingsFilePath, 'utf-8');
     const parsed = JSON.parse(raw);
     currentSettings = { ...DEFAULT_SETTINGS, ...parsed };
-    Logger.info(`[SettingsStore] Loaded persisted platform settings: Mode=${currentSettings.paymentMode}, CryptoEnabled=${currentSettings.cryptoWalletEnabled}`);
   } else {
     fs.writeFileSync(settingsFilePath, JSON.stringify(DEFAULT_SETTINGS, null, 2), 'utf-8');
   }
@@ -103,10 +104,89 @@ try {
     fs.writeFileSync(themeFilePath, JSON.stringify(DEFAULT_THEME_CONFIG, null, 2), 'utf-8');
   }
 } catch (err) {
-  Logger.warn(`[SettingsStore] Could not load persisted settings from disk, using defaults: ${String(err)}`);
+  Logger.warn(`[SettingsStore] Could not load persisted settings from disk: ${String(err)}`);
 }
 
 export class SettingsStore {
+  /**
+   * Loads the authoritative system settings from PostgreSQL Database
+   */
+  public static async initializeFromDb(): Promise<void> {
+    if (!isPostgresConfigured()) {
+      Logger.info('[SettingsStore] PostgreSQL not configured, running in local-disk persistent mode');
+      return;
+    }
+
+    const pool = getDbPool();
+    if (!pool) return;
+
+    try {
+      const client = await pool.connect();
+      try {
+        // Ensure table exists
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS platform_system_settings (
+            key TEXT PRIMARY KEY,
+            value JSONB NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+        `);
+
+        // Load Platform Settings
+        const settingsRes = await client.query(
+          'SELECT value FROM platform_system_settings WHERE key = $1',
+          ['platform_settings']
+        );
+
+        if (settingsRes.rows.length > 0 && settingsRes.rows[0].value) {
+          const dbSettings = settingsRes.rows[0].value;
+          currentSettings = { ...DEFAULT_SETTINGS, ...dbSettings };
+          Logger.info(`🛡️ [SettingsStore] Loaded authoritative platform settings from Database: PaymentMode=[${currentSettings.paymentMode}], CryptoWalletEnabled=[${currentSettings.cryptoWalletEnabled}]`);
+          
+          // Sync to local disk backup
+          try {
+            ensureDataDir();
+            fs.writeFileSync(settingsFilePath, JSON.stringify(currentSettings, null, 2), 'utf-8');
+          } catch {
+            // ignore
+          }
+        } else {
+          // Seed initial row in database with default settings
+          await client.query(
+            `INSERT INTO platform_system_settings (key, value, updated_at) 
+             VALUES ($1, $2, NOW()) 
+             ON CONFLICT (key) DO NOTHING`,
+            ['platform_settings', JSON.stringify(currentSettings)]
+          );
+          Logger.info('🛡️ [SettingsStore] Initialized platform_system_settings record in PostgreSQL');
+        }
+
+        // Load Theme Config
+        const themeRes = await client.query(
+          'SELECT value FROM platform_system_settings WHERE key = $1',
+          ['theme_config']
+        );
+
+        if (themeRes.rows.length > 0 && themeRes.rows[0].value) {
+          currentThemeConfig = { ...DEFAULT_THEME_CONFIG, ...themeRes.rows[0].value };
+        } else {
+          await client.query(
+            `INSERT INTO platform_system_settings (key, value, updated_at) 
+             VALUES ($1, $2, NOW()) 
+             ON CONFLICT (key) DO NOTHING`,
+            ['theme_config', JSON.stringify(currentThemeConfig)]
+          );
+        }
+
+        isDbInitialized = true;
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      Logger.warn('[SettingsStore] Failed to initialize settings from database:', { error: String(err) });
+    }
+  }
+
   public static getSettings(): PlatformSettings {
     return { ...currentSettings };
   }
@@ -117,19 +197,37 @@ export class SettingsStore {
       ...partial,
     };
 
-    // Ensure paymentMode and cryptoWalletEnabled are strictly consistent
+    // Ensure paymentMode and cryptoWalletEnabled are strictly bidirectional
     if (partial.cryptoWalletEnabled !== undefined) {
       currentSettings.paymentMode = partial.cryptoWalletEnabled ? 'CRYPTO' : 'MANUAL';
     } else if (partial.paymentMode !== undefined) {
       currentSettings.cryptoWalletEnabled = partial.paymentMode === 'CRYPTO';
     }
 
+    // 1. Sync to local disk file backup
     try {
       ensureDataDir();
       fs.writeFileSync(settingsFilePath, JSON.stringify(currentSettings, null, 2), 'utf-8');
       Logger.info(`[SettingsStore] Persisted platform settings to disk: Mode=${currentSettings.paymentMode}, Crypto=${currentSettings.cryptoWalletEnabled}`);
     } catch (err) {
       Logger.warn(`[SettingsStore] Failed to write settings to disk: ${String(err)}`);
+    }
+
+    // 2. Persist directly and authoritatively to PostgreSQL Database
+    if (isPostgresConfigured()) {
+      const pool = getDbPool();
+      if (pool) {
+        pool.query(
+          `INSERT INTO platform_system_settings (key, value, updated_at)
+           VALUES ($1, $2, NOW())
+           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+          ['platform_settings', JSON.stringify(currentSettings)]
+        ).then(() => {
+          Logger.info(`🛡️ [SettingsStore] Successfully saved platform settings to PostgreSQL Database! Mode=[${currentSettings.paymentMode}], Crypto=[${currentSettings.cryptoWalletEnabled}]`);
+        }).catch((err) => {
+          Logger.error('[SettingsStore] Error saving platform settings to PostgreSQL Database', err);
+        });
+      }
     }
 
     return { ...currentSettings };
@@ -151,6 +249,21 @@ export class SettingsStore {
       fs.writeFileSync(themeFilePath, JSON.stringify(currentThemeConfig, null, 2), 'utf-8');
     } catch (err) {
       Logger.warn(`[SettingsStore] Failed to write theme config to disk: ${String(err)}`);
+    }
+
+    // Persist to PostgreSQL Database
+    if (isPostgresConfigured()) {
+      const pool = getDbPool();
+      if (pool) {
+        pool.query(
+          `INSERT INTO platform_system_settings (key, value, updated_at)
+           VALUES ($1, $2, NOW())
+           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+          ['theme_config', JSON.stringify(currentThemeConfig)]
+        ).catch((err) => {
+          Logger.error('[SettingsStore] Error saving theme config to PostgreSQL', err);
+        });
+      }
     }
 
     return { ...currentThemeConfig };
