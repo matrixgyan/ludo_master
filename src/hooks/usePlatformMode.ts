@@ -12,8 +12,8 @@ export interface PlatformModeConfig {
 const STORAGE_KEY = 'ludo_platform_mode';
 
 const DEFAULT_PLATFORM_MODE: PlatformModeConfig = {
-  cryptoWalletEnabled: true,
-  paymentMode: 'CRYPTO',
+  cryptoWalletEnabled: false,
+  paymentMode: 'MANUAL',
   platformCurrency: 'INR',
   currencySymbol: '₹',
   currencyName: 'Indian Rupee',
@@ -25,9 +25,10 @@ export function getLocalPlatformMode(): PlatformModeConfig {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      const isCrypto = parsed.cryptoWalletEnabled === true;
       return {
-        cryptoWalletEnabled: parsed.cryptoWalletEnabled ?? true,
-        paymentMode: parsed.paymentMode || (parsed.cryptoWalletEnabled ? 'CRYPTO' : 'MANUAL'),
+        cryptoWalletEnabled: isCrypto,
+        paymentMode: parsed.paymentMode || (isCrypto ? 'CRYPTO' : 'MANUAL'),
         platformCurrency: parsed.platformCurrency || 'INR',
         currencySymbol: parsed.currencySymbol || '₹',
         currencyName: parsed.currencyName || 'Indian Rupee',
@@ -68,13 +69,17 @@ export function usePlatformMode() {
   const refreshPlatformMode = useCallback(async () => {
     try {
       setIsLoading(true);
-      const res = await fetch('/api/platform/settings');
+      const res = await fetch(`/api/platform/settings?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.settings) {
+          const isCrypto = Boolean(data.settings.cryptoWalletEnabled);
           const updated = saveLocalPlatformMode({
-            cryptoWalletEnabled: data.settings.cryptoWalletEnabled ?? true,
-            paymentMode: data.settings.paymentMode || (data.settings.cryptoWalletEnabled ? 'CRYPTO' : 'MANUAL'),
+            cryptoWalletEnabled: isCrypto,
+            paymentMode: data.settings.paymentMode || (isCrypto ? 'CRYPTO' : 'MANUAL'),
             platformCurrency: data.settings.platformCurrency || 'INR',
             currencySymbol: data.settings.currencySymbol || '₹',
             currencyName: data.settings.currencyName || 'Indian Rupee',

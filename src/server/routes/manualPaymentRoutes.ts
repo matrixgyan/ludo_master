@@ -18,6 +18,7 @@ function resolveUserId(req: Request): string {
  */
 manualPaymentRouter.get('/api/manual-payments/gateways', async (req: Request, res: Response) => {
   try {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     const gateways = await ManualPaymentService.getActiveGateways();
     res.json({
       success: true,

@@ -5,6 +5,7 @@ import { users, walletAccounts, ledgerAccounts, ledgerTransactions, ledgerEntrie
 import { eq, desc, sql, and } from 'drizzle-orm';
 import { Logger } from '../config/env';
 import { notificationService } from './notificationService';
+import { wsServerInstance } from '../websocket/wsServer';
 
 export interface PaymentGatewayItem {
   id: string;
@@ -63,57 +64,15 @@ export interface ManualWithdrawalItem {
   createdAt: string;
 }
 
-// In-memory fallback stores for high resilience and immediate responsiveness
-let inMemoryGateways: PaymentGatewayItem[] = [
-  {
-    id: 'gw_upi_instant',
-    type: 'UPI',
-    title: 'UPI Instant (GPay / PhonePe / Paytm / BHIM)',
-    accountHolderName: 'Ludo Supreme Arena',
-    upiId: 'ludosupreme@upi',
-    minDepositAmount: '50.00',
-    maxDepositAmount: '50000.00',
-    depositInstructions: 'Transfer via any UPI App, enter 12-digit UTR/Ref No. and submit for instant verification.',
-    isEnabled: true,
-    displayOrder: 1,
-  },
-  {
-    id: 'gw_bank_neft',
-    type: 'BANK_TRANSFER',
-    title: 'Direct Bank Transfer (IMPS / NEFT / RTGS)',
-    accountHolderName: 'Ludo Gaming Hub Pvt Ltd',
-    accountNumber: '9182348572910',
-    ifscCode: 'HDFC0001234',
-    bankName: 'HDFC Bank',
-    branchName: 'Corporate Branch',
-    minDepositAmount: '500.00',
-    maxDepositAmount: '500000.00',
-    depositInstructions: 'Transfer funds to the verified account and submit the bank transaction UTR reference.',
-    isEnabled: true,
-    displayOrder: 2,
-  },
-  {
-    id: 'gw_qr_code',
-    type: 'QR_CODE',
-    title: 'Scan QR & Pay (All UPI Apps)',
-    accountHolderName: 'Ludo Arena Official',
-    upiId: 'ludoarena@icici',
-    qrCodeUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa=ludoarena@icici&pn=LudoArena&cu=INR',
-    minDepositAmount: '100.00',
-    maxDepositAmount: '100000.00',
-    depositInstructions: 'Scan the dynamic QR code with any UPI app and input the generated 12-digit UTR.',
-    isEnabled: true,
-    displayOrder: 3,
-  },
-];
-
+// In-memory fallback and fast active cache
+let inMemoryGateways: PaymentGatewayItem[] = [];
 let inMemoryDeposits: ManualDepositItem[] = [];
 let inMemoryWithdrawals: ManualWithdrawalItem[] = [];
 
 export class ManualPaymentService {
   /**
    * ==========================================
-   * 1. PAYMENT GATEWAYS MANAGEMENT
+   * 1. PAYMENT GATEWAYS MANAGEMENT (DATABASE FIRST)
    * ==========================================
    */
   public static async getActiveGateways(): Promise<PaymentGatewayItem[]> {
@@ -126,7 +85,8 @@ export class ManualPaymentService {
             .from(paymentGateways)
             .where(eq(paymentGateways.isEnabled, true))
             .orderBy(paymentGateways.displayOrder);
-          if (list.length > 0) {
+          if (list && list.length > 0) {
+            inMemoryGateways = list as any;
             return list as any;
           }
         }
@@ -143,8 +103,33 @@ export class ManualPaymentService {
         const db = getDb();
         if (db) {
           const list = await db.select().from(paymentGateways).orderBy(paymentGateways.displayOrder);
-          if (list.length > 0) {
+          if (list && list.length > 0) {
+            inMemoryGateways = list as any;
             return list as any;
+          } else {
+            // If table has no gateways configured, seed default official UPI gateway
+            const defaultItem: PaymentGatewayItem = {
+              id: 'gw_upi_instant',
+              type: 'UPI',
+              title: 'UPI Instant (GPay / PhonePe / Paytm / BHIM)',
+              accountHolderName: 'Platform Treasury',
+              upiId: 'arena@upi',
+              minDepositAmount: '50.00',
+              maxDepositAmount: '50000.00',
+              depositInstructions: 'Transfer via any UPI App, enter 12-digit UTR/Ref No. and submit for instant verification.',
+              isEnabled: true,
+              displayOrder: 1,
+            };
+            await db.insert(paymentGateways).values({
+              ...defaultItem,
+              updatedAt: new Date(),
+            }).onConflictDoNothing();
+            
+            const refreshed = await db.select().from(paymentGateways).orderBy(paymentGateways.displayOrder);
+            if (refreshed && refreshed.length > 0) {
+              inMemoryGateways = refreshed as any;
+              return refreshed as any;
+            }
           }
         }
       } catch (err) {
@@ -159,30 +144,22 @@ export class ManualPaymentService {
     const completeItem: PaymentGatewayItem = {
       id,
       type: gateway.type || 'UPI',
-      title: gateway.title || 'Payment Gateway',
+      title: gateway.title || 'UPI Payment Channel',
       accountHolderName: gateway.accountHolderName || 'Platform Treasury',
-      upiId: gateway.upiId || '',
-      accountNumber: gateway.accountNumber || '',
-      ifscCode: gateway.ifscCode || '',
-      bankName: gateway.bankName || '',
-      branchName: gateway.branchName || '',
-      qrCodeUrl: gateway.qrCodeUrl || '',
+      upiId: gateway.upiId ? gateway.upiId.trim() : '',
+      accountNumber: gateway.accountNumber ? gateway.accountNumber.trim() : '',
+      ifscCode: gateway.ifscCode ? gateway.ifscCode.trim().toUpperCase() : '',
+      bankName: gateway.bankName ? gateway.bankName.trim() : '',
+      branchName: gateway.branchName ? gateway.branchName.trim() : '',
+      qrCodeUrl: gateway.qrCodeUrl ? gateway.qrCodeUrl.trim() : '',
       minDepositAmount: gateway.minDepositAmount || '50.00',
       maxDepositAmount: gateway.maxDepositAmount || '100000.00',
       depositInstructions: gateway.depositInstructions || '',
-      isEnabled: gateway.isEnabled !== undefined ? gateway.isEnabled : true,
+      isEnabled: gateway.isEnabled !== undefined ? Boolean(gateway.isEnabled) : true,
       displayOrder: gateway.displayOrder || 0,
     };
 
-    // Update Memory
-    const existingIdx = inMemoryGateways.findIndex((g) => g.id === id);
-    if (existingIdx >= 0) {
-      inMemoryGateways[existingIdx] = completeItem;
-    } else {
-      inMemoryGateways.push(completeItem);
-    }
-
-    // Update Postgres
+    // Update Postgres directly and authoritatively
     if (isPostgresConfigured()) {
       try {
         const db = getDb();
@@ -200,27 +177,72 @@ export class ManualPaymentService {
                 updatedAt: new Date(),
               },
             });
+
+          // Fetch full synchronized list
+          const list = await db.select().from(paymentGateways).orderBy(paymentGateways.displayOrder);
+          inMemoryGateways = list as any;
+          Logger.info(`🛡️ [PaymentGateway] Saved gateway ${id} to PostgreSQL. UPI=[${completeItem.upiId}]`);
         }
       } catch (err) {
-        Logger.warn(`Postgres saveGateway error: ${String(err)}`);
+        Logger.error(`Postgres saveGateway error: ${String(err)}`);
+        // Fallback update in-memory
+        const existingIdx = inMemoryGateways.findIndex((g) => g.id === id);
+        if (existingIdx >= 0) {
+          inMemoryGateways[existingIdx] = completeItem;
+        } else {
+          inMemoryGateways.push(completeItem);
+        }
       }
+    } else {
+      const existingIdx = inMemoryGateways.findIndex((g) => g.id === id);
+      if (existingIdx >= 0) {
+        inMemoryGateways[existingIdx] = completeItem;
+      } else {
+        inMemoryGateways.push(completeItem);
+      }
+    }
+
+    // Broadcast instant update event to all connected clients via WebSocket
+    try {
+      wsServerInstance.broadcastToRoom('global', {
+        type: 'PAYMENT_GATEWAYS_UPDATED',
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      // ignore
     }
 
     return completeItem;
   }
 
   public static async deleteGateway(id: string): Promise<boolean> {
-    inMemoryGateways = inMemoryGateways.filter((g) => g.id !== id);
     if (isPostgresConfigured()) {
       try {
         const db = getDb();
         if (db) {
           await db.delete(paymentGateways).where(eq(paymentGateways.id, id));
+          const list = await db.select().from(paymentGateways).orderBy(paymentGateways.displayOrder);
+          inMemoryGateways = list as any;
+          Logger.info(`🛡️ [PaymentGateway] Deleted gateway ${id} from PostgreSQL`);
         }
       } catch (err) {
-        Logger.warn(`Postgres deleteGateway error: ${String(err)}`);
+        Logger.error(`Postgres deleteGateway error: ${String(err)}`);
+        inMemoryGateways = inMemoryGateways.filter((g) => g.id !== id);
       }
+    } else {
+      inMemoryGateways = inMemoryGateways.filter((g) => g.id !== id);
     }
+
+    // Broadcast instant update event to all connected clients
+    try {
+      wsServerInstance.broadcastToRoom('global', {
+        type: 'PAYMENT_GATEWAYS_UPDATED',
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      // ignore
+    }
+
     return true;
   }
 

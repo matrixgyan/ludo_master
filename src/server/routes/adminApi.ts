@@ -180,6 +180,7 @@ adminRouter.post('/api/admin/auth/logout', (req: Request, res: Response) => {
 
 // Fast public endpoint for game frontend to query active platform settings (payment mode, currency, rules)
 adminRouter.get('/api/platform/settings', (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   const current = SettingsStore.getSettings();
   res.json({
     success: true,
@@ -202,6 +203,7 @@ adminRouter.get('/api/platform/settings', (req: Request, res: Response) => {
 });
 
 adminRouter.get('/api/admin/settings', (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   const current = SettingsStore.getSettings();
   res.json({
     settings: current,
@@ -213,7 +215,7 @@ adminRouter.get('/api/admin/settings', (req: Request, res: Response) => {
   });
 });
 
-adminRouter.post('/api/admin/settings', requireAdminAuth, (req: Request, res: Response) => {
+adminRouter.post('/api/admin/settings', requireAdminAuth, async (req: Request, res: Response) => {
   const {
     adminUrlAlias,
     maintenanceMode,
@@ -276,7 +278,7 @@ adminRouter.post('/api/admin/settings', requireAdminAuth, (req: Request, res: Re
   if (entryFeeSnakeLudo !== undefined) updates.entryFeeSnakeLudo = Number(entryFeeSnakeLudo);
   if (prizePoolPercentage !== undefined) updates.prizePoolPercentage = Number(prizePoolPercentage);
 
-  const updatedSettings = SettingsStore.updateSettings(updates);
+  const updatedSettings = await SettingsStore.updateSettingsAsync(updates);
 
   // Broadcast mode update to all clients if mode changed
   if (updates.cryptoWalletEnabled !== undefined || updates.paymentMode !== undefined || updates.platformCurrency !== undefined) {

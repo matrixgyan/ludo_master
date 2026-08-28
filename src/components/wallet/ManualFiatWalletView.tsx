@@ -130,22 +130,28 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
     setIsLoading(true);
     try {
       const [gRes, bRes, dRes, wRes] = await Promise.all([
-        fetch('/api/manual-payments/gateways'),
-        fetch(`/api/user/wallet?userId=${encodeURIComponent(userId)}`),
-        fetch(`/api/manual-payments/deposits/user?userId=${encodeURIComponent(userId)}`),
-        fetch(`/api/manual-payments/withdrawals/user?userId=${encodeURIComponent(userId)}`),
+        fetch(`/api/manual-payments/gateways?_t=${Date.now()}`, { cache: 'no-store' }).catch(() => null),
+        fetch(`/api/user/wallet?userId=${encodeURIComponent(userId)}&_t=${Date.now()}`, { cache: 'no-store' }).catch(() => null),
+        fetch(`/api/manual-payments/deposits/user?userId=${encodeURIComponent(userId)}&_t=${Date.now()}`, { cache: 'no-store' }).catch(() => null),
+        fetch(`/api/manual-payments/withdrawals/user?userId=${encodeURIComponent(userId)}&_t=${Date.now()}`, { cache: 'no-store' }).catch(() => null),
       ]);
 
-      const gData = await gRes.json();
-      const bData = await bRes.json();
-      const dData = await dRes.json();
-      const wData = await wRes.json();
+      const gData = gRes && gRes.ok ? await gRes.json().catch(() => ({})) : {};
+      const bData = bRes && bRes.ok ? await bRes.json().catch(() => ({})) : {};
+      const dData = dRes && dRes.ok ? await dRes.json().catch(() => ({})) : {};
+      const wData = wRes && wRes.ok ? await wRes.json().catch(() => ({})) : {};
 
       if (gData.success && Array.isArray(gData.gateways)) {
-        setGateways(gData.gateways);
-        if (gData.gateways.length > 0 && !selectedGateway) {
-          setSelectedGateway(gData.gateways[0]);
-        }
+        const gwList: PaymentGateway[] = gData.gateways;
+        setGateways(gwList);
+        setSelectedGateway((prev) => {
+          if (!prev && gwList.length > 0) return gwList[0];
+          if (prev) {
+            const found = gwList.find((g) => g.id === prev.id);
+            if (found) return found;
+          }
+          return gwList[0] || null;
+        });
       }
 
       if (bData.success && bData.wallet) {
@@ -157,7 +163,7 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
       if (dData.success) setDepositHistory(dData.deposits || []);
       if (wData.success) setWithdrawalHistory(dData.withdrawals || wData.withdrawals || []);
     } catch (err) {
-      console.error('Error fetching fiat wallet data', err);
+      console.warn('Notice fetching fiat wallet data:', err);
     } finally {
       setIsLoading(false);
     }
@@ -165,11 +171,19 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
 
   useEffect(() => {
     fetchFiatData();
+
+    // Listen to custom updates or external triggers
+    const handleGatewayUpdate = () => {
+      fetchFiatData();
+    };
+    window.addEventListener('ludo_gateways_updated', handleGatewayUpdate);
+    return () => {
+      window.removeEventListener('ludo_gateways_updated', handleGatewayUpdate);
+    };
   }, [userId]);
 
   // Generate live dynamic UPI QR code whenever gateway or deposit amount changes
   useEffect(() => {
-    // If selectedGateway is available, use its upiId or qrCodeUrl, otherwise fallback to default UPI
     const activeGateway = selectedGateway || (gateways.length > 0 ? gateways[0] : null);
     
     // If admin uploaded a static custom QR code image
@@ -178,8 +192,13 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
       return;
     }
 
-    const upiId = activeGateway?.upiId?.trim() || 'ludosupreme@upi';
-    const payeeName = encodeURIComponent(activeGateway?.accountHolderName || 'Ludo Champion Arena');
+    const upiId = activeGateway?.upiId?.trim() || '';
+    if (!upiId) {
+      setDynamicQrUrl('');
+      return;
+    }
+
+    const payeeName = encodeURIComponent(activeGateway?.accountHolderName || 'Platform Treasury');
     const amt = parseFloat(depositAmount);
     const validAmt = !isNaN(amt) && amt > 0 ? amt.toFixed(2) : '500.00';
     const note = encodeURIComponent(`Ludo_Deposit_${userId.slice(0, 8)}`);
@@ -202,7 +221,6 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
       })
       .catch((err) => {
         console.error('Dynamic UPI QR generation error:', err);
-        // Fallback to high-reliability online QR generator API
         const fallbackQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(upiIntentUri)}`;
         setDynamicQrUrl(fallbackQr);
       })
@@ -535,13 +553,47 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
                     1
                   </div>
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                    Select Amount & Scan Dynamic UPI QR
+                    Select Channel & Deposit Amount
                   </h3>
                 </div>
                 <span className="text-[10.5px] font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                  Pre-filled Amount
+                  Live Verification
                 </span>
               </div>
+
+              {/* Payment Gateway Channel Selector (if multiple gateways configured) */}
+              {gateways.length > 1 && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300">Choose Payment Channel</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {gateways.map((gw) => (
+                      <button
+                        key={gw.id}
+                        type="button"
+                        onClick={() => {
+                          SoundManager.play('click');
+                          setSelectedGateway(gw);
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition flex items-center gap-2.5 cursor-pointer ${
+                          selectedGateway?.id === gw.id
+                            ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-md shadow-amber-500/10'
+                            : 'bg-black/40 border-white/10 text-slate-400 hover:border-amber-400/40'
+                        }`}
+                      >
+                        {gw.type === 'UPI' && <Smartphone className="w-4 h-4 text-amber-400 shrink-0" />}
+                        {gw.type === 'BANK_TRANSFER' && <Building className="w-4 h-4 text-emerald-400 shrink-0" />}
+                        {gw.type === 'QR_CODE' && <QrCodeIcon className="w-4 h-4 text-yellow-400 shrink-0" />}
+                        <div className="overflow-hidden">
+                          <div className="text-xs font-bold truncate text-white">{gw.title}</div>
+                          <div className="text-[10px] text-slate-400 truncate">
+                            {gw.upiId || gw.accountNumber || (gw.type === 'QR_CODE' ? 'Scan & Pay' : 'Direct Transfer')}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Quick Amount Chips */}
               <div className="space-y-2">
@@ -580,50 +632,99 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
                 </div>
               </div>
 
-              {/* Dynamic QR Code Scanner Display */}
+              {/* Dynamic QR Code Scanner Display or Bank Details */}
               <div className="bg-black/60 border border-amber-400/40 rounded-2xl p-4 sm:p-5 flex flex-col items-center justify-center text-center space-y-3">
-                <div className="relative p-2.5 bg-white rounded-2xl shadow-[0_0_25px_rgba(245,158,11,0.25)] border-2 border-amber-400">
-                  {dynamicQrUrl ? (
-                    <img
-                      src={dynamicQrUrl}
-                      alt="Dynamic UPI QR Code"
-                      className="w-48 h-48 sm:w-56 sm:h-56 object-contain rounded-lg"
-                    />
-                  ) : (
-                    <div className="w-48 h-48 sm:w-56 sm:h-56 flex flex-col items-center justify-center text-slate-950 font-bold text-xs">
-                      <QrCodeIcon className="w-10 h-10 mb-2 opacity-50 animate-pulse" />
-                      <span>Generating QR Code...</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <div className="text-sm font-black text-amber-300 uppercase tracking-wide flex items-center justify-center gap-1.5">
-                    <Smartphone className="w-4 h-4 text-amber-400" />
-                    <span>Scan with Any UPI App</span>
-                  </div>
-                  <p className="text-[11px] text-slate-300 max-w-sm font-medium">
-                    Amount of <span className="text-amber-400 font-bold">{currencySymbol}{depositAmount || '0'}</span> is automatically pre-filled. Open PhonePe, Google Pay, Paytm or BHIM to pay instantly.
-                  </p>
-                </div>
-
-                {(selectedGateway?.upiId || gateways[0]?.upiId || 'ludosupreme@upi') && (
-                  <div className="w-full max-w-md flex items-center justify-between bg-[#120426] border border-amber-500/30 p-2.5 rounded-xl">
-                    <div className="text-left pl-1">
-                      <div className="text-[9.5px] text-slate-400 uppercase font-semibold">Official Payment UPI ID</div>
-                      <div className="text-xs font-mono font-black text-amber-400 select-all">
-                        {selectedGateway?.upiId || gateways[0]?.upiId || 'ludosupreme@upi'}
+                {selectedGateway?.type === 'BANK_TRANSFER' ? (
+                  <div className="w-full space-y-3">
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-left space-y-2">
+                      <div className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Building className="w-4 h-4" />
+                        <span>Direct Bank Transfer Details</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">Account Holder</span>
+                          <span className="font-bold text-white">{selectedGateway.accountHolderName || 'Platform Treasury'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">Bank Name</span>
+                          <span className="font-bold text-white">{selectedGateway.bankName || 'Direct IMPS'}</span>
+                        </div>
+                        <div className="flex items-center justify-between sm:col-span-2 bg-black/40 p-2 rounded-lg border border-white/5">
+                          <div>
+                            <span className="text-slate-400 block text-[10px]">Account Number</span>
+                            <span className="font-mono font-black text-amber-300 select-all text-sm">{selectedGateway.accountNumber}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(selectedGateway.accountNumber || '')}
+                            className="px-2.5 py-1 bg-amber-500 text-slate-950 rounded text-xs font-bold hover:bg-amber-400"
+                          >
+                            Copy A/C
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between sm:col-span-2 bg-black/40 p-2 rounded-lg border border-white/5">
+                          <div>
+                            <span className="text-slate-400 block text-[10px]">IFSC Code</span>
+                            <span className="font-mono font-black text-emerald-300 select-all text-sm">{selectedGateway.ifscCode}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(selectedGateway.ifscCode || '')}
+                            className="px-2.5 py-1 bg-amber-500 text-slate-950 rounded text-xs font-bold hover:bg-amber-400"
+                          >
+                            Copy IFSC
+                          </button>
+                        </div>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(selectedGateway?.upiId || gateways[0]?.upiId || 'ludosupreme@upi')}
-                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition cursor-pointer shadow"
-                    >
-                      {copiedUpi ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedUpi ? 'Copied' : 'Copy'}</span>
-                    </button>
                   </div>
+                ) : (
+                  <>
+                    <div className="relative p-2.5 bg-white rounded-2xl shadow-[0_0_25px_rgba(245,158,11,0.25)] border-2 border-amber-400">
+                      {dynamicQrUrl ? (
+                        <img
+                          src={dynamicQrUrl}
+                          alt="Dynamic UPI QR Code"
+                          className="w-48 h-48 sm:w-56 sm:h-56 object-contain rounded-lg"
+                        />
+                      ) : (
+                        <div className="w-48 h-48 sm:w-56 sm:h-56 flex flex-col items-center justify-center text-slate-950 font-bold text-xs p-4">
+                          <QrCodeIcon className="w-10 h-10 mb-2 opacity-50 animate-pulse" />
+                          <span>{selectedGateway?.upiId ? 'Generating QR Code...' : 'Configure UPI ID in Admin Panel'}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="text-sm font-black text-amber-300 uppercase tracking-wide flex items-center justify-center gap-1.5">
+                        <Smartphone className="w-4 h-4 text-amber-400" />
+                        <span>Scan with Any UPI App</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 max-w-sm font-medium">
+                        Amount of <span className="text-amber-400 font-bold">{currencySymbol}{depositAmount || '0'}</span> is automatically pre-filled. Open PhonePe, Google Pay, Paytm or BHIM to pay instantly.
+                      </p>
+                    </div>
+
+                    {(selectedGateway?.upiId || gateways.find((g) => g.upiId)?.upiId) && (
+                      <div className="w-full max-w-md flex items-center justify-between bg-[#120426] border border-amber-500/30 p-2.5 rounded-xl">
+                        <div className="text-left pl-1">
+                          <div className="text-[9.5px] text-slate-400 uppercase font-semibold">Official Payment UPI ID</div>
+                          <div className="text-xs font-mono font-black text-amber-400 select-all">
+                            {selectedGateway?.upiId || gateways.find((g) => g.upiId)?.upiId}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(selectedGateway?.upiId || gateways.find((g) => g.upiId)?.upiId || '')}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition cursor-pointer shadow"
+                        >
+                          {copiedUpi ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{copiedUpi ? 'Copied' : 'Copy'}</span>
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>

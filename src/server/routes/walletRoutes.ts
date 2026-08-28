@@ -18,10 +18,10 @@ function resolveUserId(req: Request): string {
 }
 
 /**
- * GET /api/wallet
+ * GET /api/wallet & GET /api/user/wallet
  * Returns the unified USDT wallet balance and status
  */
-walletRouter.get('/api/wallet', async (req: Request, res: Response) => {
+walletRouter.get(['/api/wallet', '/api/user/wallet'], async (req: Request, res: Response) => {
   try {
     const userId = resolveUserId(req);
     const wallet = await LedgerService.getUserWallet(userId);

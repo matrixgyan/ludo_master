@@ -233,6 +233,45 @@ export class SettingsStore {
     return { ...currentSettings };
   }
 
+  public static async updateSettingsAsync(partial: Partial<PlatformSettings>): Promise<PlatformSettings> {
+    currentSettings = {
+      ...currentSettings,
+      ...partial,
+    };
+
+    if (partial.cryptoWalletEnabled !== undefined) {
+      currentSettings.paymentMode = partial.cryptoWalletEnabled ? 'CRYPTO' : 'MANUAL';
+    } else if (partial.paymentMode !== undefined) {
+      currentSettings.cryptoWalletEnabled = partial.paymentMode === 'CRYPTO';
+    }
+
+    try {
+      ensureDataDir();
+      fs.writeFileSync(settingsFilePath, JSON.stringify(currentSettings, null, 2), 'utf-8');
+    } catch {
+      // ignore
+    }
+
+    if (isPostgresConfigured()) {
+      const pool = getDbPool();
+      if (pool) {
+        try {
+          await pool.query(
+            `INSERT INTO platform_system_settings (key, value, updated_at)
+             VALUES ($1, $2, NOW())
+             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+            ['platform_settings', JSON.stringify(currentSettings)]
+          );
+          Logger.info(`🛡️ [SettingsStore] Authoritative platform settings written to PostgreSQL: Mode=[${currentSettings.paymentMode}]`);
+        } catch (err) {
+          Logger.error('[SettingsStore] Failed to write settings to PostgreSQL', err);
+        }
+      }
+    }
+
+    return { ...currentSettings };
+  }
+
   public static getThemeConfig(): ActiveThemeConfig {
     return { ...currentThemeConfig };
   }
