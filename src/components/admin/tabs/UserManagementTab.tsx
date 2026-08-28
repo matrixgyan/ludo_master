@@ -130,7 +130,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ token }) =
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-1.5 text-emerald-400 font-bold font-mono">
                         <Wallet className="w-4 h-4" />
-                        <span>${(Number(u.coins || 0) / 100).toFixed(2)} USDT</span>
+                        <span>₹{(Number(u.coins || 0) / 100).toFixed(2)} INR</span>
                       </div>
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-400 text-[11px]">

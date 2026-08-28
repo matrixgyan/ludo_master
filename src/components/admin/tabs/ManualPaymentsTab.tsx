@@ -849,7 +849,7 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
 
                 {gatewayForm.type === 'QR_CODE' && (
                   <div className="space-y-1.5 sm:col-span-2">
-                    <label className="text-xs font-semibold text-slate-400 block">QR Code Scanner Image (Cloudflare R2)</label>
+                    <label className="text-xs font-semibold text-slate-400 block">QR Code Scanner Image (Direct CDN Upload)</label>
                     <div className="flex flex-col sm:flex-row gap-2">
                       <input
                         type="text"

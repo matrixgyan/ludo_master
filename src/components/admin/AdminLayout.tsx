@@ -91,14 +91,12 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 
   const navItems = [
     { id: 'overview', label: 'Dashboard Overview', icon: LayoutDashboard },
-    { id: 'rpc_management', label: 'Blockchain RPCs & Mode', icon: Radio, badge: '7 LIVE' },
     { id: 'manual_payments', label: 'Manual Payments (UPI/Bank)', icon: Coins, badge: 'GATEWAY' },
-    { id: 'usdt_custody', label: 'USDT Vault & Custody', icon: Shield, badge: 'TESTNET' },
     { id: 'assets_studio', label: 'Lobby, Boards & Assets', icon: Palette, badge: 'PRO' },
     { id: 'live_matches', label: 'Live Match Engine', icon: Gamepad2, badge: metrics?.overview?.activeGames },
-    { id: 'users', label: 'User & Wallets', icon: Users },
+    { id: 'users', label: 'User & Accounts', icon: Users },
     { id: 'leaderboards', label: 'Rankings & Tournaments', icon: Trophy },
-    { id: 'storage', label: 'Cloudflare R2 Assets', icon: HardDrive },
+    { id: 'storage', label: 'CDN & Media Storage', icon: HardDrive },
     { id: 'infrastructure', label: 'System Health & Probes', icon: Activity },
     { id: 'settings', label: 'Platform & URL Alias', icon: Settings },
   ];

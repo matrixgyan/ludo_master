@@ -38,8 +38,8 @@ export interface ActiveThemeConfig {
 const DEFAULT_SETTINGS: PlatformSettings = {
   adminUrlAlias: 'admin',
   maintenanceMode: false,
-  cryptoWalletEnabled: true,
-  paymentMode: 'CRYPTO',
+  cryptoWalletEnabled: false,
+  paymentMode: 'MANUAL',
   platformCurrency: 'INR',
   currencySymbol: '₹',
   currencyName: 'Indian Rupee',

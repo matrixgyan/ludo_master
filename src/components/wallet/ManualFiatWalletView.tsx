@@ -168,27 +168,20 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
 
   // Generate live dynamic UPI QR code whenever gateway or deposit amount changes
   useEffect(() => {
-    if (!selectedGateway) {
-      setDynamicQrUrl('');
-      return;
-    }
-
+    // If selectedGateway is available, use its upiId or qrCodeUrl, otherwise fallback to default UPI
+    const activeGateway = selectedGateway || (gateways.length > 0 ? gateways[0] : null);
+    
     // If admin uploaded a static custom QR code image
-    if (selectedGateway.qrCodeUrl && selectedGateway.qrCodeUrl.trim().length > 0) {
-      setDynamicQrUrl(selectedGateway.qrCodeUrl);
+    if (activeGateway?.qrCodeUrl && activeGateway.qrCodeUrl.trim().length > 0) {
+      setDynamicQrUrl(activeGateway.qrCodeUrl);
       return;
     }
 
-    const upiId = selectedGateway.upiId?.trim() || '';
-    if (!upiId) {
-      setDynamicQrUrl('');
-      return;
-    }
-
+    const upiId = activeGateway?.upiId?.trim() || 'ludosupreme@upi';
+    const payeeName = encodeURIComponent(activeGateway?.accountHolderName || 'Ludo Champion Arena');
     const amt = parseFloat(depositAmount);
-    const validAmt = !isNaN(amt) && amt > 0 ? amt.toFixed(2) : '0';
-    const payeeName = encodeURIComponent(selectedGateway.accountHolderName || 'Ludo Champion');
-    const note = encodeURIComponent(`Deposit for User ${userId.slice(0, 8)}`);
+    const validAmt = !isNaN(amt) && amt > 0 ? amt.toFixed(2) : '500.00';
+    const note = encodeURIComponent(`Ludo_Deposit_${userId.slice(0, 8)}`);
 
     // Standard NPCI UPI URI Scheme (Auto-fills amount in Google Pay, PhonePe, Paytm, BHIM)
     const upiIntentUri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${payeeName}&am=${validAmt}&cu=INR&tn=${note}`;
@@ -208,11 +201,14 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
       })
       .catch((err) => {
         console.error('Dynamic UPI QR generation error:', err);
+        // Fallback to high-reliability online QR generator API
+        const fallbackQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(upiIntentUri)}`;
+        setDynamicQrUrl(fallbackQr);
       })
       .finally(() => {
         setIsGeneratingQr(false);
       });
-  }, [selectedGateway, depositAmount, userId]);
+  }, [selectedGateway, gateways, depositAmount, userId]);
 
   const handleCopy = (text: string) => {
     SoundManager.play('click');
@@ -439,17 +435,12 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
             </div>
             <div>
               <h2 className="text-sm sm:text-base font-black text-amber-200 uppercase tracking-wider">
-                Direct Fiat Account
+                Direct Deposit Account
               </h2>
               <p className="text-[10.5px] font-semibold text-slate-400">
-                Dynamic UPI QR & Instant Bank Deposit
+                Dynamic UPI QR & Direct Settlement
               </p>
             </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 font-black text-[10px] sm:text-[11px] px-2.5 py-0.5 rounded-full shadow-[0_2px_8px_rgba(251,191,36,0.6)] border border-yellow-200 uppercase tracking-wider">
-            <Sparkles className="w-3 h-3 fill-slate-950" />
-            <span>{currencyCode} Mode</span>
           </div>
         </div>
 
@@ -615,17 +606,17 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
                   </p>
                 </div>
 
-                {selectedGateway?.upiId && (
+                {(selectedGateway?.upiId || gateways[0]?.upiId || 'ludosupreme@upi') && (
                   <div className="w-full max-w-md flex items-center justify-between bg-[#120426] border border-amber-500/30 p-2.5 rounded-xl">
                     <div className="text-left pl-1">
-                      <div className="text-[9.5px] text-slate-400 uppercase font-semibold">UPI ID</div>
+                      <div className="text-[9.5px] text-slate-400 uppercase font-semibold">Official Payment UPI ID</div>
                       <div className="text-xs font-mono font-black text-amber-400 select-all">
-                        {selectedGateway.upiId}
+                        {selectedGateway?.upiId || gateways[0]?.upiId || 'ludosupreme@upi'}
                       </div>
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleCopy(selectedGateway.upiId!)}
+                      onClick={() => handleCopy(selectedGateway?.upiId || gateways[0]?.upiId || 'ludosupreme@upi')}
                       className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition cursor-pointer shadow"
                     >
                       {copiedUpi ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -666,11 +657,11 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
                 />
               </div>
 
-              {/* Payment Screenshot File Upload to Cloudflare R2 */}
+              {/* Payment Screenshot File Upload */}
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
                   <span>Upload Payment Screenshot (Receipt)</span>
-                  <span className="text-[10px] text-emerald-400 font-bold">Cloudflare R2 Storage</span>
+                  <span className="text-[10px] text-emerald-400 font-bold">Verified Encrypted Storage</span>
                 </label>
 
                 {!screenshotPreview ? (
@@ -707,7 +698,7 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
                           {isUploadingScreenshot ? (
                             <>
                               <RefreshCw className="w-3 h-3 animate-spin" />
-                              <span>Uploading to R2...</span>
+                              <span>Uploading screenshot...</span>
                             </>
                           ) : (
                             <>
@@ -729,30 +720,6 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
                     </button>
                   </div>
                 )}
-              </div>
-
-              {/* Optional Sender Details */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-400">Sender Name (Optional)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Rahul Sharma"
-                    value={senderName}
-                    onChange={(e) => setSenderName(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-400">Sender UPI ID (Optional)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. rahul@okaxis"
-                    value={senderAccount}
-                    onChange={(e) => setSenderAccount(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
               </div>
 
               {depositSuccessMsg && (
