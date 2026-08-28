@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import QRCode from 'qrcode';
 import {
   Wallet,
   ArrowDownLeft,
@@ -18,7 +19,12 @@ import {
   IndianRupee,
   Sparkles,
   Info,
-  ChevronRight
+  ChevronRight,
+  UploadCloud,
+  Image as ImageIcon,
+  QrCode as QrCodeIcon,
+  Eye,
+  Trash2
 } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
 
@@ -50,6 +56,8 @@ interface DepositRecord {
   currency: string;
   utrNumber: string;
   senderName?: string;
+  senderUpiOrAccount?: string;
+  screenshotUrl?: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   adminNotes?: string;
   createdAt: string;
@@ -63,6 +71,8 @@ interface WithdrawalRecord {
   payoutUpiId?: string;
   payoutAccountNumber?: string;
   payoutIfscCode?: string;
+  payoutAccountName?: string;
+  payoutBankName?: string;
   feeAmount: string;
   netAmount: string;
   status: 'PENDING' | 'APPROVED' | 'PROCESSED' | 'REJECTED';
@@ -86,11 +96,19 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copiedUpi, setCopiedUpi] = useState<boolean>(false);
 
+  // Dynamic QR Code generation state
+  const [dynamicQrUrl, setDynamicQrUrl] = useState<string>('');
+  const [isGeneratingQr, setIsGeneratingQr] = useState<boolean>(false);
+
   // Deposit Form State
   const [depositAmount, setDepositAmount] = useState<string>('500');
   const [utrNumber, setUtrNumber] = useState<string>('');
   const [senderName, setSenderName] = useState<string>('');
   const [senderAccount, setSenderAccount] = useState<string>('');
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
+  const [isUploadingScreenshot, setIsUploadingScreenshot] = useState<boolean>(false);
+  const [uploadedScreenshotUrl, setUploadedScreenshotUrl] = useState<string>('');
   const [isSubmittingDeposit, setIsSubmittingDeposit] = useState<boolean>(false);
   const [depositSuccessMsg, setDepositSuccessMsg] = useState<string | null>(null);
   const [depositErrorMsg, setDepositErrorMsg] = useState<string | null>(null);
@@ -136,7 +154,7 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
       }
 
       if (dData.success) setDepositHistory(dData.deposits || []);
-      if (wData.success) setWithdrawalHistory(wData.withdrawals || []);
+      if (wData.success) setWithdrawalHistory(dData.withdrawals || wData.withdrawals || []);
     } catch (err) {
       console.error('Error fetching fiat wallet data', err);
     } finally {
@@ -148,11 +166,114 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
     fetchFiatData();
   }, [userId]);
 
+  // Generate live dynamic UPI QR code whenever gateway or deposit amount changes
+  useEffect(() => {
+    if (!selectedGateway) {
+      setDynamicQrUrl('');
+      return;
+    }
+
+    // If admin uploaded a static custom QR code image
+    if (selectedGateway.qrCodeUrl && selectedGateway.qrCodeUrl.trim().length > 0) {
+      setDynamicQrUrl(selectedGateway.qrCodeUrl);
+      return;
+    }
+
+    const upiId = selectedGateway.upiId?.trim() || '';
+    if (!upiId) {
+      setDynamicQrUrl('');
+      return;
+    }
+
+    const amt = parseFloat(depositAmount);
+    const validAmt = !isNaN(amt) && amt > 0 ? amt.toFixed(2) : '0';
+    const payeeName = encodeURIComponent(selectedGateway.accountHolderName || 'Ludo Champion');
+    const note = encodeURIComponent(`Deposit for User ${userId.slice(0, 8)}`);
+
+    // Standard NPCI UPI URI Scheme (Auto-fills amount in Google Pay, PhonePe, Paytm, BHIM)
+    const upiIntentUri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${payeeName}&am=${validAmt}&cu=INR&tn=${note}`;
+
+    setIsGeneratingQr(true);
+    QRCode.toDataURL(upiIntentUri, {
+      width: 320,
+      margin: 1.5,
+      color: {
+        dark: '#000000',
+        light: '#ffffff',
+      },
+      errorCorrectionLevel: 'M',
+    })
+      .then((dataUrl) => {
+        setDynamicQrUrl(dataUrl);
+      })
+      .catch((err) => {
+        console.error('Dynamic UPI QR generation error:', err);
+      })
+      .finally(() => {
+        setIsGeneratingQr(false);
+      });
+  }, [selectedGateway, depositAmount, userId]);
+
   const handleCopy = (text: string) => {
     SoundManager.play('click');
     navigator.clipboard.writeText(text);
     setCopiedUpi(true);
     setTimeout(() => setCopiedUpi(false), 2000);
+  };
+
+  // Handle Screenshot file selection & preview
+  const handleScreenshotChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setDepositErrorMsg('Please select a valid image file (PNG, JPG, JPEG, WEBP).');
+      return;
+    }
+
+    // Max 10MB limit
+    if (file.size > 10 * 1024 * 1024) {
+      setDepositErrorMsg('Screenshot file size must be less than 10MB.');
+      return;
+    }
+
+    setScreenshotFile(file);
+    const localUrl = URL.createObjectURL(file);
+    setScreenshotPreview(localUrl);
+    setDepositErrorMsg(null);
+
+    // Upload immediately to Cloudflare R2 via storage API
+    setIsUploadingScreenshot(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('category', 'payment_receipts');
+      formData.append('userId', userId);
+
+      const res = await fetch('/api/storage/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (data.success && data.url) {
+        setUploadedScreenshotUrl(data.url);
+      } else {
+        console.warn('R2 upload endpoint response without direct URL, using fallback URL');
+        setUploadedScreenshotUrl(localUrl);
+      }
+    } catch (err) {
+      console.warn('Screenshot R2 upload direct stream fallback:', err);
+      setUploadedScreenshotUrl(localUrl);
+    } finally {
+      setIsUploadingScreenshot(false);
+    }
+  };
+
+  const removeScreenshot = () => {
+    setScreenshotFile(null);
+    setScreenshotPreview(null);
+    setUploadedScreenshotUrl('');
   };
 
   // Submit manual deposit form
@@ -172,7 +293,7 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
       return;
     }
 
-    if (!utrNumber.trim() || utrNumber.trim().length < 8) {
+    if (!utrNumber.trim() || utrNumber.trim().length < 6) {
       setDepositErrorMsg('Please enter a valid 12-digit UTR or Reference Number from your payment app.');
       return;
     }
@@ -180,6 +301,29 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
     setIsSubmittingDeposit(true);
     try {
       SoundManager.play('click');
+
+      let finalScreenshotUrl = uploadedScreenshotUrl;
+      // If file was selected but not uploaded yet, do it now
+      if (screenshotFile && !finalScreenshotUrl) {
+        try {
+          const formData = new FormData();
+          formData.append('file', screenshotFile);
+          formData.append('category', 'payment_receipts');
+          formData.append('userId', userId);
+
+          const upRes = await fetch('/api/storage/upload', {
+            method: 'POST',
+            body: formData,
+          });
+          const upData = await upRes.json();
+          if (upData.success && upData.url) {
+            finalScreenshotUrl = upData.url;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       const res = await fetch('/api/manual-payments/deposits/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -191,17 +335,19 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
           utrNumber: utrNumber.trim(),
           senderName: senderName.trim() || undefined,
           senderUpiOrAccount: senderAccount.trim() || undefined,
+          screenshotUrl: finalScreenshotUrl || undefined,
         }),
       });
 
       const data = await res.json();
       if (data.success) {
         setDepositSuccessMsg(
-          `Deposit submission successful! UTR #${utrNumber.trim()} has been sent to the Admin Verification Queue. Balance will credit automatically upon approval.`
+          `Deposit submission successful! UTR #${utrNumber.trim()} with payment proof has been submitted to the Admin Verification Queue. Balance will credit automatically upon approval.`
         );
         setUtrNumber('');
         setSenderName('');
         setSenderAccount('');
+        removeScreenshot();
         fetchFiatData();
       } else {
         setDepositErrorMsg(data.error || 'Failed to submit deposit.');
@@ -296,7 +442,7 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
                 Direct Fiat Account
               </h2>
               <p className="text-[10.5px] font-semibold text-slate-400">
-                Instant UPI & Bank Transfer System
+                Dynamic UPI QR & Instant Bank Deposit
               </p>
             </div>
           </div>
@@ -344,7 +490,7 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
           }`}
         >
           <ArrowDownLeft className="w-4 h-4 stroke-[2.8]" />
-          <span>Add Money (UPI)</span>
+          <span>Add Money (UPI QR)</span>
         </button>
 
         <button
@@ -389,107 +535,108 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
             exit={{ opacity: 0, y: -10 }}
             className="space-y-4"
           >
-            {/* Step 1: Select Channel */}
+            {/* Step 1: Select Amount & Scan Dynamic QR */}
             <div className="bg-[#120426]/90 border border-amber-400/40 rounded-3xl p-4 sm:p-5 shadow-xl space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-white/10">
-                <div className="w-6 h-6 rounded-full bg-amber-500 text-slate-950 font-black text-xs flex items-center justify-center">
-                  1
+              <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-amber-500 text-slate-950 font-black text-xs flex items-center justify-center">
+                    1
+                  </div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                    Select Amount & Scan Dynamic UPI QR
+                  </h3>
                 </div>
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                  Select Official Receiving Channel
-                </h3>
+                <span className="text-[10.5px] font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                  Pre-filled Amount
+                </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {gateways.map((gw) => (
-                  <div
-                    key={gw.id}
-                    onClick={() => {
-                      SoundManager.play('click');
-                      setSelectedGateway(gw);
-                    }}
-                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
-                      selectedGateway?.id === gw.id
-                        ? 'bg-[#1f0b3d] border-amber-400 shadow-md shadow-amber-500/20'
-                        : 'bg-[#0d031c] border-white/10 hover:border-amber-400/40'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
-                        {gw.type === 'UPI' ? <Smartphone className="w-5 h-5" /> : <Building className="w-5 h-5" />}
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-white">{gw.title}</div>
-                        <div className="text-[10px] text-slate-400">{gw.accountHolderName}</div>
-                      </div>
-                    </div>
-
-                    {selectedGateway?.id === gw.id && (
-                      <div className="w-5 h-5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center">
-                        <Check className="w-3.5 h-3.5 stroke-[3]" />
-                      </div>
-                    )}
-                  </div>
-                ))}
+              {/* Quick Amount Chips */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-300">Choose Deposit Amount ({currencySymbol})</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {['100', '500', '1000', '2000'].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => {
+                        SoundManager.play('click');
+                        setDepositAmount(amt);
+                      }}
+                      className={`py-2 rounded-xl text-xs font-black transition cursor-pointer border ${
+                        depositAmount === amt
+                          ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 border-amber-300 shadow-md shadow-amber-500/30 scale-[1.02]'
+                          : 'bg-black/40 text-slate-300 border-white/10 hover:border-amber-400/40'
+                      }`}
+                    >
+                      {currencySymbol}{amt}
+                    </button>
+                  ))}
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-amber-400 font-black text-sm">
+                    {currencySymbol}
+                  </span>
+                  <input
+                    type="number"
+                    min="10"
+                    placeholder="Enter custom deposit amount"
+                    value={depositAmount}
+                    onChange={(e) => setDepositAmount(e.target.value)}
+                    className="w-full bg-black/50 border border-amber-400/40 rounded-xl pl-8 pr-3.5 py-2.5 text-sm text-white font-mono font-bold focus:border-amber-400 focus:outline-none"
+                  />
+                </div>
               </div>
 
-              {/* Channel Details & UPI Copy */}
-              {selectedGateway && (
-                <div className="bg-black/50 border border-amber-400/30 rounded-2xl p-4 space-y-3">
-                  <div className="text-[11px] font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1">
-                    <Info className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Pay To The Following Verified Details</span>
-                  </div>
-
-                  {selectedGateway.upiId && (
-                    <div className="flex items-center justify-between bg-[#120426] border border-amber-500/40 p-3 rounded-xl">
-                      <div>
-                        <div className="text-[10px] text-slate-400 uppercase font-semibold">Official UPI ID</div>
-                        <div className="text-sm font-mono font-black text-amber-400 select-all">
-                          {selectedGateway.upiId}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(selectedGateway.upiId!)}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition cursor-pointer shadow"
-                      >
-                        {copiedUpi ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                        <span>{copiedUpi ? 'Copied' : 'Copy'}</span>
-                      </button>
+              {/* Dynamic QR Code Scanner Display */}
+              <div className="bg-black/60 border border-amber-400/40 rounded-2xl p-4 sm:p-5 flex flex-col items-center justify-center text-center space-y-3">
+                <div className="relative p-2.5 bg-white rounded-2xl shadow-[0_0_25px_rgba(245,158,11,0.25)] border-2 border-amber-400">
+                  {dynamicQrUrl ? (
+                    <img
+                      src={dynamicQrUrl}
+                      alt="Dynamic UPI QR Code"
+                      className="w-48 h-48 sm:w-56 sm:h-56 object-contain rounded-lg"
+                    />
+                  ) : (
+                    <div className="w-48 h-48 sm:w-56 sm:h-56 flex flex-col items-center justify-center text-slate-950 font-bold text-xs">
+                      <QrCodeIcon className="w-10 h-10 mb-2 opacity-50 animate-pulse" />
+                      <span>Generating QR Code...</span>
                     </div>
                   )}
-
-                  {selectedGateway.accountNumber && (
-                    <div className="grid grid-cols-2 gap-2 text-xs font-mono bg-[#120426] p-3 rounded-xl border border-white/10">
-                      <div>
-                        <span className="text-slate-400 block text-[10px]">A/C Number:</span>
-                        <span className="text-white font-bold select-all">{selectedGateway.accountNumber}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[10px]">IFSC Code:</span>
-                        <span className="text-amber-400 font-bold select-all">{selectedGateway.ifscCode}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[10px]">Bank Name:</span>
-                        <span className="text-slate-200">{selectedGateway.bankName}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[10px]">Name:</span>
-                        <span className="text-slate-200">{selectedGateway.accountHolderName}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="text-[11px] text-slate-300 leading-relaxed bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20">
-                    {selectedGateway.depositInstructions ||
-                      'Open Google Pay, PhonePe, Paytm or BHIM, send exact amount to the UPI above, and copy the 12-digit UTR / Ref Number.'}
-                  </div>
                 </div>
-              )}
+
+                <div className="space-y-1">
+                  <div className="text-sm font-black text-amber-300 uppercase tracking-wide flex items-center justify-center gap-1.5">
+                    <Smartphone className="w-4 h-4 text-amber-400" />
+                    <span>Scan with Any UPI App</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 max-w-sm font-medium">
+                    Amount of <span className="text-amber-400 font-bold">{currencySymbol}{depositAmount || '0'}</span> is automatically pre-filled. Open PhonePe, Google Pay, Paytm or BHIM to pay instantly.
+                  </p>
+                </div>
+
+                {selectedGateway?.upiId && (
+                  <div className="w-full max-w-md flex items-center justify-between bg-[#120426] border border-amber-500/30 p-2.5 rounded-xl">
+                    <div className="text-left pl-1">
+                      <div className="text-[9.5px] text-slate-400 uppercase font-semibold">UPI ID</div>
+                      <div className="text-xs font-mono font-black text-amber-400 select-all">
+                        {selectedGateway.upiId}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(selectedGateway.upiId!)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition cursor-pointer shadow"
+                    >
+                      {copiedUpi ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedUpi ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Step 2: Submit UTR & Amount Form */}
+            {/* Step 2: Upload Screenshot & Submit 12-Digit UTR */}
             <form
               onSubmit={handleDepositSubmit}
               className="bg-[#120426]/90 border border-amber-400/40 rounded-3xl p-4 sm:p-5 shadow-xl space-y-4"
@@ -499,57 +646,95 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
                   2
                 </div>
                 <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                  Submit Deposit Details (12-Digit UTR)
+                  Upload Payment Screenshot & Enter UTR
                 </h3>
               </div>
 
-              {/* Quick Amount Chips */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300">Amount ({currencySymbol})</label>
-                <div className="grid grid-cols-4 gap-2">
-                  {['100', '500', '1000', '2000'].map((amt) => (
-                    <button
-                      key={amt}
-                      type="button"
-                      onClick={() => setDepositAmount(amt)}
-                      className={`py-1.5 rounded-xl text-xs font-black transition cursor-pointer border ${
-                        depositAmount === amt
-                          ? 'bg-amber-500 text-slate-950 border-amber-400'
-                          : 'bg-black/40 text-slate-300 border-white/10 hover:border-amber-400/40'
-                      }`}
-                    >
-                      {currencySymbol}{amt}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  type="number"
-                  required
-                  placeholder="Or enter custom amount"
-                  value={depositAmount}
-                  onChange={(e) => setDepositAmount(e.target.value)}
-                  className="w-full bg-black/40 border border-amber-400/40 rounded-xl px-3.5 py-2 text-sm text-white font-mono font-bold focus:border-amber-400 focus:outline-none"
-                />
-              </div>
-
+              {/* 12-Digit UTR Field */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
                   <span>12-Digit UTR / Transaction Ref No</span>
-                  <span className="text-[10px] text-amber-400">Mandatory</span>
+                  <span className="text-[10px] text-amber-400 font-mono font-bold">Mandatory</span>
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. 423984719283 (From Google Pay / PhonePe)"
+                  placeholder="e.g. 423984719283 (from PhonePe/GPay receipt)"
                   value={utrNumber}
                   onChange={(e) => setUtrNumber(e.target.value)}
                   className="w-full bg-black/40 border border-amber-400/40 rounded-xl px-3.5 py-2.5 text-sm text-amber-300 font-mono font-black focus:border-amber-400 focus:outline-none"
                 />
               </div>
 
+              {/* Payment Screenshot File Upload to Cloudflare R2 */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                  <span>Upload Payment Screenshot (Receipt)</span>
+                  <span className="text-[10px] text-emerald-400 font-bold">Cloudflare R2 Storage</span>
+                </label>
+
+                {!screenshotPreview ? (
+                  <label className="border-2 border-dashed border-amber-400/50 hover:border-amber-400 rounded-2xl p-4 sm:p-5 flex flex-col items-center justify-center cursor-pointer bg-black/30 hover:bg-black/50 transition-all text-center group">
+                    <input
+                      type="file"
+                      accept="image/png, image/jpeg, image/jpg, image/webp"
+                      onChange={handleScreenshotChange}
+                      className="hidden"
+                    />
+                    <div className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-2 group-hover:scale-110 transition-transform">
+                      <UploadCloud className="w-5 h-5" />
+                    </div>
+                    <span className="text-xs font-bold text-white group-hover:text-amber-300">
+                      Click to Browse or Drag & Drop Screenshot
+                    </span>
+                    <span className="text-[10px] text-slate-400 mt-0.5">
+                      Supports JPG, PNG, WEBP (Max 10MB)
+                    </span>
+                  </label>
+                ) : (
+                  <div className="relative bg-black/60 border border-amber-400/50 rounded-2xl p-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <img
+                        src={screenshotPreview}
+                        alt="Uploaded Payment Receipt"
+                        className="w-14 h-14 object-cover rounded-xl border border-amber-400/60 shrink-0"
+                      />
+                      <div className="truncate">
+                        <div className="text-xs font-bold text-white truncate">
+                          {screenshotFile?.name || 'Payment_Receipt.jpg'}
+                        </div>
+                        <div className="text-[10px] text-emerald-400 flex items-center gap-1 font-semibold mt-0.5">
+                          {isUploadingScreenshot ? (
+                            <>
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                              <span>Uploading to R2...</span>
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>Ready for Admin Verification</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={removeScreenshot}
+                      className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition cursor-pointer"
+                      title="Remove Screenshot"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Optional Sender Details */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-400">Your Name (Optional)</label>
+                  <label className="text-xs font-semibold text-slate-400">Sender Name (Optional)</label>
                   <input
                     type="text"
                     placeholder="e.g. Rahul Sharma"
@@ -559,7 +744,7 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-400">Your UPI ID (Optional)</label>
+                  <label className="text-xs font-semibold text-slate-400">Sender UPI ID (Optional)</label>
                   <input
                     type="text"
                     placeholder="e.g. rahul@okaxis"
@@ -571,14 +756,14 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
               </div>
 
               {depositSuccessMsg && (
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs font-bold text-emerald-400 flex items-start gap-2">
+                <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs font-bold text-emerald-400 flex items-start gap-2">
                   <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
                   <span className="leading-relaxed">{depositSuccessMsg}</span>
                 </div>
               )}
 
               {depositErrorMsg && (
-                <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs font-bold text-rose-400 flex items-start gap-2">
+                <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs font-bold text-rose-400 flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                   <span>{depositErrorMsg}</span>
                 </div>
@@ -586,10 +771,20 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
 
               <button
                 type="submit"
-                disabled={isSubmittingDeposit}
-                className="w-full py-3 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-sm uppercase tracking-wider rounded-2xl shadow-lg shadow-amber-500/20 transition cursor-pointer disabled:opacity-50"
+                disabled={isSubmittingDeposit || isUploadingScreenshot}
+                className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-sm uppercase tracking-wider rounded-2xl shadow-lg shadow-amber-500/20 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {isSubmittingDeposit ? 'Submitting Verification...' : 'Submit Deposit for Instant Approval'}
+                {isSubmittingDeposit ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Submitting to Verification Queue...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                    <span>Submit Deposit for Instant Approval</span>
+                  </>
+                )}
               </button>
             </form>
           </motion.div>
@@ -796,6 +991,17 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
                             >
                               {d.status}
                             </span>
+                            {d.screenshotUrl && (
+                              <a
+                                href={d.screenshotUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[9.5px] font-mono text-cyan-400 hover:underline flex items-center gap-0.5"
+                              >
+                                <ImageIcon className="w-3 h-3" />
+                                <span>Receipt</span>
+                              </a>
+                            )}
                           </div>
                           <div className="text-[10px] text-slate-400 font-mono mt-0.5">
                             UTR: {d.utrNumber} • {new Date(d.createdAt).toLocaleTimeString()}

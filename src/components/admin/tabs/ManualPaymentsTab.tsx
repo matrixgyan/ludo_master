@@ -24,7 +24,9 @@ import {
   Eye,
   X,
   IndianRupee,
-  DollarSign
+  DollarSign,
+  UploadCloud,
+  Image as ImageIcon
 } from 'lucide-react';
 
 interface ManualPaymentsTabProps {
@@ -104,6 +106,8 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
   const [payoutRefInput, setPayoutRefInput] = useState('');
   const [isProcessingAction, setIsProcessingAction] = useState(false);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [isUploadingGatewayQr, setIsUploadingGatewayQr] = useState(false);
 
   // Gateway form state
   const [isEditingGateway, setIsEditingGateway] = useState(false);
@@ -115,6 +119,7 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
     accountNumber: '',
     ifscCode: '',
     bankName: '',
+    qrCodeUrl: '',
     minDepositAmount: '100',
     maxDepositAmount: '50000',
     depositInstructions: '',
@@ -482,6 +487,16 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
                           <div className="text-[11px] text-slate-400 font-mono">
                             {dep.senderUpiOrAccount || 'Direct UPI'}
                           </div>
+                          {dep.screenshotUrl && (
+                            <button
+                              type="button"
+                              onClick={() => setPreviewImageUrl(dep.screenshotUrl!)}
+                              className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-[10px] font-bold cursor-pointer transition"
+                            >
+                              <ImageIcon className="w-3 h-3" />
+                              <span>View Receipt Screenshot</span>
+                            </button>
+                          )}
                         </td>
                         <td className="p-4">
                           {dep.status === 'PENDING' && (
@@ -833,15 +848,54 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
                 )}
 
                 {gatewayForm.type === 'QR_CODE' && (
-                  <div>
-                    <label className="text-xs font-semibold text-slate-400 block mb-1">QR Code Image URL</label>
-                    <input
-                      type="text"
-                      placeholder="https://..."
-                      value={gatewayForm.qrCodeUrl}
-                      onChange={(e) => setGatewayForm({ ...gatewayForm, qrCodeUrl: e.target.value })}
-                      className="w-full bg-[#101726] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-500"
-                    />
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <label className="text-xs font-semibold text-slate-400 block">QR Code Scanner Image (Cloudflare R2)</label>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        placeholder="https://... or upload image below"
+                        value={gatewayForm.qrCodeUrl || ''}
+                        onChange={(e) => setGatewayForm({ ...gatewayForm, qrCodeUrl: e.target.value })}
+                        className="flex-1 bg-[#101726] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-500 font-mono"
+                      />
+                      <label className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-bold cursor-pointer transition shrink-0">
+                        <UploadCloud className="w-3.5 h-3.5" />
+                        <span>{isUploadingGatewayQr ? 'Uploading...' : 'Upload QR Image'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setIsUploadingGatewayQr(true);
+                            try {
+                              const fd = new FormData();
+                              fd.append('file', file);
+                              fd.append('category', 'admin_qr');
+                              const res = await fetch('/api/storage/upload', {
+                                method: 'POST',
+                                body: fd,
+                              });
+                              const data = await res.json();
+                              if (data.success && data.url) {
+                                setGatewayForm((prev) => ({ ...prev, qrCodeUrl: data.url }));
+                              }
+                            } catch (err) {
+                              console.error('Error uploading admin QR code', err);
+                            } finally {
+                              setIsUploadingGatewayQr(false);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                    {gatewayForm.qrCodeUrl && (
+                      <div className="mt-2 flex items-center gap-2 p-2 bg-[#101726] border border-slate-700 rounded-xl w-fit">
+                        <img src={gatewayForm.qrCodeUrl} alt="QR Preview" className="w-12 h-12 object-contain rounded-lg border border-slate-600 bg-white" />
+                        <span className="text-[11px] text-emerald-400 font-medium">QR Code Linked Successfully</span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1000,6 +1054,41 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
                 <span className="text-slate-400">Sender Name:</span>
                 <span className="text-slate-200">{selectedDeposit.senderName || 'Not given'}</span>
               </div>
+
+              {/* Uploaded Screenshot Proof */}
+              {selectedDeposit.screenshotUrl && (
+                <div className="pt-2 border-t border-slate-800 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-300 font-bold flex items-center gap-1">
+                      <ImageIcon className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Payment Screenshot Proof:</span>
+                    </span>
+                    <a
+                      href={selectedDeposit.screenshotUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] text-cyan-400 hover:underline flex items-center gap-0.5 font-semibold"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      <span>Open Full Size</span>
+                    </a>
+                  </div>
+                  <div
+                    onClick={() => setPreviewImageUrl(selectedDeposit.screenshotUrl!)}
+                    className="relative cursor-pointer group rounded-xl overflow-hidden border border-slate-700 max-h-48 flex items-center justify-center bg-black/60"
+                  >
+                    <img
+                      src={selectedDeposit.screenshotUrl}
+                      alt="Deposit Proof"
+                      className="max-h-48 object-contain w-full group-hover:scale-105 transition-transform"
+                    />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white font-bold text-xs transition-opacity gap-1.5">
+                      <Eye className="w-4 h-4" />
+                      <span>Click to Zoom</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
@@ -1111,6 +1200,62 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
                 className="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg cursor-pointer transition-all disabled:opacity-50"
               >
                 {isProcessingAction ? 'Processing...' : 'Confirm Transfer & Settle'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* 6. MODAL: FULLSCREEN IMAGE VIEWER (R2 SCREENSHOTS & QR CODES) */}
+      {/* ------------------------------------------------------------- */}
+      {previewImageUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+          onClick={() => setPreviewImageUrl(null)}
+        >
+          <div
+            className="relative bg-[#0d1321] border border-amber-400/60 rounded-3xl p-3 sm:p-5 max-w-2xl w-full flex flex-col items-center gap-3 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-full flex items-center justify-between pb-2 border-b border-slate-800">
+              <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                <ImageIcon className="w-4 h-4 text-amber-400" />
+                <span>Payment Proof / Receipt Viewer</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setPreviewImageUrl(null)}
+                className="p-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="w-full max-h-[70vh] overflow-auto flex items-center justify-center bg-black/80 rounded-2xl p-2">
+              <img
+                src={previewImageUrl}
+                alt="Fullscreen Proof"
+                className="max-h-[65vh] w-auto object-contain rounded-lg"
+              />
+            </div>
+
+            <div className="w-full flex items-center justify-between pt-1">
+              <a
+                href={previewImageUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-cyan-400 hover:underline flex items-center gap-1 font-semibold"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Open in New Tab</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setPreviewImageUrl(null)}
+                className="px-4 py-1.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-black cursor-pointer shadow"
+              >
+                Close Viewer
               </button>
             </div>
           </div>

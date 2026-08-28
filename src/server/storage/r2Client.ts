@@ -12,11 +12,25 @@ import { getDb, isPostgresConfigured } from '../db/client';
 import { storageObjects } from '../db/schema';
 import { v4 as uuidv4 } from 'uuid';
 import { Readable } from 'stream';
+import fs from 'fs';
+import path from 'path';
 
 // Serverless-friendly global singleton caching across Vercel Lambda invocations
 declare global {
   // eslint-disable-next-line no-var
   var __ludo_s3_client: S3Client | undefined;
+}
+
+const uploadsLocalDir = path.join(process.cwd(), 'data', 'uploads');
+
+function ensureUploadsDir() {
+  if (!fs.existsSync(uploadsLocalDir)) {
+    try {
+      fs.mkdirSync(uploadsLocalDir, { recursive: true });
+    } catch {
+      // ignore
+    }
+  }
 }
 
 export function isR2Configured(): boolean {
@@ -108,38 +122,51 @@ export interface UploadResult {
 }
 
 /**
- * Upload buffer or stream directly to Cloudflare R2 bucket and record in PostgreSQL
+ * Upload buffer or stream directly to Cloudflare R2 bucket and record in PostgreSQL (with robust local disk fallback)
  */
 export async function uploadToR2(params: {
   key?: string;
   buffer: Buffer;
   contentType: string;
   userId?: string;
-  category?: 'avatars' | 'images' | 'assets' | 'logs';
+  category?: 'avatars' | 'images' | 'assets' | 'logs' | 'payment_receipts';
 }): Promise<UploadResult> {
-  const client = getR2Client();
-  if (!client || !config.R2_BUCKET_NAME) {
-    throw new Error('Cloudflare R2 is not configured. Please set R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET_NAME.');
+  const category = params.category || 'payment_receipts';
+  const extension = params.contentType.split('/')[1]?.split(';')[0] || 'jpg';
+  const objectKey = params.key || `${category}/${Date.now()}-${uuidv4().slice(0, 12)}.${extension}`;
+  const publicUrl = `/api/storage/file/${encodeURIComponent(objectKey)}`;
+
+  // Always write local backup copy
+  try {
+    ensureUploadsDir();
+    const safeLocalPath = path.join(uploadsLocalDir, objectKey.replace(/\//g, '_'));
+    fs.writeFileSync(safeLocalPath, params.buffer);
+  } catch (err) {
+    Logger.warn(`Local upload file cache write error: ${String(err)}`);
   }
 
-  const category = params.category || 'assets';
-  const extension = params.contentType.split('/')[1] || 'bin';
-  const objectKey = params.key || `${category}/${Date.now()}-${uuidv4()}.${extension}`;
-
-  await client.send(
-    new PutObjectCommand({
-      Bucket: config.R2_BUCKET_NAME,
-      Key: objectKey,
-      Body: params.buffer,
-      ContentType: params.contentType,
-      Metadata: {
-        userId: params.userId || 'system',
-        uploadedAt: new Date().toISOString(),
-      },
-    })
-  );
-
-  const publicUrl = `/api/storage/file/${encodeURIComponent(objectKey)}`;
+  if (isR2Configured()) {
+    try {
+      const client = getR2Client();
+      if (client && config.R2_BUCKET_NAME) {
+        await client.send(
+          new PutObjectCommand({
+            Bucket: config.R2_BUCKET_NAME,
+            Key: objectKey,
+            Body: params.buffer,
+            ContentType: params.contentType,
+            Metadata: {
+              userId: params.userId || 'system',
+              uploadedAt: new Date().toISOString(),
+            },
+          })
+        );
+        Logger.info(`Successfully uploaded object to Cloudflare R2: ${objectKey} (${params.buffer.length} bytes)`);
+      }
+    } catch (err: unknown) {
+      Logger.warn(`Cloudflare R2 putObject error, falling back to cached disk stream: ${String(err)}`);
+    }
+  }
 
   // Record in PostgreSQL if available
   if (isPostgresConfigured()) {
@@ -149,7 +176,7 @@ export async function uploadToR2(params: {
         await db.insert(storageObjects).values({
           id: `obj_${uuidv4()}`,
           key: objectKey,
-          bucket: config.R2_BUCKET_NAME,
+          bucket: config.R2_BUCKET_NAME || 'local_storage',
           userId: params.userId || null,
           contentType: params.contentType,
           sizeBytes: params.buffer.length,
@@ -162,12 +189,10 @@ export async function uploadToR2(params: {
     }
   }
 
-  Logger.info(`Successfully uploaded object to Cloudflare R2: ${objectKey} (${params.buffer.length} bytes)`);
-
   return {
     key: objectKey,
     url: publicUrl,
-    bucket: config.R2_BUCKET_NAME,
+    bucket: config.R2_BUCKET_NAME || 'r2_storage',
     sizeBytes: params.buffer.length,
     contentType: params.contentType,
   };
@@ -204,56 +229,94 @@ export async function generatePresignedUploadUrl(params: {
 }
 
 /**
- * Fetch object stream from Cloudflare R2 for proxy serving
+ * Fetch object stream from Cloudflare R2 or local cache for proxy serving
  */
 export async function getObjectFromR2(key: string): Promise<{
   stream: Readable;
   contentType: string;
   contentLength?: number;
 } | null> {
-  const client = getR2Client();
-  if (!client || !config.R2_BUCKET_NAME) {
-    return null;
+  // 1. Try Cloudflare R2
+  if (isR2Configured()) {
+    const client = getR2Client();
+    if (client && config.R2_BUCKET_NAME) {
+      try {
+        const response = await client.send(
+          new GetObjectCommand({
+            Bucket: config.R2_BUCKET_NAME,
+            Key: key,
+          })
+        );
+
+        if (response.Body) {
+          return {
+            stream: response.Body as Readable,
+            contentType: response.ContentType || 'image/jpeg',
+            contentLength: response.ContentLength,
+          };
+        }
+      } catch (err) {
+        Logger.warn(`Object not found in Cloudflare R2: ${key}, checking local fallback...`);
+      }
+    }
   }
 
+  // 2. Check Local File Storage fallback
   try {
-    const response = await client.send(
-      new GetObjectCommand({
-        Bucket: config.R2_BUCKET_NAME,
-        Key: key,
-      })
-    );
+    ensureUploadsDir();
+    const safeLocalPath = path.join(uploadsLocalDir, key.replace(/\//g, '_'));
+    if (fs.existsSync(safeLocalPath)) {
+      const stats = fs.statSync(safeLocalPath);
+      const stream = fs.createReadStream(safeLocalPath);
+      const ext = path.extname(safeLocalPath).toLowerCase();
+      let contentType = 'image/jpeg';
+      if (ext === '.png') contentType = 'image/png';
+      else if (ext === '.webp') contentType = 'image/webp';
+      else if (ext === '.svg') contentType = 'image/svg+xml';
+      else if (ext === '.pdf') contentType = 'application/pdf';
 
-    if (!response.Body) return null;
-
-    return {
-      stream: response.Body as Readable,
-      contentType: response.ContentType || 'application/octet-stream',
-      contentLength: response.ContentLength,
-    };
+      return {
+        stream,
+        contentType,
+        contentLength: stats.size,
+      };
+    }
   } catch (err) {
-    Logger.warn(`Object not found in Cloudflare R2: ${key}`);
-    return null;
+    Logger.warn(`Local file read fallback error for ${key}: ${String(err)}`);
   }
+
+  return null;
 }
 
 /**
  * Delete object from Cloudflare R2
  */
 export async function deleteObjectFromR2(key: string): Promise<boolean> {
-  const client = getR2Client();
-  if (!client || !config.R2_BUCKET_NAME) return false;
+  if (isR2Configured()) {
+    const client = getR2Client();
+    if (client && config.R2_BUCKET_NAME) {
+      try {
+        await client.send(
+          new DeleteObjectCommand({
+            Bucket: config.R2_BUCKET_NAME,
+            Key: key,
+          })
+        );
+      } catch (err) {
+        Logger.warn(`Failed to delete object from R2: ${key}`);
+      }
+    }
+  }
 
   try {
-    await client.send(
-      new DeleteObjectCommand({
-        Bucket: config.R2_BUCKET_NAME,
-        Key: key,
-      })
-    );
-    return true;
-  } catch (err) {
-    Logger.warn(`Failed to delete object from R2: ${key}`);
-    return false;
+    ensureUploadsDir();
+    const safeLocalPath = path.join(uploadsLocalDir, key.replace(/\//g, '_'));
+    if (fs.existsSync(safeLocalPath)) {
+      fs.unlinkSync(safeLocalPath);
+    }
+  } catch {
+    // ignore
   }
+
+  return true;
 }

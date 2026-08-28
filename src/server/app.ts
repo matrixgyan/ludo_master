@@ -4,6 +4,7 @@ import { adminRouter } from './routes/adminApi';
 import { walletRouter } from './routes/walletRoutes';
 import { adminWalletRouter } from './routes/adminWalletRoutes';
 import { manualPaymentRouter } from './routes/manualPaymentRoutes';
+import { storageRouter } from './routes/storageRoutes';
 import { matchApiRouter } from './routes/matchApi';
 import { ensureDatabaseTables } from './db/migrator';
 import { isPostgresConfigured } from './db/client';
@@ -74,6 +75,7 @@ export function createApp(): express.Application {
   app.use(walletRouter);
   app.use(adminWalletRouter);
   app.use(manualPaymentRouter);
+  app.use(storageRouter);
 
   // Global fallback error handler
   app.use((err: any, req: Request, res: Response, next: NextFunction) => {

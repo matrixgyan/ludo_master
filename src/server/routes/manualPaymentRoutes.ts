@@ -44,9 +44,10 @@ const SubmitDepositSchema = z.object({
   screenshotUrl: z.string().optional(),
 });
 
-manualPaymentRouter.post('/api/manual-payments/deposit', async (req: Request, res: Response) => {
+// Support both /deposits/submit and /deposit /deposits endpoints
+manualPaymentRouter.post(['/api/manual-payments/deposit', '/api/manual-payments/deposits/submit'], async (req: Request, res: Response) => {
   try {
-    const userId = resolveUserId(req);
+    const userId = (req.body.userId as string) || resolveUserId(req);
     const body = SubmitDepositSchema.parse(req.body);
 
     const deposit = await ManualPaymentService.submitDepositRequest({
@@ -72,10 +73,10 @@ manualPaymentRouter.post('/api/manual-payments/deposit', async (req: Request, re
 });
 
 /**
- * GET /api/manual-payments/deposits
+ * GET /api/manual-payments/deposits & /api/manual-payments/deposits/user
  * User fetches their deposit history
  */
-manualPaymentRouter.get('/api/manual-payments/deposits', async (req: Request, res: Response) => {
+manualPaymentRouter.get(['/api/manual-payments/deposits', '/api/manual-payments/deposits/user'], async (req: Request, res: Response) => {
   try {
     const userId = resolveUserId(req);
     const deposits = await ManualPaymentService.getUserDeposits(userId);
@@ -86,7 +87,7 @@ manualPaymentRouter.get('/api/manual-payments/deposits', async (req: Request, re
 });
 
 /**
- * POST /api/manual-payments/withdraw
+ * POST /api/manual-payments/withdraw & /api/manual-payments/withdrawals/request
  * User requests manual withdrawal (UPI / Bank)
  */
 const SubmitWithdrawalSchema = z.object({
@@ -99,9 +100,9 @@ const SubmitWithdrawalSchema = z.object({
   payoutBankName: z.string().optional(),
 });
 
-manualPaymentRouter.post('/api/manual-payments/withdraw', async (req: Request, res: Response) => {
+manualPaymentRouter.post(['/api/manual-payments/withdraw', '/api/manual-payments/withdrawals/request'], async (req: Request, res: Response) => {
   try {
-    const userId = resolveUserId(req);
+    const userId = (req.body.userId as string) || resolveUserId(req);
     const body = SubmitWithdrawalSchema.parse(req.body);
 
     if (body.payoutMethod === 'UPI' && !body.payoutUpiId?.trim()) {
@@ -138,10 +139,10 @@ manualPaymentRouter.post('/api/manual-payments/withdraw', async (req: Request, r
 });
 
 /**
- * GET /api/manual-payments/withdrawals
+ * GET /api/manual-payments/withdrawals & /api/manual-payments/withdrawals/user
  * User fetches their withdrawal history
  */
-manualPaymentRouter.get('/api/manual-payments/withdrawals', async (req: Request, res: Response) => {
+manualPaymentRouter.get(['/api/manual-payments/withdrawals', '/api/manual-payments/withdrawals/user'], async (req: Request, res: Response) => {
   try {
     const userId = resolveUserId(req);
     const withdrawals = await ManualPaymentService.getUserWithdrawals(userId);
