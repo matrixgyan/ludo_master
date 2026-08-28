@@ -4,6 +4,7 @@ import { paymentGateways, manualDepositRequests, manualWithdrawalRequests } from
 import { users, walletAccounts, ledgerAccounts, ledgerTransactions, ledgerEntries } from '../db/schema';
 import { eq, desc, sql, and } from 'drizzle-orm';
 import { Logger } from '../config/env';
+import { notificationService } from './notificationService';
 
 export interface PaymentGatewayItem {
   id: string;
@@ -283,6 +284,17 @@ export class ManualPaymentService {
     }
 
     Logger.info(`[MANUAL DEPOSIT] User ${data.userId} submitted UTR: ${data.utrNumber} for ${deposit.amount} ${deposit.currency}`);
+
+    // Automatic Real Notification Trigger
+    notificationService.addNotification({
+      userId: deposit.userId,
+      type: 'DEPOSIT_SUBMITTED',
+      title: 'Deposit Submitted for Verification',
+      message: `Your deposit of ₹${deposit.amount} with UTR / Ref ${deposit.utrNumber} has been received. Instant verification queue in progress.`,
+      amount: deposit.amount,
+      referenceId: deposit.utrNumber,
+    });
+
     return deposit;
   }
 
@@ -392,6 +404,28 @@ export class ManualPaymentService {
     }
 
     Logger.info(`[ADMIN DEPOSIT VERIFY] Deposit ${depositId} marked as ${deposit.status} by ${reviewedBy}`);
+
+    // Automatic Real Notification Trigger for User
+    if (deposit.status === 'APPROVED') {
+      notificationService.addNotification({
+        userId: deposit.userId,
+        type: 'DEPOSIT_APPROVED',
+        title: '🎉 Deposit Approved & Credited!',
+        message: `₹${deposit.amount} has been approved and credited to your wallet balance. UTR: ${deposit.utrNumber}.`,
+        amount: deposit.amount,
+        referenceId: deposit.utrNumber,
+      });
+    } else {
+      notificationService.addNotification({
+        userId: deposit.userId,
+        type: 'DEPOSIT_REJECTED',
+        title: '⚠️ Deposit Verification Failed',
+        message: `Your deposit of ₹${deposit.amount} (UTR: ${deposit.utrNumber}) could not be verified. Note: ${deposit.adminNotes || 'Contact Support'}.`,
+        amount: deposit.amount,
+        referenceId: deposit.utrNumber,
+      });
+    }
+
     return { success: true, deposit };
   }
 
@@ -479,6 +513,17 @@ export class ManualPaymentService {
     }
 
     Logger.info(`[MANUAL WITHDRAWAL] User ${data.userId} requested ₹${numAmount.toFixed(2)} via ${data.payoutMethod}`);
+
+    // Automatic Real Notification Trigger
+    notificationService.addNotification({
+      userId: withdrawal.userId,
+      type: 'WITHDRAWAL_REQUESTED',
+      title: 'Withdrawal Request Submitted',
+      message: `Your withdrawal of ₹${withdrawal.amount} to ${withdrawal.payoutMethod} (${withdrawal.payoutUpiId || withdrawal.payoutAccountNumber}) is under review.`,
+      amount: withdrawal.amount,
+      referenceId: withdrawal.id,
+    });
+
     return withdrawal;
   }
 
@@ -596,6 +641,28 @@ export class ManualPaymentService {
     }
 
     Logger.info(`[ADMIN WITHDRAWAL VERIFY] Withdrawal ${withdrawalId} marked as ${withdrawal.status} by ${reviewedBy}`);
+
+    // Automatic Real Notification Trigger
+    if (withdrawal.status === 'PROCESSED') {
+      notificationService.addNotification({
+        userId: withdrawal.userId,
+        type: 'WITHDRAWAL_PROCESSED',
+        title: '💸 Withdrawal Processed & Sent!',
+        message: `₹${withdrawal.netAmount} has been transferred to your ${withdrawal.payoutMethod}. Bank Ref: ${withdrawal.payoutReference || 'Settled'}.`,
+        amount: withdrawal.netAmount,
+        referenceId: withdrawal.payoutReference || withdrawal.id,
+      });
+    } else {
+      notificationService.addNotification({
+        userId: withdrawal.userId,
+        type: 'WITHDRAWAL_REQUESTED',
+        title: '⚠️ Withdrawal Refunded',
+        message: `Your withdrawal of ₹${withdrawal.amount} was rejected and ₹${withdrawal.amount} has been refunded to your wallet. Note: ${withdrawal.adminNotes || 'Contact Support'}.`,
+        amount: withdrawal.amount,
+        referenceId: withdrawal.id,
+      });
+    }
+
     return { success: true, withdrawal };
   }
 }

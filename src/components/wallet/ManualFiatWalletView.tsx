@@ -24,7 +24,8 @@ import {
   Image as ImageIcon,
   QrCode as QrCodeIcon,
   Eye,
-  Trash2
+  Trash2,
+  Zap
 } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
 
@@ -736,23 +737,53 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
                 </div>
               )}
 
-              <button
-                type="submit"
-                disabled={isSubmittingDeposit || isUploadingScreenshot}
-                className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-sm uppercase tracking-wider rounded-2xl shadow-lg shadow-amber-500/20 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {isSubmittingDeposit ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Submitting to Verification Queue...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
-                    <span>Submit Deposit for Instant Approval</span>
-                  </>
-                )}
-              </button>
+              {/* REDESIGNED HIGH-IMPACT INSTANT APPROVAL SUBMIT BUTTON */}
+              <div className="relative group pt-1">
+                {/* Ambient Golden Under-glow */}
+                <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-amber-500/40 via-yellow-400/50 to-orange-500/40 blur-md opacity-75 group-hover:opacity-100 transition-opacity pointer-events-none" />
+
+                <motion.button
+                  type="submit"
+                  disabled={isSubmittingDeposit || isUploadingScreenshot}
+                  whileHover={{ scale: 1.02, y: -2 }}
+                  whileTap={{ scale: 0.98 }}
+                  id="submit-deposit-instant-approval-btn"
+                  className="relative w-full py-4 px-6 bg-gradient-to-r from-[#f59e0b] via-[#fbbf24] to-[#f59e0b] hover:from-[#fbbf24] hover:via-[#fde047] hover:to-[#f59e0b] text-slate-950 rounded-2xl border-2 border-yellow-200 shadow-[0_10px_28px_rgba(245,158,11,0.5),0_4px_12px_rgba(0,0,0,0.6)] border-b-4 border-amber-800 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center overflow-hidden"
+                >
+                  {/* Top Specular Sheen */}
+                  <div className="absolute top-0 inset-x-4 h-3 bg-gradient-to-b from-white/70 to-transparent rounded-t-xl pointer-events-none" />
+
+                  {/* Shimmer Light Bar */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full animate-[shimmer_2.5s_infinite] pointer-events-none" />
+
+                  <div className="relative z-10 flex items-center justify-center gap-2.5">
+                    {isSubmittingDeposit ? (
+                      <>
+                        <RefreshCw className="w-5 h-5 animate-spin text-slate-950" />
+                        <span className="font-black text-sm uppercase tracking-wider text-slate-950">
+                          Routing to Verification Queue...
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-6 h-6 rounded-full bg-slate-950 text-amber-400 flex items-center justify-center shadow-inner">
+                          <Zap className="w-4 h-4 fill-amber-400 stroke-[2.5]" />
+                        </div>
+                        <span className="font-black text-sm sm:text-base uppercase tracking-wider text-slate-950 drop-shadow-[0_1px_1px_rgba(255,255,255,0.6)]">
+                          Submit Deposit for Instant Approval
+                        </span>
+                        <CheckCircle2 className="w-5 h-5 text-slate-950 stroke-[2.8]" />
+                      </>
+                    )}
+                  </div>
+
+                  {/* Sub-label guarantee badge */}
+                  <div className="relative z-10 flex items-center gap-1.5 mt-1 text-[10.5px] font-bold text-amber-950/80">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-800" />
+                    <span>24x7 Priority Review • Average Credited in 30 Seconds</span>
+                  </div>
+                </motion.button>
+              </div>
             </form>
           </motion.div>
         )}

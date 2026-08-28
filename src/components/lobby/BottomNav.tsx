@@ -1,9 +1,9 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Gamepad2, Flame, Swords, Trophy, Wallet } from 'lucide-react';
+import { Gamepad2, Trophy, Swords, Gift, Wallet, Crown } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
 
-export type NavTab = 'home' | 'studio' | 'battle' | 'refer' | 'assets';
+export type NavTab = 'home' | 'leaderboard' | 'battle' | 'refer' | 'assets' | 'studio';
 
 interface BottomNavProps {
   activeTab: NavTab;
@@ -95,39 +95,39 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             </motion.button>
 
             {/* ===================================================================== */}
-            {/* 2. MODES / ARENAS */}
+            {/* 2. LEADERBOARD & LIVE WINNERS */}
             {/* ===================================================================== */}
             <motion.button
-              id="hud-nav-studio"
+              id="hud-nav-leaderboard"
               whileHover={{ scale: 1.05, y: -2 }}
               whileTap={{ scale: 0.94 }}
-              onClick={() => handleTabClick('studio')}
+              onClick={() => handleTabClick('leaderboard')}
               className="flex-1 flex flex-col items-center justify-center py-1 cursor-pointer group relative"
             >
-              {activeTab === 'studio' && (
+              {(activeTab === 'leaderboard' || activeTab === 'studio') && (
                 <motion.div
                   layoutId="hud-active-glow"
                   transition={{ type: 'spring', stiffness: 500, damping: 32 }}
-                  className="absolute inset-0 rounded-xl bg-gradient-to-b from-rose-500/20 via-rose-500/10 to-transparent border border-rose-400/50 shadow-[0_0_15px_rgba(244,63,94,0.3)] -z-0"
+                  className="absolute inset-0 rounded-xl bg-gradient-to-b from-amber-500/20 via-yellow-500/10 to-transparent border border-amber-400/50 shadow-[0_0_15px_rgba(245,158,11,0.3)] -z-0"
                 />
               )}
 
               <div
                 className={`relative z-10 w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300 mb-0.5 ${
-                  activeTab === 'studio'
-                    ? 'bg-gradient-to-br from-rose-400 to-rose-600 text-white shadow-[0_0_12px_rgba(244,63,94,0.6)] border border-rose-200 scale-105'
-                    : 'bg-white/5 text-slate-400 group-hover:bg-white/10 group-hover:text-rose-300 border border-white/5'
+                  activeTab === 'leaderboard' || activeTab === 'studio'
+                    ? 'bg-gradient-to-br from-amber-400 to-yellow-500 text-slate-950 shadow-[0_0_12px_rgba(245,158,11,0.6)] border border-yellow-200 scale-105'
+                    : 'bg-white/5 text-slate-400 group-hover:bg-white/10 group-hover:text-amber-300 border border-white/5'
                 }`}
               >
-                <Flame className="w-5 h-5 stroke-[2.4]" />
+                <Trophy className="w-5 h-5 stroke-[2.4]" />
               </div>
 
               <span
                 className={`relative z-10 text-[10.5px] font-black uppercase tracking-wider transition-colors ${
-                  activeTab === 'studio' ? 'text-rose-300 drop-shadow-[0_0_8px_rgba(251,113,133,0.8)]' : 'text-slate-400 group-hover:text-slate-200'
+                  activeTab === 'leaderboard' || activeTab === 'studio' ? 'text-amber-300 drop-shadow-[0_0_8px_rgba(251,191,36,0.8)]' : 'text-slate-400 group-hover:text-slate-200'
                 }`}
               >
-                Arenas
+                Leaderboard
               </span>
             </motion.button>
 
@@ -193,7 +193,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                     : 'bg-white/5 text-slate-400 group-hover:bg-white/10 group-hover:text-emerald-300 border border-white/5'
                 }`}
               >
-                <Trophy className="w-5 h-5 stroke-[2.4]" />
+                <Gift className="w-5 h-5 stroke-[2.4]" />
               </div>
 
               <span
@@ -201,7 +201,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                   activeTab === 'refer' ? 'text-emerald-300 drop-shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'text-slate-400 group-hover:text-slate-200'
                 }`}
               >
-                Rewards
+                Refer & Earn
               </span>
             </motion.button>
 

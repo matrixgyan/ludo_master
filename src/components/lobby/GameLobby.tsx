@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { LobbyHeader } from './LobbyHeader';
 import { LobbyCardOnlineMultiplayer } from './LobbyCardOnlineMultiplayer';
@@ -13,6 +13,7 @@ import { StudioModal } from './StudioModal';
 import { ReferModal } from './ReferModal';
 import { ProfileModal } from './ProfileModal';
 import { NotificationsModal } from './NotificationsModal';
+import { LeaderboardModal } from './LeaderboardModal';
 import { PlayerModeOption, LudoModeSelectorModal, GameVariation, PlayerConfig } from './LudoModeSelectorModal';
 import { MatchArenaListView } from './MatchArenaListView';
 import { AssetsView } from '../wallet/AssetsView';
@@ -42,12 +43,35 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   onStartOnlineMatch,
 }) => {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
+  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [isStudioOpen, setIsStudioOpen] = useState(false);
   const [isReferOpen, setIsReferOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isLeagueModalOpen, setIsLeagueModalOpen] = useState(false);
   const [usdtBalance, setUsdtBalance] = useState('$0.00');
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(2);
+
+  // Poll for real unread notification counts from backend
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      try {
+        const res = await fetch('/api/notifications?userId=user_guest_default');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && typeof data.unreadCount === 'number') {
+            setUnreadNotificationsCount(data.unreadCount);
+          }
+        }
+      } catch (err) {
+        // silent fallback
+      }
+    };
+
+    fetchUnreadCount();
+    const timer = setInterval(fetchUnreadCount, 12000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Dynamic Theme state
   const { lobbyTheme } = useLiveTheme();
@@ -62,9 +86,13 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
 
   const handleSelectTab = (tab: NavTab) => {
     setActiveTab(tab);
-    if (tab === 'studio') handleOpenOnlineMatchList('classic');
-    if (tab === 'battle') handleOpenOnlineMatchList('supreme');
-    if (tab === 'refer') setIsReferOpen(true);
+    if (tab === 'leaderboard' || tab === 'studio') {
+      setIsLeaderboardOpen(true);
+    } else if (tab === 'battle') {
+      handleOpenOnlineMatchList('supreme');
+    } else if (tab === 'refer') {
+      setIsReferOpen(true);
+    }
   };
 
   const handleOpenOnlineMatchList = (gameType: 'classic' | 'supreme' | 'snake') => {
@@ -122,6 +150,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
             <LobbyHeader
               balance={balance}
               usdtBalance={`$${balance.toFixed(2)}`}
+              unreadNotificationsCount={unreadNotificationsCount}
               onOpenNotifications={() => setIsNotificationsOpen(true)}
               onOpenProfile={() => setIsProfileOpen(true)}
               onOpenWallet={() => setActiveTab('assets')}
@@ -151,11 +180,11 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
           </main>
 
           {/* FLOATING STUCK RANK BADGE ON THE RIGHT DISPLAY */}
-          <FloatingRankWidget rank={59} onOpenLeaderboard={() => setIsProfileOpen(true)} />
+          <FloatingRankWidget rank={59} onOpenLeaderboard={() => setIsLeaderboardOpen(true)} />
         </>
       )}
 
-      {/* 3. BOTTOM NAVIGATION BAR (Lobby, Arenas, Play, Rewards, Assets) */}
+      {/* 3. BOTTOM NAVIGATION BAR (Lobby, Leaderboard, Play, Rewards, Assets) */}
       <BottomNav
         activeTab={activeTab}
         onSelectTab={handleSelectTab}
@@ -195,6 +224,19 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
         balance={balance}
       />
 
+      <LeaderboardModal
+        isOpen={isLeaderboardOpen}
+        onClose={() => {
+          setIsLeaderboardOpen(false);
+          setActiveTab('home');
+        }}
+        userBalance={balance}
+        onPlayGame={() => {
+          setIsLeaderboardOpen(false);
+          handleOpenOnlineMatchList('supreme');
+        }}
+      />
+
       <StudioModal
         isOpen={isStudioOpen}
         onClose={() => {
@@ -209,6 +251,10 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
           setIsReferOpen(false);
           setActiveTab('home');
         }}
+        onAddFunds={() => {
+          setIsReferOpen(false);
+          setActiveTab('assets');
+        }}
       />
 
       <ProfileModal
@@ -220,6 +266,8 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
       <NotificationsModal
         isOpen={isNotificationsOpen}
         onClose={() => setIsNotificationsOpen(false)}
+        userId="user_guest_default"
+        onUnreadCountChange={(count) => setUnreadNotificationsCount(count)}
       />
     </div>
   );

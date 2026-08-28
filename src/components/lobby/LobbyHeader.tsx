@@ -7,6 +7,7 @@ import { usePlatformMode } from '../../hooks/usePlatformMode';
 interface LobbyHeaderProps {
   balance?: number;
   usdtBalance?: string;
+  unreadNotificationsCount?: number;
   onOpenNotifications: () => void;
   onOpenProfile: () => void;
   onOpenWallet?: () => void;
@@ -15,6 +16,7 @@ interface LobbyHeaderProps {
 export const LobbyHeader: React.FC<LobbyHeaderProps> = ({
   balance = 0,
   usdtBalance = '$0.00',
+  unreadNotificationsCount = 0,
   onOpenNotifications,
   onOpenProfile,
   onOpenWallet,
@@ -47,15 +49,22 @@ export const LobbyHeader: React.FC<LobbyHeaderProps> = ({
         <motion.button
           id="lobby-notifications-btn"
           whileTap={{ scale: 0.9 }}
+          whileHover={{ scale: 1.06 }}
           onClick={() => {
             SoundManager.play('click');
             onOpenNotifications();
           }}
           className="relative w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-slate-300 hover:text-white transition-colors cursor-pointer"
-          title="Notifications"
+          title="Notifications & Alerts"
         >
           <Bell className="w-4 h-4" />
-          <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-[#0a0d24]" />
+          {unreadNotificationsCount > 0 ? (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-gradient-to-r from-rose-500 to-amber-500 text-white font-black text-[9.5px] flex items-center justify-center border-2 border-[#0a0d24] shadow-md shadow-rose-500/40 animate-pulse">
+              {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+            </span>
+          ) : (
+            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-400/80 ring-2 ring-[#0a0d24]" />
+          )}
         </motion.button>
 
         {/* Dynamic Multi-Chain / Fiat Vault Pill */}
