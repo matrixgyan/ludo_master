@@ -17,6 +17,7 @@ import {
   SNAKE_MAP,
 } from '../ludo/adventure/types';
 import confetti from 'canvas-confetti';
+import { usePlatformMode } from '../../hooks/usePlatformMode';
 
 interface SnakeLudoGameProps {
   onBackToLobby: () => void;
@@ -41,6 +42,7 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
   playerCount = 2,
   onMatchWon,
 }) => {
+  const { platformMode } = usePlatformMode();
   const [player1Pos, setPlayer1Pos] = useState<number>(1);
   const [player2Pos, setPlayer2Pos] = useState<number>(1);
   const [currentTurn, setCurrentTurn] = useState<'p1' | 'p2'>('p1');
@@ -239,7 +241,7 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
           <div className="flex items-center gap-1.5 bg-gradient-to-r from-amber-500/20 via-yellow-500/30 to-amber-500/20 border border-amber-400/60 px-3 py-1 rounded-full shadow-inner">
             <Trophy className="w-3.5 h-3.5 text-amber-300" />
             <span className="text-xs font-black text-amber-200">
-              PRIZE: ${prizePool.toFixed(2)} USDT
+              PRIZE: {platformMode.currencySymbol}{prizePool.toFixed(2)} {platformMode.platformCurrency}
             </span>
           </div>
         ) : (
@@ -438,7 +440,7 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
                 {prizePool > 0 && winner === userName && (
                   <div className="mt-3 py-2 px-4 bg-emerald-950/80 border border-emerald-400/60 rounded-xl flex items-center justify-center gap-2 text-emerald-300 font-black text-sm">
                     <Coins className="w-4 h-4 text-yellow-400" />
-                    <span>+${prizePool.toFixed(2)} USDT Credited!</span>
+                    <span>+{platformMode.currencySymbol}{prizePool.toFixed(2)} {platformMode.platformCurrency} Credited!</span>
                   </div>
                 )}
               </div>

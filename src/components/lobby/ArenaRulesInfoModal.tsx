@@ -11,6 +11,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
+import { usePlatformMode } from '../../hooks/usePlatformMode';
 
 interface ArenaRulesInfoModalProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ export const ArenaRulesInfoModal: React.FC<ArenaRulesInfoModalProps> = ({
   onClose,
   gameType = 'classic',
 }) => {
+  const { platformMode } = usePlatformMode();
   if (!isOpen) return null;
 
   const isClassic = gameType === 'classic';
@@ -152,7 +154,7 @@ export const ArenaRulesInfoModal: React.FC<ArenaRulesInfoModalProps> = ({
               <div className="flex items-center justify-between text-amber-300 font-black text-xs">
                 <span className="flex items-center gap-1.5">
                   <Coins className="w-4 h-4 text-yellow-400" />
-                  <span>Entry & Payout (USDT)</span>
+                  <span>Entry & Payout ({platformMode.platformCurrency})</span>
                 </span>
                 <span className="bg-emerald-500/20 text-emerald-300 text-[9px] px-2 py-0.5 rounded-full font-bold border border-emerald-500/30">
                   Instant Credit
@@ -164,7 +166,7 @@ export const ArenaRulesInfoModal: React.FC<ArenaRulesInfoModalProps> = ({
                   • <strong>90% Winner Payout:</strong> Winner takes <strong>90% of the total prize pool</strong> (10% platform fee).
                 </p>
                 <p>
-                  • <strong>Instant Settlement:</strong> Winnings are credited automatically to your USDT wallet balance upon victory.
+                  • <strong>Instant Settlement:</strong> Winnings are credited automatically to your {platformMode.platformCurrency} wallet balance upon victory.
                 </p>
               </div>
             </div>

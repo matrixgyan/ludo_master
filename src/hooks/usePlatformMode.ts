@@ -121,6 +121,9 @@ export function usePlatformMode() {
     platformMode,
     isCryptoMode: platformMode.cryptoWalletEnabled,
     isManualMode: !platformMode.cryptoWalletEnabled,
+    currencySymbol: platformMode.currencySymbol || '₹',
+    platformCurrency: platformMode.platformCurrency || 'INR',
+    currencyName: platformMode.currencyName || 'Indian Rupee',
     refreshPlatformMode,
     isLoading,
   };

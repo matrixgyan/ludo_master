@@ -201,7 +201,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                   activeTab === 'refer' ? 'text-emerald-300 drop-shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'text-slate-400 group-hover:text-slate-200'
                 }`}
               >
-                Refer & Earn
+                Refer
               </span>
             </motion.button>
 

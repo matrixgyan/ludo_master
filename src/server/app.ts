@@ -7,6 +7,7 @@ import { manualPaymentRouter } from './routes/manualPaymentRoutes';
 import { storageRouter } from './routes/storageRoutes';
 import { matchApiRouter } from './routes/matchApi';
 import { notificationRouter } from './routes/notificationRoutes';
+import { referralRouter } from './routes/referralRoutes';
 import { ensureDatabaseTables } from './db/migrator';
 import { isPostgresConfigured } from './db/client';
 import { SettingsStore } from './storage/settingsStore';
@@ -78,6 +79,7 @@ export function createApp(): express.Application {
   app.use(manualPaymentRouter);
   app.use(storageRouter);
   app.use(notificationRouter);
+  app.use(referralRouter);
 
   // Global fallback error handler
   app.use((err: any, req: Request, res: Response, next: NextFunction) => {

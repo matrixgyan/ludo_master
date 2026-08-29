@@ -1,6 +1,7 @@
 import React from 'react';
 import { Menu, Volume2, VolumeX, ArrowLeft, CreditCard, Timer, Flame, Trophy } from 'lucide-react';
 import { SoundManager } from '../../../audio/soundManager';
+import { usePlatformMode } from '../../../hooks/usePlatformMode';
 
 interface TopBarHUDProps {
   onOpenMenu: () => void;
@@ -23,6 +24,7 @@ export const TopBarHUD: React.FC<TopBarHUDProps> = ({
   matchTimeLeft = 180,
   prizePool = 0,
 }) => {
+  const { platformMode } = usePlatformMode();
   const isSupreme = gameType === 'supreme';
   const minutes = Math.floor(matchTimeLeft / 60);
   const seconds = matchTimeLeft % 60;
@@ -84,13 +86,13 @@ export const TopBarHUD: React.FC<TopBarHUDProps> = ({
           {prizePool > 0 && (
             <div className="hidden sm:flex items-center gap-1 bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 px-2.5 py-1 rounded-full font-black text-xs border border-yellow-200 shadow-md">
               <Trophy className="w-3.5 h-3.5 fill-slate-950" />
-              <span>${prizePool.toFixed(2)}</span>
+              <span>{platformMode.currencySymbol}{prizePool.toFixed(2)}</span>
             </div>
           )}
         </div>
       )}
 
-      {/* Right Controls: Mute Toggle + Dollar Currency Banner */}
+      {/* Right Controls: Mute Toggle + Currency Banner */}
       <div className="flex items-center gap-2">
         {/* Mute Button */}
         <button
@@ -101,14 +103,14 @@ export const TopBarHUD: React.FC<TopBarHUDProps> = ({
           {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4" />}
         </button>
 
-        {/* Currency Pill with DOLLAR ($) symbol */}
+        {/* Currency Pill */}
         <div className="relative flex items-center bg-[#371380] border border-purple-400/40 rounded-full pl-2.5 pr-2 py-1 shadow-lg">
           <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-purple-950/80 flex items-center justify-center mr-1.5 text-amber-300">
             <CreditCard className="w-3 h-3" />
           </div>
 
           <span className="text-white font-black text-xs sm:text-sm mr-1.5 tracking-wide">
-            ${balance.toFixed(2)}
+            {platformMode.currencySymbol}{balance.toFixed(2)}
           </span>
         </div>
       </div>

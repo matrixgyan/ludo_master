@@ -253,12 +253,15 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
           accountNumber: '',
           ifscCode: '',
           bankName: '',
+          qrCodeUrl: '',
           minDepositAmount: '100',
           maxDepositAmount: '50000',
           depositInstructions: '',
           isEnabled: true,
         });
         fetchData();
+        window.dispatchEvent(new CustomEvent('ludo_gateways_updated'));
+        localStorage.setItem('ludo_gateways_updated', String(Date.now()));
       }
     } catch (err) {
       console.error('Save gateway error', err);
@@ -273,6 +276,8 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
         headers: { Authorization: `Bearer ${token}` },
       });
       fetchData();
+      window.dispatchEvent(new CustomEvent('ludo_gateways_updated'));
+      localStorage.setItem('ludo_gateways_updated', String(Date.now()));
     } catch (err) {
       console.error('Delete gateway error', err);
     }
@@ -968,13 +973,40 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => handleDeleteGateway(gw.id)}
-                    className="text-slate-500 hover:text-rose-400 p-1 transition-colors cursor-pointer"
-                    title="Delete Channel"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => {
+                        setGatewayForm({
+                          id: gw.id,
+                          type: gw.type,
+                          title: gw.title,
+                          accountHolderName: gw.accountHolderName,
+                          upiId: gw.upiId || '',
+                          accountNumber: gw.accountNumber || '',
+                          ifscCode: gw.ifscCode || '',
+                          bankName: gw.bankName || '',
+                          qrCodeUrl: gw.qrCodeUrl || '',
+                          minDepositAmount: gw.minDepositAmount,
+                          maxDepositAmount: gw.maxDepositAmount,
+                          depositInstructions: gw.depositInstructions || '',
+                          isEnabled: gw.isEnabled,
+                        });
+                        setIsEditingGateway(true);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="text-slate-400 hover:text-amber-400 p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                      title="Edit Payment Gateway"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteGateway(gw.id)}
+                      className="text-slate-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                      title="Delete Channel"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2 bg-[#101726] border border-slate-800/80 rounded-xl p-3 text-xs">

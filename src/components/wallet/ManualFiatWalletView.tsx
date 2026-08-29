@@ -172,13 +172,19 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
   useEffect(() => {
     fetchFiatData();
 
-    // Listen to custom updates or external triggers
+    // Listen to custom updates or external triggers across all tabs and components
     const handleGatewayUpdate = () => {
       fetchFiatData();
     };
     window.addEventListener('ludo_gateways_updated', handleGatewayUpdate);
+    window.addEventListener('ludo_platform_mode_changed', handleGatewayUpdate);
+    window.addEventListener('storage', handleGatewayUpdate);
+    window.addEventListener('focus', handleGatewayUpdate);
     return () => {
       window.removeEventListener('ludo_gateways_updated', handleGatewayUpdate);
+      window.removeEventListener('ludo_platform_mode_changed', handleGatewayUpdate);
+      window.removeEventListener('storage', handleGatewayUpdate);
+      window.removeEventListener('focus', handleGatewayUpdate);
     };
   }, [userId]);
 

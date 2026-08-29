@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Clock, Sparkles, Trophy, Flame } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
 import leagueBgImg from '../../assets/images/ludo_supreme_league_ticket_bg_1787019798437.jpg';
+import { usePlatformMode } from '../../hooks/usePlatformMode';
 
 interface LobbyCardBigRewardsProps {
   onOpenLeague: () => void;
@@ -11,6 +12,7 @@ interface LobbyCardBigRewardsProps {
 export const LobbyCardBigRewards: React.FC<LobbyCardBigRewardsProps> = ({
   onOpenLeague,
 }) => {
+  const { platformMode, isCryptoMode } = usePlatformMode();
   // Live ticking countdown timer
   const [timeLeft, setTimeLeft] = useState({ hours: 1, minutes: 14, seconds: 40 });
 
@@ -98,8 +100,8 @@ export const LobbyCardBigRewards: React.FC<LobbyCardBigRewardsProps> = ({
               FIRST PRIZE
             </div>
             <div className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)] flex items-center leading-none mt-0.5">
-              <span>₹50</span>
-              <span className="text-[11px] font-bold text-amber-300 ml-1.5 opacity-90">($500)</span>
+              <span>{platformMode.currencySymbol}50</span>
+              <span className="text-[11px] font-bold text-amber-300 ml-1.5 opacity-90">({platformMode.platformCurrency})</span>
             </div>
           </div>
         </div>

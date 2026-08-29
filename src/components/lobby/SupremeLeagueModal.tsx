@@ -4,6 +4,7 @@ import { Trophy, Clock, Users, Sparkles, X, ChevronRight, CheckCircle2, Flame, A
 import { SoundManager } from '../../audio/soundManager';
 import confetti from 'canvas-confetti';
 import leagueBannerImg from '../../assets/images/ludo_supreme_league_ticket_bg_1787019798437.jpg';
+import { usePlatformMode } from '../../hooks/usePlatformMode';
 
 interface SupremeLeagueModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ export const SupremeLeagueModal: React.FC<SupremeLeagueModalProps> = ({
   onJoinLeague,
   balance,
 }) => {
+  const { platformMode } = usePlatformMode();
   const [joined, setJoined] = useState(false);
   const [activeTab, setActiveTab] = useState<'prizes' | 'leaderboard' | 'rules'>('prizes');
 
@@ -51,20 +53,22 @@ export const SupremeLeagueModal: React.FC<SupremeLeagueModalProps> = ({
     }, 900);
   };
 
+  const sym = platformMode.currencySymbol;
+
   const prizeDistribution = [
-    { rank: '# 1', prize: '₹50', tag: 'Mega Winner', highlight: true, color: 'text-amber-300' },
-    { rank: '# 2', prize: '₹20', tag: 'Runner Up', highlight: false, color: 'text-slate-200' },
-    { rank: '# 3 - 10', prize: '₹10', tag: 'Top Tier', highlight: false, color: 'text-amber-400' },
-    { rank: '# 11 - 100', prize: '₹5', tag: 'Champion Club', highlight: false, color: 'text-emerald-300' },
-    { rank: '# 101 - 65,000', prize: '₹2', tag: 'Assured Winner', highlight: false, color: 'text-cyan-300' },
+    { rank: '# 1', prize: `${sym}50`, tag: 'Mega Winner', highlight: true, color: 'text-amber-300' },
+    { rank: '# 2', prize: `${sym}20`, tag: 'Runner Up', highlight: false, color: 'text-slate-200' },
+    { rank: '# 3 - 10', prize: `${sym}10`, tag: 'Top Tier', highlight: false, color: 'text-amber-400' },
+    { rank: '# 11 - 100', prize: `${sym}5`, tag: 'Champion Club', highlight: false, color: 'text-emerald-300' },
+    { rank: '# 101 - 65,000', prize: `${sym}2`, tag: 'Assured Winner', highlight: false, color: 'text-cyan-300' },
   ];
 
   const sampleLeaderboard = [
-    { rank: 1, name: 'Aarav Sharma', score: 1420, prize: '₹50', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop' },
-    { rank: 2, name: 'Vikram Singh', score: 1360, prize: '₹20', avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=100&h=100&fit=crop' },
-    { rank: 3, name: 'Priya Patel', score: 1290, prize: '₹10', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop' },
-    { rank: 4, name: 'Rahul Verma', score: 1180, prize: '₹10', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop' },
-    { rank: 5, name: 'Ananya Roy', score: 1110, prize: '₹10', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop' },
+    { rank: 1, name: 'Aarav Sharma', score: 1420, prize: `${sym}50`, avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop' },
+    { rank: 2, name: 'Vikram Singh', score: 1360, prize: `${sym}20`, avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=100&h=100&fit=crop' },
+    { rank: 3, name: 'Priya Patel', score: 1290, prize: `${sym}10`, avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop' },
+    { rank: 4, name: 'Rahul Verma', score: 1180, prize: `${sym}10`, avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop' },
+    { rank: 5, name: 'Ananya Roy', score: 1110, prize: `${sym}10`, avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop' },
   ];
 
   if (!isOpen) return null;
@@ -280,7 +284,7 @@ export const SupremeLeagueModal: React.FC<SupremeLeagueModalProps> = ({
                 ENTRY FEE
               </div>
               <div className="text-lg font-black text-emerald-400 flex items-center gap-1">
-                FREE <span className="text-xs line-through text-white/40">₹25</span>
+                FREE <span className="text-xs line-through text-white/40">{platformMode.currencySymbol}25</span>
               </div>
             </div>
 

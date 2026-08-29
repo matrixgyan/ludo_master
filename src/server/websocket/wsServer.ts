@@ -41,6 +41,9 @@ export class ProductionWebSocketServer {
       };
       this.clients.set(ws, clientInfo);
 
+      // Auto-join global room for system-wide configuration broadcasts
+      this.joinGameRoom(ws, 'global');
+
       ws.on('pong', () => {
         const client = this.clients.get(ws);
         if (client) {
@@ -395,14 +398,36 @@ export class ProductionWebSocketServer {
     }
   }
 
+  public broadcastAll(payload: Record<string, unknown>): void {
+    const data = JSON.stringify(payload);
+    this.clients.forEach((_, ws) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(data);
+        } catch {
+          // ignore
+        }
+      }
+    });
+  }
+
   public broadcastToRoom(gameId: string, payload: Record<string, unknown>): void {
+    if (gameId === 'global') {
+      this.broadcastAll(payload);
+      return;
+    }
+
     const room = this.gameRooms.get(gameId);
     if (!room) return;
 
     const data = JSON.stringify(payload);
     room.forEach((ws) => {
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
+        try {
+          ws.send(data);
+        } catch {
+          // ignore
+        }
       }
     });
   }

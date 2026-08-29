@@ -16,6 +16,7 @@ import {
 import { SoundManager } from '../../audio/soundManager';
 import { PlayerModeOption, GameVariation, PlayerConfig } from './LudoModeSelectorModal';
 import { ArenaRulesInfoModal } from './ArenaRulesInfoModal';
+import { usePlatformMode } from '../../hooks/usePlatformMode';
 import arabAvatarImg from '../../assets/images/arab_avatar_man_1787143002600.jpg';
 import woodBgImg from '../../assets/images/wood_plank_bg_1787143024792.jpg';
 
@@ -64,7 +65,7 @@ interface PoolTier {
   colorName: 'red' | 'yellow' | 'green' | 'blue';
 }
 
-const POOLS_BY_PLAYER_COUNT: Record<PlayerModeOption, PoolTier[]> = {
+const POOLS_BY_PLAYER_COUNT_CRYPTO: Record<PlayerModeOption, PoolTier[]> = {
   2: [
     { fee: 0, title: 'Free Training', tag: 'Practice', colorName: 'red' },
     { fee: 1, title: 'Micro Duel', tag: 'Beginner', isHot: true, colorName: 'yellow' },
@@ -94,6 +95,36 @@ const POOLS_BY_PLAYER_COUNT: Record<PlayerModeOption, PoolTier[]> = {
   ],
 };
 
+const POOLS_BY_PLAYER_COUNT_INR: Record<PlayerModeOption, PoolTier[]> = {
+  2: [
+    { fee: 0, title: 'Free Training', tag: 'Practice', colorName: 'red' },
+    { fee: 10, title: 'Micro Duel', tag: 'Beginner', isHot: true, colorName: 'yellow' },
+    { fee: 25, title: 'Popular Duel', tag: 'Popular', isHot: true, colorName: 'red' },
+    { fee: 50, title: 'High Stakes 1v1', tag: 'High Roller', colorName: 'yellow' },
+    { fee: 100, title: 'Grand Arena', tag: 'Pro League', colorName: 'red' },
+    { fee: 250, title: 'VIP Championship', tag: 'VIP Elite', colorName: 'yellow' },
+    { fee: 500, title: 'High Roller Legend', tag: 'Supreme', colorName: 'red' },
+  ],
+  3: [
+    { fee: 0, title: 'Free Trio Arena', tag: 'Practice', colorName: 'red' },
+    { fee: 10, title: 'Trio Micro Clash', tag: 'Quick 3P', isHot: true, colorName: 'yellow' },
+    { fee: 25, title: 'Trio Showdown', tag: 'Popular', isHot: true, colorName: 'green' },
+    { fee: 50, title: 'Master 3P Clash', tag: 'High Stakes', colorName: 'red' },
+    { fee: 100, title: 'Grand Trio League', tag: 'Pro', colorName: 'yellow' },
+    { fee: 250, title: 'VIP 3P Royal', tag: 'VIP', colorName: 'green' },
+    { fee: 500, title: 'VIP 3P Supreme', tag: 'High Roller', colorName: 'yellow' },
+  ],
+  4: [
+    { fee: 0, title: 'Free 4P Rumble', tag: 'Practice', colorName: 'red' },
+    { fee: 10, title: '4P Mini Rumble', tag: 'Beginner', isHot: true, colorName: 'yellow' },
+    { fee: 25, title: 'Classic 4P Battle', tag: 'Most Popular', isHot: true, colorName: 'green' },
+    { fee: 50, title: 'Supreme 4P Rumble', tag: 'Stakes', colorName: 'blue' },
+    { fee: 100, title: 'Master 4P League', tag: 'Grand Prize', colorName: 'red' },
+    { fee: 250, title: 'VIP 4P Championship', tag: 'High Roller', colorName: 'yellow' },
+    { fee: 500, title: 'Ultimate 4P Crown', tag: 'Supreme Royal', colorName: 'green' },
+  ],
+};
+
 const COLOR_MAP: Record<string, { bg: string; border: string }> = {
   red: { bg: '#f23c4d', border: '#b91c1c' },
   yellow: { bg: '#f7d800', border: '#ca8a04' },
@@ -109,6 +140,7 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
   onSelectAndJoinMatch,
   onOpenDeposit,
 }) => {
+  const { platformMode } = usePlatformMode();
   const [activeGameType, setActiveGameType] = useState<'classic' | 'supreme' | 'snake'>(initialMode);
   const [variation, setVariation] = useState<GameVariation>('Classic');
   const [selectedPlayerCount, setSelectedPlayerCount] = useState<PlayerModeOption>(2);
@@ -185,7 +217,7 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
 
     // If entry fee > 0 and balance is lower, notify and redirect to deposit if available
     if (entryFee > 0 && balance < entryFee) {
-      showToast(`⚠️ Insufficient USDT balance ($${balance.toFixed(2)}). Deposit USDT or try free practice!`);
+      showToast(`⚠️ Insufficient ${platformMode.platformCurrency} balance (${platformMode.currencySymbol}${balance.toFixed(2)}). Deposit or try free practice!`);
       if (onOpenDeposit) {
         setTimeout(() => onOpenDeposit(), 700);
       }
@@ -256,7 +288,8 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
     }
   };
 
-  const currentPoolTiers = POOLS_BY_PLAYER_COUNT[selectedPlayerCount] || POOLS_BY_PLAYER_COUNT[2];
+  const poolSource = platformMode.cryptoWalletEnabled ? POOLS_BY_PLAYER_COUNT_CRYPTO : POOLS_BY_PLAYER_COUNT_INR;
+  const currentPoolTiers = poolSource[selectedPlayerCount] || poolSource[2];
 
   return (
     <>
@@ -530,7 +563,7 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
                               <div className="text-xs text-amber-100 font-bold leading-tight mt-1 flex items-center gap-1">
                                 <span className="text-amber-200/80 font-normal">Entry:</span>
                                 <span className="text-amber-100 font-black font-mono">
-                                  {pool.fee === 0 ? 'FREE PRACTICE' : `$${pool.fee.toFixed(2)} USDT`}
+                                  {pool.fee === 0 ? 'FREE PRACTICE' : `${platformMode.currencySymbol}${pool.fee.toFixed(2)} ${platformMode.platformCurrency}`}
                                 </span>
                               </div>
                             </div>
@@ -541,7 +574,7 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
                                 <div className="text-[9px] text-amber-200/90 uppercase font-black tracking-wider">WIN PRIZE</div>
                                 <div className="text-sm font-black font-mono text-yellow-300 drop-shadow flex items-center justify-end gap-1">
                                   <Trophy className="w-3.5 h-3.5 text-yellow-300 fill-yellow-300" />
-                                  <span>{netPrize === 0 ? 'Practice' : `$${netPrize.toFixed(2)}`}</span>
+                                  <span>{netPrize === 0 ? 'Practice' : `${platformMode.currencySymbol}${netPrize.toFixed(2)}`}</span>
                                 </div>
                               </div>
 
@@ -564,7 +597,7 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
                 <div className="pt-2 border-t border-[#dfb35e]/70 flex items-center justify-between text-[11px] font-bold text-[#5c2411]">
                   <div className="flex items-center gap-1">
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>Balance: ${balance.toFixed(2)} USDT</span>
+                    <span>Balance: {platformMode.currencySymbol}{balance.toFixed(2)} {platformMode.platformCurrency}</span>
                   </div>
                   <button
                     onClick={() => {

@@ -14,9 +14,6 @@ import {
   ShieldCheck,
   Send,
   AlertTriangle,
-  Palette,
-  Crown,
-  Sparkles,
 } from 'lucide-react';
 
 interface OverviewTabProps {
@@ -150,37 +147,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ metrics, token, onRefr
           </div>
           <p className="text-xs text-slate-500 mt-2">Historical match logs stored</p>
         </div>
-      </div>
-
-      {/* 1B. Spotlight Banner: Ludo Board, Pawns & Dice Asset Customizer */}
-      <div className="relative rounded-2xl overflow-hidden bg-gradient-to-r from-amber-500/20 via-purple-900/30 to-blue-950/40 border-2 border-amber-500/40 p-5 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-yellow-600 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-amber-500/30 shrink-0">
-            <Palette className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-400 text-slate-950">
-                New Executive Studio
-              </span>
-              <span className="text-xs font-bold text-amber-300">3D Asset Customizer</span>
-            </div>
-            <h4 className="text-sm sm:text-base font-black text-white mt-0.5">
-              Customize Official Ludo Boards, 3D Dice Sets & Pawns
-            </h4>
-            <p className="text-xs text-slate-300 max-w-xl">
-              Preview high-fidelity 3D board styles (Dubai Royal, Emerald Velvet, Cyber Neon), dice materials, and pawn models with live rolling physics testbed.
-            </p>
-          </div>
-        </div>
-
-        <button
-          onClick={() => onNavigateTab('assets_studio')}
-          className="shrink-0 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-md cursor-pointer transition-all hover:scale-105"
-        >
-          <Sparkles className="w-4 h-4 fill-slate-950" />
-          <span>Open Asset Studio</span>
-        </button>
       </div>
 
       {/* 2. Core 3 Production Services Live Matrix */}

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ShieldCheck, Zap, X, Trophy, Wifi, Radio, Swords } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
 import { PlayerColor } from '../../types/game';
+import { usePlatformMode } from '../../hooks/usePlatformMode';
 
 export interface MatchedOpponent {
   id: string;
@@ -90,6 +91,7 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
   onCancel,
   onMatchComplete,
 }) => {
+  const { platformMode } = usePlatformMode();
   const [matchedPlayers, setMatchedPlayers] = useState<MatchedOpponent[]>([]);
   const [statusMessage, setStatusMessage] = useState('SEARCHING MATCHING QUEUE...');
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -283,7 +285,7 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
             <Trophy className="w-4 h-4 text-amber-400" />
             <span>Prize Pool:</span>
             <strong className="text-amber-300 font-black">
-              {prizePool > 0 ? `$${prizePool.toFixed(2)}` : 'Practice Free'}
+              {prizePool > 0 ? `${platformMode.currencySymbol}${prizePool.toFixed(2)}` : 'Practice Free'}
             </strong>
           </div>
           <div className="flex items-center gap-1 text-[11px] text-slate-300">

@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Clock, Trophy, Sparkles, DollarSign } from 'lucide-react';
+import { Clock, Trophy, Sparkles, DollarSign, Coins } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
+import { usePlatformMode } from '../../hooks/usePlatformMode';
 
 interface LobbyCardTournamentProps {
   onPlay: () => void;
 }
 
 export const LobbyCardTournament: React.FC<LobbyCardTournamentProps> = ({ onPlay }) => {
+  const { platformMode, isCryptoMode } = usePlatformMode();
   // Dynamic countdown timer for "Closes in 06d 10h"
   const [timeLeft, setTimeLeft] = useState({ days: 6, hours: 10, minutes: 42, seconds: 15 });
 
@@ -47,17 +49,17 @@ export const LobbyCardTournament: React.FC<LobbyCardTournamentProps> = ({ onPlay
         </div>
       </div>
 
-      {/* Main Headline: "Play for FREE & Win Up to $50K Cash!" with DOLLAR ($) symbol */}
+      {/* Main Headline: "Play for FREE & Win Up to Cash!" */}
       <div className="relative z-10 text-center mb-3">
         <p className="text-white text-xs sm:text-sm font-bold tracking-wide">
           Play for <span className="text-emerald-300 font-extrabold uppercase">FREE</span> & Win
         </p>
         <h3 className="text-2xl sm:text-3xl font-black text-amber-300 tracking-tight drop-shadow-[0_2px_10px_rgba(251,191,36,0.6)]">
-          Up to $50K Cash!
+          {isCryptoMode ? 'Up to $50K USDT!' : 'Up to ₹50,000 Cash!'}
         </h3>
       </div>
 
-      {/* Middle Dual Badge Row: "40 Lakh Winners" & "1st Prize $50,000" */}
+      {/* Middle Dual Badge Row: "40 Lakh Winners" & "1st Prize $50,000 / ₹50,000" */}
       <div className="relative z-10 grid grid-cols-2 gap-3 items-center mb-3">
         {/* Left Badge: 40 Lakh Winners */}
         <div className="relative bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 p-2.5 rounded-xl border border-amber-300/40 shadow-lg text-center flex flex-col items-center justify-center">
@@ -71,16 +73,15 @@ export const LobbyCardTournament: React.FC<LobbyCardTournamentProps> = ({ onPlay
           </div>
         </div>
 
-        {/* Right Badge: Fan of Dollar Bills + Purple "1st Prize $50,000" Box */}
+        {/* Right Badge: Cash Visual + Prize Box */}
         <div className="relative flex flex-col items-center">
           {/* Fan of Cash Notes / Trophy Visual */}
           <div className="relative -mb-2 z-10 flex items-center justify-center">
-            {/* Dollar Bills Stack Visual */}
             <div className="w-14 h-8 bg-emerald-700 rounded border border-emerald-300 shadow-md rotate-[-12deg] -mr-3 flex items-center justify-center text-[9px] font-black text-emerald-100">
-              <DollarSign className="w-3 h-3 text-emerald-200" />
+              {isCryptoMode ? <DollarSign className="w-3 h-3 text-emerald-200" /> : <span className="text-xs font-black">₹</span>}
             </div>
             <div className="w-14 h-8 bg-emerald-600 rounded border border-emerald-200 shadow-md rotate-[12deg] flex items-center justify-center text-[9px] font-black text-white">
-              <DollarSign className="w-3.5 h-3.5 text-white" />
+              {isCryptoMode ? <DollarSign className="w-3.5 h-3.5 text-white" /> : <span className="text-xs font-black">₹</span>}
             </div>
             {/* Golden Trophy Center */}
             <div className="absolute -top-1 w-6 h-6 rounded-full bg-amber-400 border border-yellow-200 flex items-center justify-center shadow-md text-amber-950">
@@ -88,13 +89,13 @@ export const LobbyCardTournament: React.FC<LobbyCardTournamentProps> = ({ onPlay
             </div>
           </div>
 
-          {/* Purple Prize Box with Dollar Sign */}
+          {/* Purple Prize Box */}
           <div className="w-full bg-gradient-to-r from-purple-900 via-indigo-900 to-purple-950 border border-purple-400/50 rounded-xl px-2 py-1.5 text-center shadow-md z-0">
             <span className="block text-[9.5px] font-bold text-purple-200 uppercase tracking-wide">
               1st Prize
             </span>
             <span className="block text-sm sm:text-base font-black text-amber-300 tracking-wide drop-shadow">
-              $50,000
+              {platformMode.currencySymbol}50,000
             </span>
           </div>
         </div>

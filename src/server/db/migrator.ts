@@ -516,6 +516,43 @@ export async function ensureDatabaseTables(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS manual_withdrawals_user_status_idx ON manual_withdrawal_requests(user_id, status);
+
+      -- 25. Referral Codes
+      CREATE TABLE IF NOT EXISTS referral_codes (
+        user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        code TEXT NOT NULL UNIQUE,
+        total_earned NUMERIC(28, 8) NOT NULL DEFAULT '0.00000000',
+        total_invited INTEGER NOT NULL DEFAULT 0,
+        total_qualified INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS referral_codes_code_uniq ON referral_codes(code);
+
+      -- 26. Qualified Anti-Fraud Referrals
+      CREATE TABLE IF NOT EXISTS referrals (
+        id TEXT PRIMARY KEY,
+        referrer_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        referee_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        referral_code TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        deposit_completed BOOLEAN NOT NULL DEFAULT FALSE,
+        deposit_amount NUMERIC(28, 8) NOT NULL DEFAULT '0.00000000',
+        deposit_completed_at TIMESTAMPTZ,
+        first_match_played BOOLEAN NOT NULL DEFAULT FALSE,
+        match_game_id TEXT,
+        first_match_played_at TIMESTAMPTZ,
+        reward_amount NUMERIC(28, 8) NOT NULL DEFAULT '20.00000000',
+        reward_credited BOOLEAN NOT NULL DEFAULT FALSE,
+        reward_credited_at TIMESTAMPTZ,
+        reward_tx_id TEXT,
+        ip_address TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS referrals_referrer_idx ON referrals(referrer_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS referrals_referee_uniq ON referrals(referee_id);
+      CREATE INDEX IF NOT EXISTS referrals_status_idx ON referrals(status);
     `);
 
     Logger.info('PostgreSQL schema migration completed successfully.');

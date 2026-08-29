@@ -239,6 +239,14 @@ export class RoomJoinService {
                 });
               }
 
+              // Anti-Fraud Referral Trigger: Check if user has a pending referral condition 2
+              try {
+                const { ReferralService } = await import('../services/referralService');
+                ReferralService.recordMatchPlayedEvent(req.userId, targetRoomId).catch(() => {});
+              } catch {
+                // ignore
+              }
+
               return {
                 success: true,
                 matchId: targetRoomId!,

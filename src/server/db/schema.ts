@@ -6,6 +6,7 @@ import { pgTable, text, timestamp, integer, boolean, jsonb, numeric, index, uniq
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
   username: text('username').notNull(),
+  displayName: text('display_name'),
   email: text('email'),
   avatarUrl: text('avatar_url'),
   walletAddress: text('wallet_address'),
@@ -475,4 +476,48 @@ export const gameConfigurations = pgTable('game_configurations', {
   description: text('description'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// -----------------------------------------------------------------------------
+// 21. REFERRAL CODES (Unique User Referral Codes)
+// -----------------------------------------------------------------------------
+export const referralCodes = pgTable('referral_codes', {
+  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  code: text('code').notNull().unique(),
+  totalEarned: numeric('total_earned', { precision: 28, scale: 8 }).notNull().default('0.00000000'),
+  totalInvited: integer('total_invited').notNull().default(0),
+  totalQualified: integer('total_qualified').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  codeIdx: uniqueIndex('referral_codes_code_uniq').on(table.code),
+}));
+
+// -----------------------------------------------------------------------------
+// 22. REFERRALS (Production-grade, Anti-Fraud Qualified Referral Records)
+// -----------------------------------------------------------------------------
+export const referrals = pgTable('referrals', {
+  id: text('id').primaryKey(),
+  referrerId: text('referrer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  refereeId: text('referee_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
+  referralCode: text('referral_code').notNull(),
+  status: text('status').notNull().default('PENDING'), // 'PENDING' | 'QUALIFIED' | 'COMPLETED' | 'FLAGGED'
+  depositCompleted: boolean('deposit_completed').notNull().default(false),
+  depositAmount: numeric('deposit_amount', { precision: 28, scale: 8 }).notNull().default('0.00000000'),
+  depositCompletedAt: timestamp('deposit_completed_at', { withTimezone: true }),
+  firstMatchPlayed: boolean('first_match_played').notNull().default(false),
+  matchGameId: text('match_game_id'),
+  firstMatchPlayedAt: timestamp('first_match_played_at', { withTimezone: true }),
+  rewardAmount: numeric('reward_amount', { precision: 28, scale: 8 }).notNull().default('20.00000000'),
+  rewardCredited: boolean('reward_credited').notNull().default(false),
+  rewardCreditedAt: timestamp('reward_credited_at', { withTimezone: true }),
+  rewardTxId: text('reward_tx_id'),
+  ipAddress: text('ip_address'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  referrerIdx: index('referrals_referrer_idx').on(table.referrerId),
+  refereeIdx: uniqueIndex('referrals_referee_uniq').on(table.refereeId),
+  statusIdx: index('referrals_status_idx').on(table.status),
+}));
+
 

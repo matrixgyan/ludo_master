@@ -21,6 +21,8 @@ import { OnlineMatchmakingScreen, MatchedOpponent } from './components/lobby/Onl
 import { VictoryModal } from './components/ludo/effects/VictoryModal';
 import { GameSettingsModal } from './components/lobby/GameSettingsModal';
 import { UnifiedWalletService } from './services/unifiedWalletService';
+import { realtimeClient } from './services/realtimeClient';
+import { ReferralClientService } from './services/referralClientService';
 
 type ViewMode = 'lobby' | 'ludo_game' | 'snake_ludo' | 'admin' | 'matchmaking';
 
@@ -181,8 +183,10 @@ export default function App() {
   const [playerMode, setPlayerMode] = useState<PlayerModeOption>(4);
   const [currentMatchConfig, setCurrentMatchConfig] = useState<MatchConfig | null>(null);
 
-  // URL Path & Query Detection for Admin Portal (Runs once on mount)
+  // URL Path & Query Detection for Admin Portal and Realtime Sync (Runs once on mount)
   useEffect(() => {
+    realtimeClient.init();
+
     fetch('/api/admin/settings')
       .then((res) => res.json())
       .then((data) => {
@@ -405,6 +409,9 @@ export default function App() {
 
   // Match Complete -> Prepare Board for 2P, 3P, or 4P
   const handleMatchComplete = (matchedOpponents: MatchedOpponent[]) => {
+    // Record match event for anti-fraud referral qualification
+    ReferralClientService.recordMatchEvent('user_guest_default');
+
     if (currentMatchConfig?.gameType === 'snake') {
       setViewMode('snake_ludo');
       return;

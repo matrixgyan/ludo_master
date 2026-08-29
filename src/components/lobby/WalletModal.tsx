@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, CreditCard, Plus, ArrowUpRight, ShieldCheck, Sparkles, CheckCircle } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
 import confetti from 'canvas-confetti';
+import { usePlatformMode } from '../../hooks/usePlatformMode';
+import { ReferralClientService } from '../../services/referralClientService';
 
 interface WalletModalProps {
   isOpen: boolean;
@@ -17,7 +19,9 @@ export const WalletModal: React.FC<WalletModalProps> = ({
   balance,
   onAddFunds,
 }) => {
-  const [depositAmount, setDepositAmount] = useState<number>(5);
+  const { platformMode, isCryptoMode } = usePlatformMode();
+  const defaultAmounts = isCryptoMode ? [2, 5, 10] : [50, 100, 200];
+  const [depositAmount, setDepositAmount] = useState<number>(defaultAmounts[1]);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -25,14 +29,17 @@ export const WalletModal: React.FC<WalletModalProps> = ({
   const handleDeposit = (amount: number) => {
     SoundManager.play('pawn-finish');
     onAddFunds(amount);
+    ReferralClientService.recordDepositEvent(amount, 'user_guest_default');
     confetti({
       particleCount: 50,
       spread: 60,
       origin: { y: 0.6 },
     });
-    setSuccessMsg(`Successfully added $${amount.toFixed(2)} to your wallet!`);
+    setSuccessMsg(`Successfully added ${platformMode.currencySymbol}${amount.toFixed(2)} to your wallet!`);
     setTimeout(() => setSuccessMsg(null), 2500);
   };
+
+  const quickAmounts = isCryptoMode ? [2, 5, 10] : [50, 100, 200];
 
   return (
     <AnimatePresence>
@@ -80,21 +87,21 @@ export const WalletModal: React.FC<WalletModalProps> = ({
             </motion.div>
           )}
 
-          {/* Total Balance Card with Dollar Symbol */}
+          {/* Total Balance Card */}
           <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-purple-900 via-indigo-900 to-purple-950 border border-purple-400/40 shadow-inner flex items-center justify-between">
             <div>
               <span className="text-xs font-semibold text-purple-200 uppercase tracking-wide">
                 Total Usable Balance
               </span>
               <div className="text-3xl font-black text-white tracking-tight mt-0.5 flex items-center">
-                <span className="text-amber-300 font-extrabold mr-0.5">$</span>
+                <span className="text-amber-300 font-extrabold mr-0.5">{platformMode.currencySymbol}</span>
                 {balance.toFixed(2)}
               </div>
             </div>
 
             <div className="flex flex-col text-right text-xs">
               <span className="text-slate-400">Bonus Cash</span>
-              <span className="text-emerald-400 font-bold">$1.50</span>
+              <span className="text-emerald-400 font-bold">{platformMode.currencySymbol}{isCryptoMode ? '1.50' : '50.00'}</span>
             </div>
           </div>
 
@@ -104,7 +111,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
               Quick Add Cash
             </label>
             <div className="grid grid-cols-3 gap-2">
-              {[2, 5, 10].map((amt) => (
+              {quickAmounts.map((amt) => (
                 <button
                   key={amt}
                   onClick={() => {
@@ -117,9 +124,9 @@ export const WalletModal: React.FC<WalletModalProps> = ({
                       : 'bg-white/5 text-white border-white/10 hover:bg-white/10'
                   }`}
                 >
-                  <span>+${amt}</span>
+                  <span>+{platformMode.currencySymbol}{amt}</span>
                   <span className="text-[9px] font-medium opacity-80">
-                    {amt === 10 ? 'Best Value' : 'Instant'}
+                    {amt === quickAmounts[2] ? 'Best Value' : 'Instant'}
                   </span>
                 </button>
               ))}
@@ -133,7 +140,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
             className="mt-5 w-full py-3 rounded-xl bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 font-black text-base shadow-[0_4px_16px_rgba(251,191,36,0.4)] flex items-center justify-center gap-2 hover:brightness-105 active:scale-98 transition-all"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
-            <span>Add ${depositAmount.toFixed(2)} Cash</span>
+            <span>Add {platformMode.currencySymbol}{depositAmount.toFixed(2)} Cash</span>
           </motion.button>
 
           {/* Bottom Security Info */}

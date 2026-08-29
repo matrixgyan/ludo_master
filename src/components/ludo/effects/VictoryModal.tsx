@@ -1,8 +1,9 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Trophy, Crown, Sparkles, RotateCcw, Home, DollarSign } from 'lucide-react';
+import { Trophy, Crown, Sparkles, RotateCcw, Home, Coins } from 'lucide-react';
 import { Player, PlayerColor } from '../../../types/game';
 import { SoundManager } from '../../../audio/soundManager';
+import { usePlatformMode } from '../../../hooks/usePlatformMode';
 
 interface VictoryModalProps {
   isOpen: boolean;
@@ -23,6 +24,8 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
   onBackToLobby,
   gameType = 'supreme',
 }) => {
+  const { currencySymbol, platformCurrency } = usePlatformMode();
+
   if (!isOpen || !winnerColor) return null;
 
   const winner = players[winnerColor];
@@ -100,10 +103,10 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
               className="w-full py-2 px-3 rounded-2xl bg-gradient-to-r from-emerald-900/90 to-teal-900/90 border border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.4)] mb-3 flex items-center justify-between"
             >
               <div className="flex items-center gap-1.5 text-emerald-300 text-xs font-bold">
-                <DollarSign className="w-4 h-4 text-emerald-400" />
+                <Coins className="w-4 h-4 text-emerald-400" />
                 <span>Prize Money Credited</span>
               </div>
-              <span className="text-sm sm:text-base font-black text-emerald-300">+${prizePool.toFixed(2)} USD</span>
+              <span className="text-sm sm:text-base font-black text-emerald-300">+{currencySymbol}{prizePool.toFixed(2)} {platformCurrency}</span>
             </motion.div>
           )}
 

@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb, isPostgresConfigured, withTransaction } from '../db/client';
 import { paymentGateways, manualDepositRequests, manualWithdrawalRequests } from '../db/manualPaymentSchema';
@@ -64,10 +66,45 @@ export interface ManualWithdrawalItem {
   createdAt: string;
 }
 
-// In-memory fallback and fast active cache
+const dataDir = path.join(process.cwd(), 'data');
+const gatewaysFilePath = path.join(dataDir, 'payment_gateways.json');
+
+function ensureDataDir() {
+  if (!fs.existsSync(dataDir)) {
+    try {
+      fs.mkdirSync(dataDir, { recursive: true });
+    } catch {
+      // ignore
+    }
+  }
+}
+
+// In-memory fallback and fast active cache initialized from disk
 let inMemoryGateways: PaymentGatewayItem[] = [];
 let inMemoryDeposits: ManualDepositItem[] = [];
 let inMemoryWithdrawals: ManualWithdrawalItem[] = [];
+
+try {
+  ensureDataDir();
+  if (fs.existsSync(gatewaysFilePath)) {
+    const raw = fs.readFileSync(gatewaysFilePath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      inMemoryGateways = parsed;
+    }
+  }
+} catch {
+  // ignore
+}
+
+function syncGatewaysToDisk() {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(gatewaysFilePath, JSON.stringify(inMemoryGateways, null, 2), 'utf-8');
+  } catch (err) {
+    Logger.warn(`[PaymentGateway] Could not sync gateways to disk: ${String(err)}`);
+  }
+}
 
 export class ManualPaymentService {
   /**
@@ -87,6 +124,7 @@ export class ManualPaymentService {
             .orderBy(paymentGateways.displayOrder);
           if (list && list.length > 0) {
             inMemoryGateways = list as any;
+            syncGatewaysToDisk();
             return list as any;
           }
         }
@@ -105,9 +143,21 @@ export class ManualPaymentService {
           const list = await db.select().from(paymentGateways).orderBy(paymentGateways.displayOrder);
           if (list && list.length > 0) {
             inMemoryGateways = list as any;
+            syncGatewaysToDisk();
             return list as any;
           } else {
-            // If table has no gateways configured, seed default official UPI gateway
+            // Check if we have disk backup gateways to seed to PostgreSQL
+            if (inMemoryGateways.length > 0) {
+              for (const gw of inMemoryGateways) {
+                await db.insert(paymentGateways).values({
+                  ...gw,
+                  updatedAt: new Date(),
+                }).onConflictDoNothing();
+              }
+              return inMemoryGateways;
+            }
+
+            // If table and disk have no gateways configured, seed default official UPI gateway
             const defaultItem: PaymentGatewayItem = {
               id: 'gw_upi_instant',
               type: 'UPI',
@@ -128,6 +178,7 @@ export class ManualPaymentService {
             const refreshed = await db.select().from(paymentGateways).orderBy(paymentGateways.displayOrder);
             if (refreshed && refreshed.length > 0) {
               inMemoryGateways = refreshed as any;
+              syncGatewaysToDisk();
               return refreshed as any;
             }
           }
@@ -159,6 +210,15 @@ export class ManualPaymentService {
       displayOrder: gateway.displayOrder || 0,
     };
 
+    // Update in-memory and disk first for immediate zero-latency consistency
+    const existingIdx = inMemoryGateways.findIndex((g) => g.id === id);
+    if (existingIdx >= 0) {
+      inMemoryGateways[existingIdx] = completeItem;
+    } else {
+      inMemoryGateways.push(completeItem);
+    }
+    syncGatewaysToDisk();
+
     // Update Postgres directly and authoritatively
     if (isPostgresConfigured()) {
       try {
@@ -180,33 +240,23 @@ export class ManualPaymentService {
 
           // Fetch full synchronized list
           const list = await db.select().from(paymentGateways).orderBy(paymentGateways.displayOrder);
-          inMemoryGateways = list as any;
+          if (list && list.length > 0) {
+            inMemoryGateways = list as any;
+            syncGatewaysToDisk();
+          }
           Logger.info(`🛡️ [PaymentGateway] Saved gateway ${id} to PostgreSQL. UPI=[${completeItem.upiId}]`);
         }
       } catch (err) {
         Logger.error(`Postgres saveGateway error: ${String(err)}`);
-        // Fallback update in-memory
-        const existingIdx = inMemoryGateways.findIndex((g) => g.id === id);
-        if (existingIdx >= 0) {
-          inMemoryGateways[existingIdx] = completeItem;
-        } else {
-          inMemoryGateways.push(completeItem);
-        }
-      }
-    } else {
-      const existingIdx = inMemoryGateways.findIndex((g) => g.id === id);
-      if (existingIdx >= 0) {
-        inMemoryGateways[existingIdx] = completeItem;
-      } else {
-        inMemoryGateways.push(completeItem);
       }
     }
 
     // Broadcast instant update event to all connected clients via WebSocket
     try {
-      wsServerInstance.broadcastToRoom('global', {
+      wsServerInstance.broadcastAll({
         type: 'PAYMENT_GATEWAYS_UPDATED',
         timestamp: new Date().toISOString(),
+        gateway: completeItem,
       });
     } catch {
       // ignore
@@ -216,6 +266,9 @@ export class ManualPaymentService {
   }
 
   public static async deleteGateway(id: string): Promise<boolean> {
+    inMemoryGateways = inMemoryGateways.filter((g) => g.id !== id);
+    syncGatewaysToDisk();
+
     if (isPostgresConfigured()) {
       try {
         const db = getDb();
@@ -401,6 +454,14 @@ export class ManualPaymentService {
             notes: deposit.adminNotes,
           }
         );
+
+        // Anti-Fraud Referral Trigger: Check if user has a pending referral condition 1
+        try {
+          const { ReferralService } = await import('./referralService');
+          await ReferralService.recordDepositEvent(deposit.userId, numAmount);
+        } catch (refErr) {
+          Logger.warn(`Referral deposit trigger error: ${String(refErr)}`);
+        }
       }
     }
 

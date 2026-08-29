@@ -66,6 +66,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ token, onAdminAliasCha
       if (res.ok) {
         setSaveSuccess('Platform settings & Admin URL alias updated successfully!');
         onAdminAliasChange(adminUrlAlias);
+        if (data.settings) {
+          window.dispatchEvent(new CustomEvent('ludo_platform_mode_changed', { detail: data.settings }));
+          localStorage.setItem('ludo_platform_mode', JSON.stringify(data.settings));
+        }
         setTimeout(() => setSaveSuccess(null), 4000);
       }
     } catch {

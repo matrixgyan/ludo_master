@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Info, Check, Play, Trophy, Sparkles, Zap, ShieldCheck, Flame } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
 import { ArenaRulesInfoModal } from './ArenaRulesInfoModal';
+import { usePlatformMode } from '../../hooks/usePlatformMode';
 import arabAvatarImg from '../../assets/images/arab_avatar_man_1787143002600.jpg';
 import woodBgImg from '../../assets/images/wood_plank_bg_1787143024792.jpg';
 
@@ -39,7 +40,7 @@ interface MatchTierItem {
   colorName: 'red' | 'yellow' | 'green' | 'blue';
 }
 
-const POOLS_BY_PLAYER_COUNT: Record<PlayerModeOption, MatchTierItem[]> = {
+const POOLS_BY_PLAYER_COUNT_CRYPTO: Record<PlayerModeOption, MatchTierItem[]> = {
   2: [
     { fee: 0, title: 'Free Training', colorName: 'red' },
     { fee: 1, title: 'Micro Duel', isHot: true, colorName: 'yellow' },
@@ -69,6 +70,36 @@ const POOLS_BY_PLAYER_COUNT: Record<PlayerModeOption, MatchTierItem[]> = {
   ],
 };
 
+const POOLS_BY_PLAYER_COUNT_INR: Record<PlayerModeOption, MatchTierItem[]> = {
+  2: [
+    { fee: 0, title: 'Free Training', colorName: 'red' },
+    { fee: 10, title: 'Micro Duel', isHot: true, colorName: 'yellow' },
+    { fee: 25, title: 'Popular Duel', isHot: true, colorName: 'red' },
+    { fee: 50, title: 'High Stakes 1v1', colorName: 'yellow' },
+    { fee: 100, title: 'Grand Arena', colorName: 'red' },
+    { fee: 250, title: 'VIP Championship', colorName: 'yellow' },
+    { fee: 500, title: 'High Roller Legend', colorName: 'red' },
+  ],
+  3: [
+    { fee: 0, title: 'Free Trio Arena', colorName: 'red' },
+    { fee: 10, title: 'Trio Micro Clash', isHot: true, colorName: 'yellow' },
+    { fee: 25, title: 'Trio Showdown', isHot: true, colorName: 'green' },
+    { fee: 50, title: 'Master 3P Clash', colorName: 'red' },
+    { fee: 100, title: 'Grand Trio League', colorName: 'yellow' },
+    { fee: 250, title: 'VIP 3P Royal', colorName: 'green' },
+    { fee: 500, title: 'VIP 3P Supreme', colorName: 'yellow' },
+  ],
+  4: [
+    { fee: 0, title: 'Free 4P Rumble', colorName: 'red' },
+    { fee: 10, title: '4P Mini Rumble', isHot: true, colorName: 'yellow' },
+    { fee: 25, title: 'Classic 4P Battle', isHot: true, colorName: 'green' },
+    { fee: 50, title: 'Supreme 4P Rumble', colorName: 'blue' },
+    { fee: 100, title: 'Master 4P League', colorName: 'red' },
+    { fee: 250, title: 'VIP 4P Championship', colorName: 'yellow' },
+    { fee: 500, title: 'Ultimate 4P Crown', colorName: 'green' },
+  ],
+};
+
 const COLOR_MAP: Record<string, { bg: string; border: string }> = {
   red: { bg: '#f23c4d', border: '#b91c1c' },
   yellow: { bg: '#f7d800', border: '#ca8a04' },
@@ -83,6 +114,7 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
   balance,
   gameType = 'supreme',
 }) => {
+  const { platformMode } = usePlatformMode();
   const [variation, setVariation] = useState<GameVariation>('Classic');
   const [selectedMode, setSelectedMode] = useState<PlayerModeOption>(2);
   const [showInfoModal, setShowInfoModal] = useState<boolean>(false);
@@ -101,7 +133,7 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
     const prize = calculatePrize(selectedMode, fee);
 
     if (fee > 0 && balance < fee) {
-      setToastMessage(`⚠️ Insufficient USDT balance ($${balance.toFixed(2)}). Please try Free Practice or deposit USDT!`);
+      setToastMessage(`⚠️ Insufficient ${platformMode.platformCurrency} balance (${platformMode.currencySymbol}${balance.toFixed(2)}). Please try Free Practice or deposit!`);
       setTimeout(() => setToastMessage(null), 3000);
       return;
     }
@@ -116,7 +148,8 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
     onSelectMode(selectedMode, fee, prize, gameType, variation, defaultPlayers.slice(0, selectedMode));
   };
 
-  const currentPools = POOLS_BY_PLAYER_COUNT[selectedMode] || POOLS_BY_PLAYER_COUNT[2];
+  const poolSource = platformMode.cryptoWalletEnabled ? POOLS_BY_PLAYER_COUNT_CRYPTO : POOLS_BY_PLAYER_COUNT_INR;
+  const currentPools = poolSource[selectedMode] || poolSource[2];
 
   return (
     <>
@@ -389,7 +422,7 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
                               <div className="text-xs text-amber-100 font-bold leading-tight mt-1 flex items-center gap-1">
                                 <span className="text-amber-200/80 font-normal">Entry:</span>
                                 <span className="text-amber-100 font-black font-mono">
-                                  {tier.fee === 0 ? 'FREE PRACTICE' : `$${tier.fee.toFixed(2)} USDT`}
+                                  {tier.fee === 0 ? 'FREE PRACTICE' : `${platformMode.currencySymbol}${tier.fee.toFixed(2)} ${platformMode.platformCurrency}`}
                                 </span>
                               </div>
                             </div>
@@ -400,7 +433,7 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
                                 <div className="text-[9px] text-amber-200/90 uppercase font-black tracking-wider">WIN PRIZE</div>
                                 <div className="text-sm font-black font-mono text-yellow-300 drop-shadow flex items-center justify-end gap-1">
                                   <Trophy className="w-3.5 h-3.5 text-yellow-300 fill-yellow-300" />
-                                  <span>{netPrize === 0 ? 'Practice' : `$${netPrize.toFixed(2)}`}</span>
+                                  <span>{netPrize === 0 ? 'Practice' : `${platformMode.currencySymbol}${netPrize.toFixed(2)}`}</span>
                                 </div>
                               </div>
 
@@ -418,7 +451,7 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
                 {/* 7. BOTTOM STAKES FOOTER */}
                 <div className="pt-2 border-t border-[#dfb35e]/70 flex items-center justify-between text-[11px] font-bold text-[#5c2411]">
                   <span>Double-entry locked until victory</span>
-                  <span className="font-mono text-[#78350f]">Balance: ${balance.toFixed(2)}</span>
+                  <span className="font-mono text-[#78350f]">Balance: {platformMode.currencySymbol}{balance.toFixed(2)} {platformMode.platformCurrency}</span>
                 </div>
               </div>
             </div>
