@@ -40,6 +40,19 @@ export const GameThemeManagerTab: React.FC<GameThemeManagerTabProps> = ({ token 
   // Sub-section tab for viewing/switching (Defaulted to pawns for quick management)
   const [activeSection, setActiveSection] = useState<'boards' | 'dice' | 'pawns'>('pawns');
 
+  // Keep state synchronized with external or local updates
+  useEffect(() => {
+    const handleSync = () => {
+      const fresh = getActiveThemeConfig();
+      setThemeState(fresh);
+      setActiveBoardId(fresh.activeBoardId);
+      setActiveDiceId(fresh.activeDiceId);
+      setActivePawnId(fresh.activePawnId);
+    };
+    window.addEventListener('ludo_theme_changed', handleSync);
+    return () => window.removeEventListener('ludo_theme_changed', handleSync);
+  }, []);
+
   // Real Ludo Dice State for the live interactive 3D dice component
   const [diceState, setDiceState] = useState<DiceState>({
     value: 6,
