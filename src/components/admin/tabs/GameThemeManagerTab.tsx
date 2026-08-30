@@ -14,6 +14,7 @@ import {
 import { LudoBoard } from '../../ludo/board/LudoBoard';
 import { LudoDice } from '../../ludo/dice/LudoDice';
 import { LudoPawn } from '../../ludo/pawns/LudoPawn';
+import { PawnSvgRenderer } from '../../ludo/pawns/PawnSvgRenderer';
 import {
   BOARD_THEMES,
   DICE_SKINS,
@@ -36,8 +37,8 @@ export const GameThemeManagerTab: React.FC<GameThemeManagerTabProps> = ({ token 
   const [activeDiceId, setActiveDiceId] = useState<string>(themeState.activeDiceId);
   const [activePawnId, setActivePawnId] = useState<string>(themeState.activePawnId);
 
-  // Sub-section tab for viewing/switching
-  const [activeSection, setActiveSection] = useState<'boards' | 'dice' | 'pawns'>('boards');
+  // Sub-section tab for viewing/switching (Defaulted to pawns for quick management)
+  const [activeSection, setActiveSection] = useState<'boards' | 'dice' | 'pawns'>('pawns');
 
   // Real Ludo Dice State for the live interactive 3D dice component
   const [diceState, setDiceState] = useState<DiceState>({
@@ -501,7 +502,7 @@ export const GameThemeManagerTab: React.FC<GameThemeManagerTabProps> = ({ token 
                         : 'bg-[#0a0e1a] border-slate-800/80 hover:border-slate-700'
                     }`}
                   >
-                    <div className="w-12 h-14 relative flex items-center justify-center">
+                    <div className="w-14 h-16 relative flex items-center justify-center">
                       <LudoPawn
                         id={`${color}-sample`}
                         color={color}
@@ -509,7 +510,7 @@ export const GameThemeManagerTab: React.FC<GameThemeManagerTabProps> = ({ token 
                         pathStep={color === 'red' ? 12 : 0}
                         isSelected={selectedPawnId === `${color}-sample`}
                         isMovable={true}
-                        sizePx={36}
+                        sizePx={44}
                       />
                     </div>
                     <span className="text-[10px] font-black uppercase text-slate-300 mt-1">
@@ -771,15 +772,14 @@ export const GameThemeManagerTab: React.FC<GameThemeManagerTabProps> = ({ token 
                       {/* 4-Color Swatch Display */}
                       <div className="mt-3 grid grid-cols-4 gap-1.5 p-2 bg-[#05070d] rounded-xl border border-slate-800">
                         {(['red', 'blue', 'green', 'yellow'] as const).map((c) => (
-                          <div key={c} className="flex flex-col items-center gap-1">
-                            <div
-                              className="w-5 h-7 rounded-t-full rounded-b-xs border"
-                              style={{
-                                background: pawn.colors[c].borderColor,
-                                borderColor: pawn.colors[c].highlight,
-                                boxShadow: `0 0 6px ${pawn.colors[c].glowColor}`,
-                              }}
-                            />
+                          <div key={c} className="flex flex-col items-center justify-center gap-1 p-1">
+                            <div className="w-8 h-10 flex items-center justify-center">
+                              <PawnSvgRenderer
+                                color={c}
+                                skin={pawn}
+                                sizePx={26}
+                              />
+                            </div>
                             <span className="text-[8px] font-bold uppercase text-slate-400">{c}</span>
                           </div>
                         ))}
