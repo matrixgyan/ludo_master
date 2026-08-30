@@ -1,29 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
 import {
-  Sparkles,
+  Palette,
   CheckCircle2,
   Dice5,
   Crown,
   Grid,
   RefreshCw,
-  Eye,
-  Sliders,
-  Radio,
   Save,
-  Palette,
   ShieldAlert,
+  Sparkles,
+  Zap,
 } from 'lucide-react';
+import { LudoBoard } from '../../ludo/board/LudoBoard';
+import { LudoDice } from '../../ludo/dice/LudoDice';
+import { LudoPawn } from '../../ludo/pawns/LudoPawn';
 import {
   BOARD_THEMES,
   DICE_SKINS,
   PAWN_SKINS,
-  BoardThemeDefinition,
-  DiceSkinDefinition,
-  PawnSkinDefinition,
   getActiveThemeConfig,
   saveLocalThemeConfig,
 } from '../../../game/themeRegistry';
+import { HOME_SLOTS, getPawnGridCoord } from '../../../game/boardGeometry';
+import { Pawn, PlayerColor, DiceState } from '../../../types/game';
 import { SoundManager } from '../../../audio/soundManager';
 
 interface GameThemeManagerTabProps {
@@ -32,23 +31,71 @@ interface GameThemeManagerTabProps {
 
 export const GameThemeManagerTab: React.FC<GameThemeManagerTabProps> = ({ token }) => {
   // Current active selections
-  const initialTheme = getActiveThemeConfig();
-  const [activeBoardId, setActiveBoardId] = useState<string>(initialTheme.activeBoardId);
-  const [activeDiceId, setActiveDiceId] = useState<string>(initialTheme.activeDiceId);
-  const [activePawnId, setActivePawnId] = useState<string>(initialTheme.activePawnId);
+  const [themeState, setThemeState] = useState(() => getActiveThemeConfig());
+  const [activeBoardId, setActiveBoardId] = useState<string>(themeState.activeBoardId);
+  const [activeDiceId, setActiveDiceId] = useState<string>(themeState.activeDiceId);
+  const [activePawnId, setActivePawnId] = useState<string>(themeState.activePawnId);
 
   // Sub-section tab for viewing/switching
   const [activeSection, setActiveSection] = useState<'boards' | 'dice' | 'pawns'>('boards');
+
+  // Real Ludo Dice State for the live interactive 3D dice component
+  const [diceState, setDiceState] = useState<DiceState>({
+    value: 6,
+    isRolling: false,
+    hasRolled: false,
+    canRoll: true,
+  });
+  const [activeDiceColor, setActiveDiceColor] = useState<PlayerColor>('red');
+
+  // Real Pawns State placed on authentic board coordinates
+  const [allPawns, setAllPawns] = useState<Pawn[]>(() => {
+    const colors: PlayerColor[] = ['red', 'green', 'yellow', 'blue'];
+    const pawns: Pawn[] = [];
+
+    colors.forEach((color) => {
+      // 2 pawns in home base, 2 pawns out on the track
+      [0, 1, 2, 3].map((idx) => {
+        if (idx < 2) {
+          const homeCoords = HOME_SLOTS[color][idx];
+          pawns.push({
+            id: `${color}-${idx}`,
+            playerId: `player-${color}`,
+            color,
+            pawnIndex: idx,
+            state: 'home',
+            pathStep: -1,
+            gridX: homeCoords.x,
+            gridY: homeCoords.y,
+          });
+        } else {
+          // Out on track
+          const step = idx === 2 ? 0 : 8;
+          const coord = getPawnGridCoord(color, idx, step);
+          pawns.push({
+            id: `${color}-${idx}`,
+            playerId: `player-${color}`,
+            color,
+            pawnIndex: idx,
+            state: 'path',
+            pathStep: step,
+            gridX: coord.x,
+            gridY: coord.y,
+          });
+        }
+      });
+    });
+
+    return pawns;
+  });
+
+  const [selectedPawnId, setSelectedPawnId] = useState<string | null>('red-2');
+  const [currentTurn, setCurrentTurn] = useState<PlayerColor>('red');
 
   // Saving / Deploying status
   const [isDeploying, setIsDeploying] = useState(false);
   const [deploySuccessMessage, setDeploySuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  // 3D Dice Test Roll State
-  const [testDiceValue, setTestDiceValue] = useState<number>(6);
-  const [isRollingDice, setIsRollingDice] = useState<boolean>(false);
-  const [diceRotation, setDiceRotation] = useState<{ x: number; y: number }>({ x: 0, y: -180 });
 
   // Fetch live deployed theme from server on mount
   useEffect(() => {
@@ -61,6 +108,12 @@ export const GameThemeManagerTab: React.FC<GameThemeManagerTabProps> = ({ token 
             if (data.themeConfig.activeBoardId) setActiveBoardId(data.themeConfig.activeBoardId);
             if (data.themeConfig.activeDiceId) setActiveDiceId(data.themeConfig.activeDiceId);
             if (data.themeConfig.activePawnId) setActivePawnId(data.themeConfig.activePawnId);
+            saveLocalThemeConfig({
+              activeBoardId: data.themeConfig.activeBoardId || activeBoardId,
+              activeDiceId: data.themeConfig.activeDiceId || activeDiceId,
+              activePawnId: data.themeConfig.activePawnId || activePawnId,
+            });
+            setThemeState(getActiveThemeConfig());
           }
         }
       } catch (err) {
@@ -74,35 +127,32 @@ export const GameThemeManagerTab: React.FC<GameThemeManagerTabProps> = ({ token 
   const currentDice = DICE_SKINS.find((d) => d.id === activeDiceId) || DICE_SKINS[0];
   const currentPawn = PAWN_SKINS.find((p) => p.id === activePawnId) || PAWN_SKINS[0];
 
-  // Test Roll Simulation
-  const handleTestRoll = () => {
-    if (isRollingDice) return;
-    setIsRollingDice(true);
+  // Roll Real 3D LudoDice Component
+  const handleRollRealDice = () => {
+    if (diceState.isRolling) return;
+
     SoundManager.play('dice-roll');
+    setDiceState((prev) => ({ ...prev, isRolling: true, canRoll: false }));
 
     const rollVal = Math.floor(Math.random() * 6) + 1;
-    setTestDiceValue(rollVal);
-
-    // Target rotation angles for faces 1-6
-    const rotations: Record<number, { x: number; y: number }> = {
-      1: { x: 0, y: 0 },
-      2: { x: 0, y: -90 },
-      3: { x: -90, y: 0 },
-      4: { x: 90, y: 0 },
-      5: { x: 0, y: 90 },
-      6: { x: 0, y: -180 },
-    };
-
-    const target = rotations[rollVal] || { x: 0, y: 0 };
-    setDiceRotation({
-      x: target.x + 720,
-      y: target.y + 720,
-    });
 
     setTimeout(() => {
-      setIsRollingDice(false);
+      setDiceState({
+        value: rollVal,
+        isRolling: false,
+        hasRolled: true,
+        canRoll: true,
+      });
       SoundManager.play('dice-land');
-    }, 600);
+    }, 650);
+  };
+
+  // Click on a real pawn on the real board
+  const handlePawnClick = (pawn: Pawn) => {
+    setSelectedPawnId(pawn.id);
+    setCurrentTurn(pawn.color);
+    setActiveDiceColor(pawn.color);
+    SoundManager.play('pawn-step');
   };
 
   // Deploy configuration globally to server and all live players
@@ -115,14 +165,15 @@ export const GameThemeManagerTab: React.FC<GameThemeManagerTabProps> = ({ token 
     setDeploySuccessMessage(null);
     setErrorMessage(null);
 
-    try {
-      // 1. Save locally for instant preview in client
-      saveLocalThemeConfig({
-        activeBoardId: newBoardId,
-        activeDiceId: newDiceId,
-        activePawnId: newPawnId,
-      });
+    // 1. Immediately apply to local game engine so all components update
+    saveLocalThemeConfig({
+      activeBoardId: newBoardId,
+      activeDiceId: newDiceId,
+      activePawnId: newPawnId,
+    });
+    setThemeState(getActiveThemeConfig());
 
+    try {
       // 2. Deploy to backend server API
       const res = await fetch('/api/admin/theme-assets', {
         method: 'POST',
@@ -134,18 +185,18 @@ export const GameThemeManagerTab: React.FC<GameThemeManagerTabProps> = ({ token 
           activeBoardId: newBoardId,
           activeDiceId: newDiceId,
           activePawnId: newPawnId,
-          deployedBy: 'Super Admin',
+          deployedBy: 'Executive Admin',
         }),
       });
 
       if (res.ok) {
         setDeploySuccessMessage(
-          'Visual assets successfully applied & broadcasted to all live matches and players!'
+          'Visual assets successfully applied to the live match engine and broadcasted to all active players!'
         );
-        SoundManager.play('game-win');
+        SoundManager.play('score-double');
       } else {
         const err = await res.json().catch(() => ({}));
-        setErrorMessage(err.message || 'Failed to save to server, applied locally.');
+        setErrorMessage(err.message || 'Applied locally, could not persist to server.');
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'Network error updating theme assets.');
@@ -157,21 +208,21 @@ export const GameThemeManagerTab: React.FC<GameThemeManagerTabProps> = ({ token 
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
-      {/* 1. Header & Quick Deploy Bar */}
+      {/* 1. Header & Live Global Controls */}
       <div className="bg-[#0e131f] border border-slate-800/80 rounded-2xl p-5 sm:p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-[10px] font-black text-amber-400 uppercase tracking-wider">
-              Visual Asset Engine
+              Production Game Assets Engine
             </span>
-            <span className="text-xs font-semibold text-slate-400">Live Match Customizer</span>
+            <span className="text-xs font-semibold text-slate-400">Live LudoBoard &bull; LudoDice &bull; LudoPawn</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-black text-white mt-1 flex items-center gap-2">
             <Palette className="w-6 h-6 text-amber-400" />
-            Applied Ludo Board, Dice & Pawns
+            Applied Ludo Board, Dice & Pawns Manager
           </h2>
           <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl">
-            Inspect the live visual assets currently rendered across game matches. Select different board styles, 3D dice materials, or pawn sets and apply them instantly to all active players.
+            Control the actual production Ludo Board, 3D Dice and Pawns rendered in active game matches. Any change selected here applies directly to all players across the platform.
           </p>
         </div>
 
@@ -234,30 +285,11 @@ export const GameThemeManagerTab: React.FC<GameThemeManagerTabProps> = ({ token 
           <div className="text-base font-black text-white">{currentBoard.name}</div>
           <div className="text-xs text-slate-400 mt-0.5 line-clamp-1">{currentBoard.description}</div>
           <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <div
-                className="w-3.5 h-3.5 rounded-full border border-white/20"
-                style={{ background: currentBoard.cornerBases.red.glow }}
-                title="Red Base"
-              />
-              <div
-                className="w-3.5 h-3.5 rounded-full border border-white/20"
-                style={{ background: currentBoard.cornerBases.blue.glow }}
-                title="Blue Base"
-              />
-              <div
-                className="w-3.5 h-3.5 rounded-full border border-white/20"
-                style={{ background: currentBoard.cornerBases.green.glow }}
-                title="Green Base"
-              />
-              <div
-                className="w-3.5 h-3.5 rounded-full border border-white/20"
-                style={{ background: currentBoard.cornerBases.yellow.glow }}
-                title="Yellow Base"
-              />
-            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+              Category: {currentBoard.category}
+            </span>
             <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
-              Change Board &rarr;
+              Switch Board &rarr;
             </span>
           </div>
         </div>
@@ -274,7 +306,7 @@ export const GameThemeManagerTab: React.FC<GameThemeManagerTabProps> = ({ token 
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
               <Dice5 className="w-3.5 h-3.5 text-amber-400" />
-              Current Applied Dice
+              Current Applied 3D Dice
             </span>
             <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-500 text-slate-950">
               ACTIVE
@@ -287,7 +319,7 @@ export const GameThemeManagerTab: React.FC<GameThemeManagerTabProps> = ({ token 
               Rarity: {currentDice.rarity}
             </span>
             <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
-              Change Dice &rarr;
+              Switch Dice &rarr;
             </span>
           </div>
         </div>
@@ -317,214 +349,170 @@ export const GameThemeManagerTab: React.FC<GameThemeManagerTabProps> = ({ token 
               Style: {currentPawn.styleType}
             </span>
             <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
-              Change Pawns &rarr;
+              Switch Pawns &rarr;
             </span>
           </div>
         </div>
       </div>
 
-      {/* 3. LIVE TESTBED & VISUAL PREVIEW STAGE */}
+      {/* 3. REAL PRODUCTION GAME ASSET STAGE (Exact LudoBoard, Exact LudoDice, Exact LudoPawn) */}
       <div className="bg-[#0a0e1a] border border-slate-800/80 rounded-2xl p-5 sm:p-6 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-slate-800/80">
           <div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
-              Interactive 3D Sandbox
-            </span>
-            <h3 className="text-base font-black text-white">Live Visual Match Stage Preview</h3>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                Direct Engine View
+              </span>
+              <span className="text-xs text-slate-400">Actual Game Components Mounted Live</span>
+            </div>
+            <h3 className="text-lg font-black text-white mt-1">
+              Live Applied Ludo Board & Real 3D Dice Canvas
+            </h3>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleTestRoll}
-              disabled={isRollingDice}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 text-xs font-bold flex items-center gap-2 cursor-pointer transition-all"
-            >
-              <Dice5 className="w-4 h-4" />
-              <span>Test Roll 3D Dice (Rolled: {testDiceValue})</span>
-            </button>
+            <span className="text-xs text-slate-400 font-medium">Interactive Color:</span>
+            {(['red', 'blue', 'green', 'yellow'] as PlayerColor[]).map((c) => (
+              <button
+                key={c}
+                onClick={() => {
+                  setCurrentTurn(c);
+                  setActiveDiceColor(c);
+                }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase transition-all cursor-pointer ${
+                  currentTurn === c
+                    ? 'bg-amber-500 text-slate-950 ring-2 ring-amber-400'
+                    : 'bg-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                {c}
+              </button>
+            ))}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-          {/* Miniature Board Representation (5 cols) */}
-          <div className="lg:col-span-6 flex flex-col items-center">
-            <span className="text-[11px] font-bold text-slate-400 mb-2">
-              Board Preview: <strong className="text-white">{currentBoard.name}</strong>
-            </span>
-            <div
-              className={`w-64 h-64 sm:w-72 sm:h-72 rounded-2xl border-4 p-2 shadow-2xl relative overflow-hidden flex flex-col justify-between ${currentBoard.boardBorderClass}`}
-              style={{
-                boxShadow: `0 0 35px ${currentBoard.boardGlowColor}`,
-              }}
-            >
-              {/* Corner 1: Red Base */}
-              <div className="flex justify-between w-full">
-                <div
-                  className="w-20 h-20 rounded-xl p-1.5 border-2 flex items-center justify-center shadow-md relative"
-                  style={{
-                    background: currentBoard.cornerBases.red.bgGradient,
-                    borderColor: currentBoard.cornerBases.red.glow,
-                  }}
-                >
-                  <div className="w-full h-full rounded-lg bg-black/20 grid grid-cols-2 gap-1 p-1">
-                    {[0, 1, 2, 3].map((i) => (
-                      <div
-                        key={i}
-                        className="rounded-full border border-white/40 flex items-center justify-center"
-                        style={{ background: currentPawn.colors.red.glowColor }}
-                      >
-                        <div className="w-2 h-2 rounded-full bg-white" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Corner 2: Green Base */}
-                <div
-                  className="w-20 h-20 rounded-xl p-1.5 border-2 flex items-center justify-center shadow-md relative"
-                  style={{
-                    background: currentBoard.cornerBases.green.bgGradient,
-                    borderColor: currentBoard.cornerBases.green.glow,
-                  }}
-                >
-                  <div className="w-full h-full rounded-lg bg-black/20 grid grid-cols-2 gap-1 p-1">
-                    {[0, 1, 2, 3].map((i) => (
-                      <div
-                        key={i}
-                        className="rounded-full border border-white/40 flex items-center justify-center"
-                        style={{ background: currentPawn.colors.green.glowColor }}
-                      >
-                        <div className="w-2 h-2 rounded-full bg-white" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Center Goal Pyramid */}
-              <div
-                className="w-16 h-16 rounded-xl mx-auto flex items-center justify-center border-2 border-amber-400 shadow-lg text-[10px] font-black text-amber-300"
-                style={{ background: currentBoard.centerBgGradient }}
-              >
-                GOAL
-              </div>
-
-              {/* Corner 3: Blue Base & Corner 4: Yellow Base */}
-              <div className="flex justify-between w-full">
-                <div
-                  className="w-20 h-20 rounded-xl p-1.5 border-2 flex items-center justify-center shadow-md relative"
-                  style={{
-                    background: currentBoard.cornerBases.blue.bgGradient,
-                    borderColor: currentBoard.cornerBases.blue.glow,
-                  }}
-                >
-                  <div className="w-full h-full rounded-lg bg-black/20 grid grid-cols-2 gap-1 p-1">
-                    {[0, 1, 2, 3].map((i) => (
-                      <div
-                        key={i}
-                        className="rounded-full border border-white/40 flex items-center justify-center"
-                        style={{ background: currentPawn.colors.blue.glowColor }}
-                      >
-                        <div className="w-2 h-2 rounded-full bg-white" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div
-                  className="w-20 h-20 rounded-xl p-1.5 border-2 flex items-center justify-center shadow-md relative"
-                  style={{
-                    background: currentBoard.cornerBases.yellow.bgGradient,
-                    borderColor: currentBoard.cornerBases.yellow.glow,
-                  }}
-                >
-                  <div className="w-full h-full rounded-lg bg-black/20 grid grid-cols-2 gap-1 p-1">
-                    {[0, 1, 2, 3].map((i) => (
-                      <div
-                        key={i}
-                        className="rounded-full border border-white/40 flex items-center justify-center"
-                        style={{ background: currentPawn.colors.yellow.glowColor }}
-                      >
-                        <div className="w-2 h-2 rounded-full bg-white" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-center">
+          {/* Real LudoBoard Component (7 cols) */}
+          <div className="xl:col-span-7 flex flex-col items-center justify-center p-2 bg-[#05070d] rounded-2xl border border-slate-800/80 shadow-2xl">
+            <div className="w-full max-w-[460px] aspect-square relative flex items-center justify-center">
+              {/* Mounted Real Production LudoBoard */}
+              <LudoBoard
+                pawns={allPawns}
+                currentTurn={currentTurn}
+                selectedPawnId={selectedPawnId}
+                movablePawnIds={['red-2', 'blue-2', 'green-2', 'yellow-2']}
+                onPawnClick={handlePawnClick}
+                activeColors={['red', 'blue', 'green', 'yellow']}
+              />
             </div>
+            <p className="text-[11px] text-slate-500 mt-2 font-medium">
+              Real 15x15 LudoBoard Component rendered with active board theme <strong className="text-amber-400">{currentBoard.name}</strong> and pawn skin <strong className="text-amber-400">{currentPawn.name}</strong>.
+            </p>
           </div>
 
-          {/* 3D Dice Showcase & 4 Pawns Showcase (6 cols) */}
-          <div className="lg:col-span-6 space-y-6">
-            {/* 3D Interactive Dice Showcase */}
-            <div className="bg-[#0e131f] border border-slate-800 rounded-xl p-4 flex items-center justify-between gap-4">
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                  Active 3D Dice Model
+          {/* Real LudoDice and Real Pawns Showcase (5 cols) */}
+          <div className="xl:col-span-5 space-y-6">
+            {/* Real 3D LudoDice Component Container */}
+            <div className="bg-[#0e131f] border border-slate-800 rounded-2xl p-5 shadow-xl">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
+                    Live 3D Dice Component
+                  </span>
+                  <h4 className="text-base font-black text-white">{currentDice.name}</h4>
+                  <p className="text-xs text-slate-400">{currentDice.description}</p>
+                </div>
+
+                <span className="text-xs font-mono font-bold px-2 py-1 rounded bg-slate-900 border border-slate-800 text-amber-400">
+                  Value: {diceState.value}
                 </span>
-                <div className="text-sm font-black text-white">{currentDice.name}</div>
-                <div className="text-xs text-slate-400 mt-0.5">{currentDice.description}</div>
               </div>
 
-              {/* 3D Dice Element */}
-              <div
-                onClick={handleTestRoll}
-                className="w-16 h-16 rounded-2xl flex items-center justify-center cursor-pointer relative shadow-xl hover:scale-105 transition-transform shrink-0"
-                style={{
-                  background: currentDice.cubeBgGradient,
-                  border: `2px solid ${currentDice.cubeBorderColor}`,
-                  boxShadow: currentDice.cubeBoxShadow,
-                }}
-                title="Click to roll test dice"
-              >
-                <motion.div
-                  animate={{
-                    rotate: isRollingDice ? [0, 180, 360, 540, 720] : 0,
-                    scale: isRollingDice ? [1, 1.25, 0.95, 1.1, 1] : 1,
-                  }}
-                  transition={{ duration: 0.6, ease: 'easeInOut' }}
-                  className="flex items-center justify-center text-xl font-black"
-                  style={{ color: currentDice.pipColor }}
-                >
-                  {testDiceValue}
-                </motion.div>
+              {/* Mounted Real Production LudoDice */}
+              <div className="flex flex-col sm:flex-row items-center justify-around gap-4 bg-[#05070d] p-6 rounded-xl border border-slate-800/80">
+                <div className="flex flex-col items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase text-slate-400">
+                    Normal Size (56px)
+                  </span>
+                  <LudoDice
+                    dice={diceState}
+                    activeColor={activeDiceColor}
+                    onRoll={handleRollRealDice}
+                    size="normal"
+                    isTurn={true}
+                  />
+                </div>
+
+                <div className="flex flex-col items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase text-slate-400">
+                    HUD Size (34px)
+                  </span>
+                  <LudoDice
+                    dice={diceState}
+                    activeColor={activeDiceColor}
+                    onRoll={handleRollRealDice}
+                    size="compact"
+                    isTurn={true}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={handleRollRealDice}
+                    disabled={diceState.isRolling}
+                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20 transition-all disabled:opacity-50"
+                  >
+                    <Dice5 className="w-4 h-4" />
+                    <span>Roll Real 3D Dice</span>
+                  </button>
+                  <span className="text-[10px] text-center text-slate-500">
+                    Click cube or button to roll
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* 4-Color Pawns Showcase */}
-            <div className="bg-[#0e131f] border border-slate-800 rounded-xl p-4">
+            {/* Real 4-Player LudoPawn Components Container */}
+            <div className="bg-[#0e131f] border border-slate-800 rounded-2xl p-5 shadow-xl">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                    Active 4-Player Pawns
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
+                    Live Pawns Components
                   </span>
-                  <div className="text-sm font-black text-white">{currentPawn.name}</div>
+                  <h4 className="text-base font-black text-white">{currentPawn.name}</h4>
                 </div>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
                   {currentPawn.rarity}
                 </span>
               </div>
 
-              <div className="grid grid-cols-4 gap-2 text-center">
-                {(['red', 'blue', 'green', 'yellow'] as const).map((color) => (
+              {/* Mounted Real Production LudoPawn Components for all 4 colors */}
+              <div className="grid grid-cols-4 gap-3 bg-[#05070d] p-4 rounded-xl border border-slate-800/80">
+                {(['red', 'blue', 'green', 'yellow'] as PlayerColor[]).map((color) => (
                   <div
                     key={color}
-                    className="bg-[#0a0e1a] border border-slate-800/80 rounded-xl p-2.5 flex flex-col items-center gap-1.5"
+                    onClick={() => {
+                      setSelectedPawnId(`${color}-sample`);
+                      SoundManager.play('pawn-step');
+                    }}
+                    className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all cursor-pointer ${
+                      selectedPawnId === `${color}-sample`
+                        ? 'bg-slate-800/80 border-amber-500/80 ring-1 ring-amber-400'
+                        : 'bg-[#0a0e1a] border-slate-800/80 hover:border-slate-700'
+                    }`}
                   >
-                    <div
-                      className="w-8 h-10 rounded-t-full rounded-b-md border-2 relative flex items-center justify-center shadow-lg"
-                      style={{
-                        background: `linear-gradient(180deg, ${currentPawn.colors[color].highlight} 0%, ${currentPawn.colors[color].borderColor} 100%)`,
-                        borderColor: currentPawn.colors[color].borderColor,
-                        boxShadow: `0 0 12px ${currentPawn.colors[color].glowColor}`,
-                      }}
-                    >
-                      <div
-                        className="w-3.5 h-3.5 rounded-full border border-white/60 mb-2"
-                        style={{ background: currentPawn.colors[color].capColor }}
+                    <div className="w-12 h-14 relative flex items-center justify-center">
+                      <LudoPawn
+                        id={`${color}-sample`}
+                        color={color}
+                        pawnIndex={0}
+                        pathStep={color === 'red' ? 12 : 0}
+                        isSelected={selectedPawnId === `${color}-sample`}
+                        isMovable={true}
+                        sizePx={36}
                       />
                     </div>
-                    <span className="text-[10px] font-black uppercase text-slate-300">
+                    <span className="text-[10px] font-black uppercase text-slate-300 mt-1">
                       {color}
                     </span>
                   </div>
@@ -581,7 +569,7 @@ export const GameThemeManagerTab: React.FC<GameThemeManagerTabProps> = ({ token 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-xs text-slate-400">
-                Click any board below to select it, then click <strong>Apply Board to Live Matches</strong>.
+                Select any board theme below to instantly update the live engine and apply it to all players.
               </p>
             </div>
 
@@ -663,7 +651,7 @@ export const GameThemeManagerTab: React.FC<GameThemeManagerTabProps> = ({ token 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-xs text-slate-400">
-                Choose the 3D dice material and pip styling rendered when players roll during match turns.
+                Choose the 3D dice material and finish applied during match turns.
               </p>
             </div>
 
