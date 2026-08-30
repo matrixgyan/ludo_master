@@ -18,7 +18,6 @@ import {
   Radio,
   Zap,
   Database,
-  Palette,
 } from 'lucide-react';
 import { OverviewTab } from './tabs/OverviewTab';
 import { LiveMatchesTab } from './tabs/LiveMatchesTab';
@@ -30,7 +29,6 @@ import { InfrastructureTab } from './tabs/InfrastructureTab';
 import { UsdtTreasuryCustodyTab } from './tabs/UsdtTreasuryCustodyTab';
 import { RpcManagementTab } from './tabs/RpcManagementTab';
 import { ManualPaymentsTab } from './tabs/ManualPaymentsTab';
-import { GameThemeManagerTab } from './tabs/GameThemeManagerTab';
 import { Coins } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -50,7 +48,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   onAdminAliasChange,
   onBackToGame,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'rpc_management' | 'usdt_custody' | 'game_themes' | 'live_matches' | 'users' | 'leaderboards' | 'storage' | 'infrastructure' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'rpc_management' | 'usdt_custody' | 'live_matches' | 'users' | 'leaderboards' | 'storage' | 'infrastructure' | 'settings'>('overview');
   const [metrics, setMetrics] = useState<any | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [copiedAliasUrl, setCopiedAliasUrl] = useState(false);
@@ -91,7 +89,6 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 
   const navItems = [
     { id: 'overview', label: 'Dashboard Overview', icon: LayoutDashboard },
-    { id: 'game_themes', label: 'Applied Boards, Dice & Pawns', icon: Palette, badge: 'VISUALS' },
     { id: 'manual_payments', label: 'Manual Payments (UPI/Bank)', icon: Coins, badge: 'GATEWAY' },
     { id: 'live_matches', label: 'Live Match Engine', icon: Gamepad2, badge: metrics?.overview?.activeGames },
     { id: 'users', label: 'User & Accounts', icon: Users },
@@ -303,8 +300,6 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
           {activeTab === 'rpc_management' && <RpcManagementTab token={token} />}
           {activeTab === 'manual_payments' && <ManualPaymentsTab token={token} />}
           {activeTab === 'usdt_custody' && <UsdtTreasuryCustodyTab token={token} />}
-
-          {activeTab === 'game_themes' && <GameThemeManagerTab token={token} />}
 
           {activeTab === 'live_matches' && <LiveMatchesTab token={token} />}
 

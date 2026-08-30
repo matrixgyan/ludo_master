@@ -117,27 +117,46 @@ export const config = parseEnv();
 
 // Structured Logger
 export class Logger {
-  static info(message: string, meta?: Record<string, unknown>) {
-    console.log(`[INFO] [${new Date().toISOString()}] ${message}`, meta ? JSON.stringify(meta) : '');
+  static info(message: string, meta?: unknown) {
+    if (meta instanceof Error) {
+      console.log(`[INFO] [${new Date().toISOString()}] ${message} - ${meta.message}`);
+    } else if (meta !== undefined && meta !== null) {
+      console.log(`[INFO] [${new Date().toISOString()}] ${message}`, typeof meta === 'object' ? JSON.stringify(meta) : String(meta));
+    } else {
+      console.log(`[INFO] [${new Date().toISOString()}] ${message}`);
+    }
   }
 
-  static warn(message: string, meta?: Record<string, unknown>) {
-    console.warn(`[WARN] [${new Date().toISOString()}] ${message}`, meta ? JSON.stringify(meta) : '');
+  static warn(message: string, meta?: unknown) {
+    if (meta instanceof Error) {
+      console.warn(`[WARN] [${new Date().toISOString()}] ${message} - ${meta.message}`, meta.stack ? `\nStack: ${meta.stack}` : '');
+    } else if (meta !== undefined && meta !== null) {
+      console.warn(`[WARN] [${new Date().toISOString()}] ${message}`, typeof meta === 'object' ? JSON.stringify(meta) : String(meta));
+    } else {
+      console.warn(`[WARN] [${new Date().toISOString()}] ${message}`);
+    }
   }
 
-  static error(message: string, error?: unknown, meta?: Record<string, unknown>) {
+  static error(message: string, error?: unknown, meta?: unknown) {
     const errMessage = error instanceof Error ? error.message : String(error || '');
     const stack = error instanceof Error ? error.stack : undefined;
+    const metaStr = meta ? (typeof meta === 'object' ? JSON.stringify(meta) : String(meta)) : '';
     console.error(
-      `[ERROR] [${new Date().toISOString()}] ${message} - ${errMessage}`,
-      meta ? JSON.stringify(meta) : '',
+      `[ERROR] [${new Date().toISOString()}] ${message}${errMessage ? ` - ${errMessage}` : ''}`,
+      metaStr,
       stack ? `\nStack: ${stack}` : ''
     );
   }
 
-  static debug(message: string, meta?: Record<string, unknown>) {
+  static debug(message: string, meta?: unknown) {
     if (config.NODE_ENV !== 'production') {
-      console.debug(`[DEBUG] [${new Date().toISOString()}] ${message}`, meta ? JSON.stringify(meta) : '');
+      if (meta instanceof Error) {
+        console.debug(`[DEBUG] [${new Date().toISOString()}] ${message} - ${meta.message}`);
+      } else if (meta !== undefined && meta !== null) {
+        console.debug(`[DEBUG] [${new Date().toISOString()}] ${message}`, typeof meta === 'object' ? JSON.stringify(meta) : String(meta));
+      } else {
+        console.debug(`[DEBUG] [${new Date().toISOString()}] ${message}`);
+      }
     }
   }
 }

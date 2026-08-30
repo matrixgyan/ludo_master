@@ -107,7 +107,7 @@ const adminUpload = multer({
 });
 
 // Middleware: Authenticate Admin Request
-export function requireAdminAuth(req: Request, res: Response, next: NextFunction) {
+function requireAdminAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : (req.query.token as string);
 

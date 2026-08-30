@@ -72,7 +72,7 @@ export interface PawnSkinDefinition {
   name: string;
   rarity: 'Common' | 'Rare' | 'Epic' | 'Legendary';
   description: string;
-  styleType: 'crowned' | 'gloss' | 'crystal' | 'mecha' | 'sovereign' | 'shield' | 'halma_gloss' | 'queen_monarch';
+  styleType: 'crowned' | 'gloss' | 'crystal' | 'mecha' | 'sovereign' | 'shield';
   colors: Record<PlayerColor, {
     primaryGradient: string;
     secondaryGradient: string;
@@ -471,39 +471,13 @@ export const PAWN_SKINS: PawnSkinDefinition[] = [
     id: 'royal_crowned',
     name: 'Royal Monarch Crowned',
     rarity: 'Legendary',
-    description: 'Jewel-toned glossy pawns topped with hand-crafted 3D royal crowns (Platform Default).',
+    description: 'Jewel-toned glossy pawns topped with hand-crafted 3D royal crowns.',
     styleType: 'crowned',
     colors: {
       blue: { primaryGradient: 'from-sky-400 via-blue-600 to-blue-900', secondaryGradient: 'from-sky-300 to-blue-500', borderColor: '#38bdf8', glowColor: 'rgba(56, 189, 248, 0.7)', capColor: '#fbbf24', highlight: '#e0f2fe' },
       red: { primaryGradient: 'from-rose-400 via-red-600 to-red-950', secondaryGradient: 'from-rose-300 to-red-500', borderColor: '#fb7185', glowColor: 'rgba(251, 113, 133, 0.7)', capColor: '#fbbf24', highlight: '#ffe4e6' },
       green: { primaryGradient: 'from-emerald-400 via-green-600 to-green-950', secondaryGradient: 'from-emerald-300 to-green-500', borderColor: '#4ade80', glowColor: 'rgba(74, 222, 128, 0.7)', capColor: '#fbbf24', highlight: '#dcfce7' },
       yellow: { primaryGradient: 'from-amber-300 via-amber-500 to-amber-900', secondaryGradient: 'from-amber-200 to-amber-400', borderColor: '#fbbf24', glowColor: 'rgba(251, 191, 36, 0.7)', capColor: '#f8fafc', highlight: '#fef3c7' },
-    },
-  },
-  {
-    id: 'halma_gloss_3d',
-    name: '3D High-Gloss Halma Pin',
-    rarity: 'Legendary',
-    description: 'Smooth ceramic-lacquer Halma pawn with spherical head, concave tapered waist, and high-gloss vertical reflections (Screenshot 1).',
-    styleType: 'halma_gloss',
-    colors: {
-      blue: { primaryGradient: 'from-blue-400 via-blue-600 to-blue-900', secondaryGradient: 'from-blue-300 to-blue-500', borderColor: '#00509d', glowColor: 'rgba(0, 150, 199, 0.85)', capColor: '#0077b6', highlight: '#90e0ef' },
-      red: { primaryGradient: 'from-rose-500 via-red-600 to-red-950', secondaryGradient: 'from-rose-400 to-red-600', borderColor: '#9e0019', glowColor: 'rgba(239, 35, 60, 0.85)', capColor: '#d90429', highlight: '#ff8597' },
-      green: { primaryGradient: 'from-emerald-400 via-green-600 to-green-950', secondaryGradient: 'from-emerald-300 to-green-500', borderColor: '#1b4332', glowColor: 'rgba(64, 145, 108, 0.85)', capColor: '#2d6a4f', highlight: '#95d5b2' },
-      yellow: { primaryGradient: 'from-amber-300 via-amber-500 to-amber-900', secondaryGradient: 'from-amber-200 to-amber-400', borderColor: '#9e5a00', glowColor: 'rgba(245, 158, 11, 0.85)', capColor: '#d97706', highlight: '#fde68a' },
-    },
-  },
-  {
-    id: 'royal_queen_monarch',
-    name: 'Royal Sovereign Queen Monarch',
-    rarity: 'Legendary',
-    description: 'Multi-tiered sovereign queen with scalloped coronet chalice, double collar torus rings, and fluted column (Screenshot 2).',
-    styleType: 'queen_monarch',
-    colors: {
-      blue: { primaryGradient: 'from-sky-400 via-blue-600 to-blue-900', secondaryGradient: 'from-sky-300 to-blue-500', borderColor: '#0c3577', glowColor: 'rgba(59, 130, 246, 0.9)', capColor: '#1e5bb8', highlight: '#93c5fd' },
-      red: { primaryGradient: 'from-pink-500 via-rose-600 to-rose-950', secondaryGradient: 'from-pink-400 to-rose-600', borderColor: '#7a0026', glowColor: 'rgba(230, 0, 76, 0.9)', capColor: '#b8003a', highlight: '#ff6699' },
-      green: { primaryGradient: 'from-emerald-400 via-emerald-600 to-emerald-950', secondaryGradient: 'from-emerald-300 to-emerald-500', borderColor: '#09572d', glowColor: 'rgba(16, 185, 129, 0.9)', capColor: '#138548', highlight: '#6ee7b7' },
-      yellow: { primaryGradient: 'from-yellow-300 via-amber-500 to-amber-900', secondaryGradient: 'from-yellow-200 to-amber-400', borderColor: '#78350f', glowColor: 'rgba(234, 179, 8, 0.9)', capColor: '#b45309', highlight: '#fef08a' },
     },
   },
   {
