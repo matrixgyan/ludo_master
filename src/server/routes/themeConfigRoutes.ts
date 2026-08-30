@@ -9,7 +9,7 @@ let serverThemeConfig = {
   activeLobbyId: 'dubai_prestige_gold',
   activeBoardId: 'dubai_royal_sunset',
   activeDiceId: 'golden_high_roller',
-  activePawnId: 'halma_gloss_3d',
+  activePawnId: 'royal_crowned',
   updatedAt: new Date().toISOString(),
   deployedBy: 'System Default',
 };

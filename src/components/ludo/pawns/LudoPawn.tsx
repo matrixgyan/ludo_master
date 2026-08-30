@@ -21,7 +21,6 @@ interface LudoPawnProps {
 export const LudoPawn: React.FC<LudoPawnProps> = ({
   id,
   color,
-  pawnIndex,
   pathStep = 0,
   isSelected = false,
   isMovable = false,
@@ -32,7 +31,7 @@ export const LudoPawn: React.FC<LudoPawnProps> = ({
   overrideSkinId,
 }) => {
   const { activePawnId } = useLiveTheme();
-  const currentSkinId = overrideSkinId || activePawnId || 'halma_gloss_3d';
+  const currentSkinId = overrideSkinId || activePawnId || 'royal_crowned';
 
   return (
     <div
@@ -46,7 +45,7 @@ export const LudoPawn: React.FC<LudoPawnProps> = ({
         ...style,
       }}
     >
-      {/* Movable / Selected Pulsing Ring Indicator */}
+      {/* Movable / Selected Pulsing Radial Aura Ring */}
       {(isMovable || isSelected) && (
         <motion.div
           animate={{
@@ -85,7 +84,7 @@ export const LudoPawn: React.FC<LudoPawnProps> = ({
         />
       )}
 
-      {/* Ground Shadow - dynamic contrast during jumps */}
+      {/* Ground Shadow - dynamic elevation & contrast */}
       <motion.div
         key={isJumping ? `shadow-${pathStep}` : 'shadow-idle'}
         className="absolute rounded-full bg-black/60 blur-[2.5px] pointer-events-none"
@@ -109,7 +108,7 @@ export const LudoPawn: React.FC<LudoPawnProps> = ({
         }}
       />
 
-      {/* Solid 3D Pawn Body (Ground-anchored with natural arc/squish physics) */}
+      {/* Solid 3D Pawn Body (Ground-anchored physics) */}
       <motion.div
         key={isJumping ? `body-${pathStep}` : 'body-idle'}
         animate={
@@ -136,7 +135,7 @@ export const LudoPawn: React.FC<LudoPawnProps> = ({
         }
         className="relative z-10 w-full h-full flex flex-col items-center justify-center overflow-visible"
       >
-        {/* Exact Photorealistic 3D Pawn Model (Screenshot 1 & Screenshot 2) */}
+        {/* Exact 3D Pawn Geometry without any distracting numbers */}
         <Pawn3DRenderer
           color={color}
           skinId={currentSkinId}
@@ -144,18 +143,6 @@ export const LudoPawn: React.FC<LudoPawnProps> = ({
           isSelected={isSelected}
           isMovable={isMovable}
         />
-
-        {/* Crisp Pawn Number Identifier Badge */}
-        <div
-          className="absolute -bottom-1 z-20 flex items-center justify-center rounded-full bg-slate-950/90 text-white font-black shadow-md border border-white/40 select-none pointer-events-none"
-          style={{
-            width: `${Math.max(13, (sizePx || 38) * 0.36)}px`,
-            height: `${Math.max(13, (sizePx || 38) * 0.36)}px`,
-            fontSize: `${Math.max(8, (sizePx || 38) * 0.22)}px`,
-          }}
-        >
-          {pawnIndex + 1}
-        </div>
       </motion.div>
     </div>
   );

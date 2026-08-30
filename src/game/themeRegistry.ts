@@ -468,6 +468,19 @@ export const DICE_SKINS: DiceSkinDefinition[] = [
 
 export const PAWN_SKINS: PawnSkinDefinition[] = [
   {
+    id: 'royal_crowned',
+    name: 'Royal Monarch Crowned',
+    rarity: 'Legendary',
+    description: 'Jewel-toned glossy pawns topped with hand-crafted 3D royal crowns (Platform Default).',
+    styleType: 'crowned',
+    colors: {
+      blue: { primaryGradient: 'from-sky-400 via-blue-600 to-blue-900', secondaryGradient: 'from-sky-300 to-blue-500', borderColor: '#38bdf8', glowColor: 'rgba(56, 189, 248, 0.7)', capColor: '#fbbf24', highlight: '#e0f2fe' },
+      red: { primaryGradient: 'from-rose-400 via-red-600 to-red-950', secondaryGradient: 'from-rose-300 to-red-500', borderColor: '#fb7185', glowColor: 'rgba(251, 113, 133, 0.7)', capColor: '#fbbf24', highlight: '#ffe4e6' },
+      green: { primaryGradient: 'from-emerald-400 via-green-600 to-green-950', secondaryGradient: 'from-emerald-300 to-green-500', borderColor: '#4ade80', glowColor: 'rgba(74, 222, 128, 0.7)', capColor: '#fbbf24', highlight: '#dcfce7' },
+      yellow: { primaryGradient: 'from-amber-300 via-amber-500 to-amber-900', secondaryGradient: 'from-amber-200 to-amber-400', borderColor: '#fbbf24', glowColor: 'rgba(251, 191, 36, 0.7)', capColor: '#f8fafc', highlight: '#fef3c7' },
+    },
+  },
+  {
     id: 'halma_gloss_3d',
     name: '3D High-Gloss Halma Pin',
     rarity: 'Legendary',
@@ -491,19 +504,6 @@ export const PAWN_SKINS: PawnSkinDefinition[] = [
       red: { primaryGradient: 'from-pink-500 via-rose-600 to-rose-950', secondaryGradient: 'from-pink-400 to-rose-600', borderColor: '#7a0026', glowColor: 'rgba(230, 0, 76, 0.9)', capColor: '#b8003a', highlight: '#ff6699' },
       green: { primaryGradient: 'from-emerald-400 via-emerald-600 to-emerald-950', secondaryGradient: 'from-emerald-300 to-emerald-500', borderColor: '#09572d', glowColor: 'rgba(16, 185, 129, 0.9)', capColor: '#138548', highlight: '#6ee7b7' },
       yellow: { primaryGradient: 'from-yellow-300 via-amber-500 to-amber-900', secondaryGradient: 'from-yellow-200 to-amber-400', borderColor: '#78350f', glowColor: 'rgba(234, 179, 8, 0.9)', capColor: '#b45309', highlight: '#fef08a' },
-    },
-  },
-  {
-    id: 'royal_crowned',
-    name: 'Royal Monarch Crowned',
-    rarity: 'Legendary',
-    description: 'Jewel-toned glossy pawns topped with hand-crafted 3D royal crowns.',
-    styleType: 'crowned',
-    colors: {
-      blue: { primaryGradient: 'from-sky-400 via-blue-600 to-blue-900', secondaryGradient: 'from-sky-300 to-blue-500', borderColor: '#38bdf8', glowColor: 'rgba(56, 189, 248, 0.7)', capColor: '#fbbf24', highlight: '#e0f2fe' },
-      red: { primaryGradient: 'from-rose-400 via-red-600 to-red-950', secondaryGradient: 'from-rose-300 to-red-500', borderColor: '#fb7185', glowColor: 'rgba(251, 113, 133, 0.7)', capColor: '#fbbf24', highlight: '#ffe4e6' },
-      green: { primaryGradient: 'from-emerald-400 via-green-600 to-green-950', secondaryGradient: 'from-emerald-300 to-green-500', borderColor: '#4ade80', glowColor: 'rgba(74, 222, 128, 0.7)', capColor: '#fbbf24', highlight: '#dcfce7' },
-      yellow: { primaryGradient: 'from-amber-300 via-amber-500 to-amber-900', secondaryGradient: 'from-amber-200 to-amber-400', borderColor: '#fbbf24', glowColor: 'rgba(251, 191, 36, 0.7)', capColor: '#f8fafc', highlight: '#fef3c7' },
     },
   },
   {
@@ -588,7 +588,7 @@ export function getActiveThemeConfig(): CompleteThemeConfig {
   let activeLobbyId = 'dubai_prestige_gold';
   let activeBoardId = 'dubai_royal_sunset';
   let activeDiceId = 'golden_high_roller';
-  let activePawnId = 'halma_gloss_3d';
+  let activePawnId = 'royal_crowned';
 
   if (typeof window !== 'undefined') {
     try {
