@@ -14,7 +14,13 @@ import {
   ShieldCheck,
   Send,
   AlertTriangle,
+  Palette,
+  Grid,
+  Dice5,
+  Crown,
+  Sparkles,
 } from 'lucide-react';
+import { getActiveThemeConfig } from '../../../game/themeRegistry';
 
 interface OverviewTabProps {
   metrics: any;
@@ -148,6 +154,52 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ metrics, token, onRefr
           <p className="text-xs text-slate-500 mt-2">Historical match logs stored</p>
         </div>
       </div>
+
+      {/* 1.5 Live Applied Game Visuals Quick Manager */}
+      {(() => {
+        const theme = getActiveThemeConfig();
+        return (
+          <div className="bg-gradient-to-r from-[#0e131f] via-[#111728] to-[#0e131f] border border-amber-500/30 rounded-2xl p-5 sm:p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                <Palette className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-500 text-slate-950">
+                    CURRENTLY APPLIED
+                  </span>
+                  <span className="text-xs font-bold text-slate-400">Live Visual Assets</span>
+                </div>
+                <h4 className="text-base font-black text-white mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="flex items-center gap-1">
+                    <Grid className="w-3.5 h-3.5 text-amber-400" />
+                    Board: <strong className="text-amber-300">{theme.board.name}</strong>
+                  </span>
+                  <span className="text-slate-600">&bull;</span>
+                  <span className="flex items-center gap-1">
+                    <Dice5 className="w-3.5 h-3.5 text-amber-400" />
+                    Dice: <strong className="text-amber-300">{theme.dice.name}</strong>
+                  </span>
+                  <span className="text-slate-600">&bull;</span>
+                  <span className="flex items-center gap-1">
+                    <Crown className="w-3.5 h-3.5 text-amber-400" />
+                    Pawns: <strong className="text-amber-300">{theme.pawn.name}</strong>
+                  </span>
+                </h4>
+              </div>
+            </div>
+
+            <button
+              onClick={() => onNavigateTab('game_themes')}
+              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20 transition-all shrink-0 self-stretch md:self-auto justify-center"
+            >
+              <Palette className="w-4 h-4" />
+              <span>Change Board / Dice / Pawns</span>
+            </button>
+          </div>
+        );
+      })()}
 
       {/* 2. Core 3 Production Services Live Matrix */}
       <div className="bg-[#0e131f] border border-slate-800/80 rounded-2xl p-5 sm:p-6">
