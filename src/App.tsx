@@ -543,20 +543,24 @@ export default function App() {
       pawns: createPawnsForColor(p1Color, 'p1'),
     };
 
+    const isRealMatch = (currentMatchConfig?.entryFee || 0) > 0;
+
     // Configure Opponents
     for (let i = 1; i < playerMode; i++) {
       const oppColor = assignedPlayerColors[i];
       const oppIndex = i - 1;
       const opp = matchedOpponents[oppIndex];
       const customP = customPlayers?.[i];
+      const isOppReal = opp?.isRealPlayer ?? isRealMatch;
 
       updatedPlayers[oppColor] = {
         ...DEFAULT_PLAYERS[oppColor],
+        id: opp?.id || `p${i + 1}`,
         name: customP?.name || opp?.name || `Player ${i + 1}`,
         avatarUrl: customP?.avatarUrl || opp?.avatarUrl || DEFAULT_PLAYERS[oppColor].avatarUrl,
         color: oppColor,
         isActive: true,
-        isHuman: false,
+        isHuman: isOppReal,
         score: 0,
         pawns: createPawnsForColor(oppColor, `p${i + 1}`),
       };
@@ -1157,6 +1161,7 @@ export default function App() {
         userAvatar={userAvatar}
         userColor={userColor}
         customOpponents={currentMatchConfig?.playersConfig?.slice(1)}
+        userId={currentUser?.id || '7849102834'}
         onCancel={() => {
           // Refund fee on cancel
           if (currentMatchConfig && currentMatchConfig.entryFee > 0) {
