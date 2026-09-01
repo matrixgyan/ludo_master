@@ -384,7 +384,12 @@ export default function App() {
             confetti({ particleCount: 120, spread: 90, origin: { y: 0.5 } });
 
             if (topPlayer.isHuman && cfg && cfg.prizePool > 0) {
-              setBalance((b) => Number((b + cfg.prizePool).toFixed(2)));
+              const prize = cfg.prizePool;
+              setBalance((b) => Number((b + prize).toFixed(2)));
+              const activeUserId = currentUser?.id || 'user_guest_default';
+              UnifiedWalletService.creditMatchWinnings(activeUserId, `match_${Date.now()}`, prize, cfg.gameType || 'supreme')
+                .then(() => fetchRealWalletBalance())
+                .catch(() => {});
             }
 
             setGameState((g) => ({
@@ -449,6 +454,10 @@ export default function App() {
   ) => {
     if (entryFee > 0) {
       setBalance((b) => Math.max(0, Number((b - entryFee).toFixed(2))));
+      const activeUserId = currentUser?.id || 'user_guest_default';
+      UnifiedWalletService.deductMatchEntryFee(activeUserId, `match_${Date.now()}`, entryFee, gameType)
+        .then(() => fetchRealWalletBalance())
+        .catch(() => {});
     }
     setPlayerMode(mode);
     setCurrentMatchConfig({ mode, entryFee, prizePool, gameType, variation, playersConfig });
@@ -770,7 +779,12 @@ export default function App() {
         SoundManager.play('pawn-finish');
         confetti({ particleCount: 150, spread: 100, origin: { y: 0.5 } });
         if (curPlayer.isHuman && currentMatchConfig && currentMatchConfig.prizePool > 0) {
-          setBalance((b) => Number((b + currentMatchConfig.prizePool).toFixed(2)));
+          const prize = currentMatchConfig.prizePool;
+          setBalance((b) => Number((b + prize).toFixed(2)));
+          const activeUserId = currentUser?.id || 'user_guest_default';
+          UnifiedWalletService.creditMatchWinnings(activeUserId, `match_${Date.now()}`, prize, currentMatchConfig.gameType || 'supreme')
+            .then(() => fetchRealWalletBalance())
+            .catch(() => {});
         }
         return {
           ...prev,
@@ -1322,6 +1336,7 @@ export default function App() {
         winnerColor={gameState.winner}
         players={gameState.players}
         prizePool={currentMatchConfig?.prizePool || 0}
+        userId={currentUser?.id || '7849102834'}
         gameType={currentMatchConfig?.gameType || 'supreme'}
         onRematch={() => {
           if (currentMatchConfig) {

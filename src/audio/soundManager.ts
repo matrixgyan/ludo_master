@@ -63,7 +63,7 @@ class SoundEngine {
     return this.musicVolume;
   }
 
-  public play(sound: 'dice-roll' | 'dice-land' | 'pawn-step' | 'pawn-land' | 'pawn-capture' | 'pawn-finish' | 'click' | 'turn' | 'mic-toggle' | 'angel-flight' | 'angel-land' | 'match-found' | 'radar-ping' | 'countdown-tick' | 'battle-horn' | 'score-double' | 'score-minus') {
+  public play(sound: 'dice-roll' | 'dice-land' | 'pawn-step' | 'pawn-land' | 'pawn-capture' | 'pawn-finish' | 'click' | 'turn' | 'mic-toggle' | 'angel-flight' | 'angel-land' | 'match-found' | 'radar-ping' | 'countdown-tick' | 'battle-horn' | 'score-double' | 'score-minus' | 'match-won' | 'coin-reward') {
     if (this.isMuted || this.sfxVolume <= 0) return;
     this.initContext();
     if (!this.ctx) return;
@@ -74,6 +74,53 @@ class SoundEngine {
     masterGain.connect(this.ctx.destination);
 
     switch (sound) {
+      case 'match-won': {
+        // Grand Royal Trumpet Victory Fanfare (Celebration Blast)
+        const fanfareChords = [
+          { time: 0.0, freqs: [523.25, 659.25, 783.99] },      // C Major (C5, E5, G5)
+          { time: 0.18, freqs: [523.25, 659.25, 783.99] },     // Repeat
+          { time: 0.36, freqs: [587.33, 698.46, 880.00] },     // D Minor (D5, F5, A5)
+          { time: 0.54, freqs: [783.99, 987.77, 1174.66] },    // G Major (G5, B5, D6)
+          { time: 0.78, freqs: [1046.50, 1318.51, 1567.98] },  // High Grand C6 Major
+        ];
+
+        fanfareChords.forEach((chord) => {
+          chord.freqs.forEach((freq) => {
+            const t = now + chord.time;
+            const osc = this.ctx!.createOscillator();
+            const gain = this.ctx!.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, t);
+            gain.gain.setValueAtTime(0.2, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+            osc.connect(gain);
+            gain.connect(masterGain);
+            osc.start(t);
+            osc.stop(t + 0.45);
+          });
+        });
+        break;
+      }
+
+      case 'coin-reward': {
+        // High sparkling coin drop & clink
+        const coinPitches = [1760, 2093, 2637, 3135.96]; // A6, C7, E7, G7
+        coinPitches.forEach((pitch, idx) => {
+          const t = now + idx * 0.06;
+          const osc = this.ctx!.createOscillator();
+          const gain = this.ctx!.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(pitch, t);
+          gain.gain.setValueAtTime(0.25, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+          osc.connect(gain);
+          gain.connect(masterGain);
+          osc.start(t);
+          osc.stop(t + 0.25);
+        });
+        break;
+      }
+
       case 'score-double': {
         // High rising golden fanfare chime for 2X multiplier
         const notes = [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98];

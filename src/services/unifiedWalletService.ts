@@ -431,6 +431,52 @@ export class UnifiedWalletService {
   }
 
   /**
+   * Match Settlement: Instantly credits match prize winnings to the winner's account
+   */
+  public static async creditMatchWinnings(
+    userId: string,
+    matchId: string,
+    prizePool: number,
+    gameType?: string
+  ): Promise<any> {
+    try {
+      const res = await fetch(`${API_BASE}/api/wallet/match-win`, {
+        method: 'POST',
+        headers: this.getHeaders(userId),
+        body: JSON.stringify({ userId, matchId, prizePool, gameType }),
+      });
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      console.warn('creditMatchWinnings network warning:', err);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Match Entry Fee: Deducts and locks match entry fee for real cash matches
+   */
+  public static async deductMatchEntryFee(
+    userId: string,
+    matchId: string,
+    entryFee: number,
+    gameType?: string
+  ): Promise<any> {
+    try {
+      const res = await fetch(`${API_BASE}/api/wallet/match-entry`, {
+        method: 'POST',
+        headers: this.getHeaders(userId),
+        body: JSON.stringify({ userId, matchId, entryFee, gameType }),
+      });
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      console.warn('deductMatchEntryFee network warning:', err);
+      return { success: false };
+    }
+  }
+
+  /**
    * Admin API: 1-Click Mode Switcher
    */
   public static async setAdminWalletMode(token: string, env: 'mainnet' | 'testnet'): Promise<any> {

@@ -1,10 +1,23 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { uploadToR2, getObjectFromR2, generatePresignedUploadUrl } from '../storage/r2Client';
+import { AuthService } from '../services/authService';
 import { Logger } from '../config/env';
 import path from 'path';
 
 export const storageRouter = Router();
+
+function resolveUserId(req: Request): string {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const verified = AuthService.verifyToken(authHeader.substring(7));
+    if (verified?.userId) return verified.userId;
+  }
+  const headerUser = req.headers['x-user-id'] as string;
+  const queryUser = req.query.userId as string;
+  const bodyUser = req.body?.userId as string;
+  return bodyUser || headerUser || queryUser || 'anonymous';
+}
 
 // Configure memory storage for standard multipart uploads
 const upload = multer({
@@ -13,7 +26,7 @@ const upload = multer({
     fileSize: 15 * 1024 * 1024, // 15 MB
   },
   fileFilter: (_req, file, cb) => {
-    // Allow standard image receipts and documents
+    // Allow standard image receipts, avatars, and documents
     const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'image/gif', 'application/pdf'];
     if (allowed.includes(file.mimetype) || file.mimetype.startsWith('image/')) {
       cb(null, true);
@@ -26,6 +39,7 @@ const upload = multer({
 /**
  * POST /api/storage/upload
  * Multi-part form upload directly to Cloudflare R2 with automatic fallback
+ * Prefixes all uploads with user's unique 10-digit ID
  */
 storageRouter.post('/api/storage/upload', upload.single('file'), async (req: Request, res: Response): Promise<void> => {
   try {
@@ -34,17 +48,27 @@ storageRouter.post('/api/storage/upload', upload.single('file'), async (req: Req
       return;
     }
 
-    const category = (req.body.category as string) || 'payment_receipts';
-    const userId = (req.body.userId as string) || 'anonymous';
-    const ext = path.extname(req.file.originalname) || '.jpg';
-    const uniqueKey = `${category}/${Date.now()}_${Math.random().toString(36).substring(2, 9)}${ext}`;
+    const userId = resolveUserId(req);
+    const cleanUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '') || 'anonymous';
+    const rawCategory = (req.body.category as string) || 'payment_receipts';
+    const category = rawCategory === 'avatars' ? 'avatars' : 'payments';
+    
+    const ext = path.extname(req.file.originalname) || `.${req.file.mimetype.split('/')[1] || 'jpg'}`;
+    const cleanExt = ext.startsWith('.') ? ext.replace('jpeg', 'jpg') : `.${ext.replace('jpeg', 'jpg')}`;
+    
+    const uniqueKey = category === 'avatars'
+      ? `${cleanUserId}/avatars/avatar_${Date.now()}_${Math.random().toString(36).substring(2, 8)}${cleanExt}`
+      : `${cleanUserId}/payments/receipt_${Date.now()}_${Math.random().toString(36).substring(2, 8)}${cleanExt}`;
 
     const uploadResult = await uploadToR2({
       key: uniqueKey,
       buffer: req.file.buffer,
       contentType: req.file.mimetype,
-      userId,
+      userId: cleanUserId,
+      category,
     });
+
+    Logger.info(`[R2 STORAGE] Uploaded file for user ${cleanUserId} to Cloudflare R2: ${uniqueKey}`);
 
     res.json({
       success: true,
@@ -52,6 +76,8 @@ storageRouter.post('/api/storage/upload', upload.single('file'), async (req: Req
       key: uploadResult.key,
       sizeBytes: uploadResult.sizeBytes,
       contentType: uploadResult.contentType,
+      userId: cleanUserId,
+      storage: 'Cloudflare R2',
     });
   } catch (err: any) {
     Logger.error('Storage upload route error', err);

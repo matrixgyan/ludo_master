@@ -83,15 +83,17 @@ authRouter.post('/api/auth/avatar', upload.single('avatar'), async (req: Request
     let finalAvatarUrl: string;
 
     if (req.file) {
-      // 1. Upload device image file to Cloudflare R2 under avatars/{userId}/
+      // 1. Upload device image file to Cloudflare R2 under {cleanUserId}/avatars/
+      const cleanUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '');
       const ext = path.extname(req.file.originalname) || '.jpg';
-      const objectKey = `avatars/${userId}/avatar_${Date.now()}_${Math.random().toString(36).substring(2, 7)}${ext}`;
+      const cleanExt = ext.startsWith('.') ? ext.replace('jpeg', 'jpg') : `.${ext.replace('jpeg', 'jpg')}`;
+      const objectKey = `${cleanUserId}/avatars/avatar_${Date.now()}_${Math.random().toString(36).substring(2, 8)}${cleanExt}`;
 
       const uploadResult = await uploadToR2({
         key: objectKey,
         buffer: req.file.buffer,
         contentType: req.file.mimetype,
-        userId,
+        userId: cleanUserId,
         category: 'avatars',
       });
 

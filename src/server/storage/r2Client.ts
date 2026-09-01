@@ -128,17 +128,40 @@ export interface UploadResult {
 
 /**
  * Upload buffer or stream directly to Cloudflare R2 bucket and record in PostgreSQL (with robust local disk fallback)
+ * Uses the user's unique 10-digit ID as the file path prefix for organization, partitioning, and security.
  */
 export async function uploadToR2(params: {
   key?: string;
   buffer: Buffer;
   contentType: string;
   userId?: string;
-  category?: 'avatars' | 'images' | 'assets' | 'logs' | 'payment_receipts';
+  category?: 'avatars' | 'images' | 'assets' | 'logs' | 'payment_receipts' | 'payments' | string;
 }): Promise<UploadResult> {
   const category = params.category || 'payment_receipts';
-  const extension = params.contentType.split('/')[1]?.split(';')[0] || 'jpg';
-  const objectKey = params.key || `${category}/${Date.now()}-${uuidv4().slice(0, 12)}.${extension}`;
+  const extension = params.contentType.split('/')[1]?.split(';')[0]?.replace('jpeg', 'jpg') || 'jpg';
+  
+  // Format clean 10-digit ID prefix (e.g. 7849102834) for folder organization & security
+  let userPrefix = 'anonymous';
+  if (params.userId && params.userId.trim().length > 0) {
+    userPrefix = params.userId.trim().replace(/[^a-zA-Z0-9_-]/g, '');
+  }
+
+  let objectKey = params.key;
+  if (!objectKey) {
+    const timestamp = Date.now();
+    const uniqueSuffix = uuidv4().slice(0, 10);
+    if (category === 'avatars') {
+      objectKey = `${userPrefix}/avatars/avatar_${timestamp}_${uniqueSuffix}.${extension}`;
+    } else if (category === 'payment_receipts' || category === 'payments' || category === 'screenshots') {
+      objectKey = `${userPrefix}/payments/receipt_${timestamp}_${uniqueSuffix}.${extension}`;
+    } else {
+      objectKey = `${userPrefix}/${category}/${timestamp}_${uniqueSuffix}.${extension}`;
+    }
+  } else if (!objectKey.startsWith(`${userPrefix}/`)) {
+    // Ensure 10-digit user prefix is formatted as root prefix
+    objectKey = `${userPrefix}/${objectKey.replace(/^\/+/, '')}`;
+  }
+
   const publicUrl = `/api/storage/file/${encodeURIComponent(objectKey)}`;
 
   // Always write local backup copy
@@ -161,12 +184,13 @@ export async function uploadToR2(params: {
             Body: params.buffer,
             ContentType: params.contentType,
             Metadata: {
-              userId: params.userId || 'system',
+              userId: userPrefix,
+              category,
               uploadedAt: new Date().toISOString(),
             },
           })
         );
-        Logger.info(`Successfully uploaded object to Cloudflare R2: ${objectKey} (${params.buffer.length} bytes)`);
+        Logger.info(`Successfully uploaded object to Cloudflare R2 bucket: ${objectKey} (${params.buffer.length} bytes, User: ${userPrefix})`);
       }
     } catch (err: unknown) {
       Logger.warn(`Cloudflare R2 putObject error, falling back to cached disk stream: ${String(err)}`);
@@ -182,7 +206,7 @@ export async function uploadToR2(params: {
           id: `obj_${uuidv4()}`,
           key: objectKey,
           bucket: config.R2_BUCKET_NAME || 'local_storage',
-          userId: params.userId || null,
+          userId: userPrefix !== 'anonymous' ? userPrefix : null,
           contentType: params.contentType,
           sizeBytes: params.buffer.length,
           url: publicUrl,
