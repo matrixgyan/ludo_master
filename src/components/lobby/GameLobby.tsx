@@ -33,6 +33,12 @@ interface GameLobbyProps {
     variation?: GameVariation,
     playersConfig?: PlayerConfig[]
   ) => void;
+  userId?: string;
+  userName?: string;
+  userAvatar?: string;
+  userEmail?: string;
+  onLogout?: () => void;
+  onAvatarUpdate?: (newAvatarUrl: string) => void;
 }
 
 export const GameLobby: React.FC<GameLobbyProps> = ({
@@ -41,6 +47,12 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   onPlayLudo,
   onPlaySnakeLudo,
   onStartOnlineMatch,
+  userId = 'user_guest_default',
+  userName = 'Player 1',
+  userAvatar = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=160&auto=format&fit=crop&q=80',
+  userEmail,
+  onLogout,
+  onAvatarUpdate,
 }) => {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
@@ -56,7 +68,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   useEffect(() => {
     const fetchUnreadCount = async () => {
       try {
-        const res = await fetch('/api/notifications?userId=user_guest_default');
+        const res = await fetch(`/api/notifications?userId=${encodeURIComponent(userId)}`);
         if (res.ok) {
           const data = await res.json();
           if (data.success && typeof data.unreadCount === 'number') {
@@ -71,7 +83,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     fetchUnreadCount();
     const timer = setInterval(fetchUnreadCount, 12000);
     return () => clearInterval(timer);
-  }, []);
+  }, [userId]);
 
   // Dynamic Theme state
   const { lobbyTheme } = useLiveTheme();
@@ -134,7 +146,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
       {/* DEDICATED ASSETS / WALLET VIEW OR HOME LOBBY CARDS */}
       {activeTab === 'assets' ? (
         <AssetsView
-          userId="user_guest_default"
+          userId={userId}
           onBack={() => setActiveTab('home')}
           onBalanceUpdate={(newBal) => {
             const parsed = parseFloat(newBal);
@@ -261,12 +273,18 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
         isOpen={isProfileOpen}
         onClose={() => setIsProfileOpen(false)}
         balance={balance}
+        userId={userId}
+        userName={userName}
+        userAvatar={userAvatar}
+        userEmail={userEmail}
+        onLogout={onLogout}
+        onAvatarUpdate={onAvatarUpdate}
       />
 
       <NotificationsModal
         isOpen={isNotificationsOpen}
         onClose={() => setIsNotificationsOpen(false)}
-        userId="user_guest_default"
+        userId={userId}
         onUnreadCountChange={(count) => setUnreadNotificationsCount(count)}
       />
     </div>

@@ -425,7 +425,30 @@ export class ManualPaymentService {
     adminNotes?: string,
     reviewedBy?: string
   ): Promise<{ success: boolean; deposit: ManualDepositItem; error?: string }> {
-    const deposit = inMemoryDeposits.find((d) => d.id === depositId);
+    let deposit = inMemoryDeposits.find((d) => d.id === depositId);
+
+    // If not found in in-memory list, check PostgreSQL directly
+    if (!deposit && isPostgresConfigured()) {
+      try {
+        const db = getDb();
+        if (db) {
+          const rows = await db
+            .select()
+            .from(manualDepositRequests)
+            .where(eq(manualDepositRequests.id, depositId))
+            .limit(1);
+          if (rows.length > 0) {
+            deposit = rows[0] as any;
+            if (deposit) {
+              inMemoryDeposits.unshift(deposit);
+            }
+          }
+        }
+      } catch (err) {
+        Logger.warn(`Postgres lookup in verifyDeposit failed: ${String(err)}`);
+      }
+    }
+
     if (!deposit) {
       throw new Error(`Deposit request ${depositId} not found`);
     }
@@ -507,6 +530,20 @@ export class ManualPaymentService {
         amount: deposit.amount,
         referenceId: deposit.utrNumber,
       });
+    }
+
+    // Broadcast instant update event to all connected clients & admin
+    try {
+      wsServerInstance.broadcastAll({
+        type: 'DEPOSIT_STATUS_UPDATED',
+        depositId: deposit.id,
+        userId: deposit.userId,
+        status: deposit.status,
+        amount: deposit.amount,
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      // ignore
     }
 
     return { success: true, deposit };

@@ -106,6 +106,7 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
   const [payoutRefInput, setPayoutRefInput] = useState('');
   const [isProcessingAction, setIsProcessingAction] = useState(false);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
+  const [actionErrorMsg, setActionErrorMsg] = useState<string | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [isUploadingGatewayQr, setIsUploadingGatewayQr] = useState(false);
 
@@ -157,6 +158,7 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
   const handleVerifyDeposit = async (action: 'APPROVE' | 'REJECT') => {
     if (!selectedDeposit) return;
     setIsProcessingAction(true);
+    setActionErrorMsg(null);
     try {
       const res = await fetch(`/api/admin/manual-payments/deposits/${selectedDeposit.id}/verify`, {
         method: 'POST',
@@ -182,9 +184,14 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
         setAdminNoteInput('');
         fetchData();
         setTimeout(() => setActionSuccessMsg(null), 4000);
+      } else {
+        setActionErrorMsg(data.error || 'Failed to verify deposit');
+        setTimeout(() => setActionErrorMsg(null), 6000);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Verify error', err);
+      setActionErrorMsg(err?.message || 'Network error occurred while verifying deposit');
+      setTimeout(() => setActionErrorMsg(null), 6000);
     } finally {
       setIsProcessingAction(false);
     }
@@ -194,6 +201,7 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
   const handleProcessWithdrawal = async (action: 'APPROVE' | 'REJECT') => {
     if (!selectedWithdrawal) return;
     setIsProcessingAction(true);
+    setActionErrorMsg(null);
     try {
       const res = await fetch(`/api/admin/manual-payments/withdrawals/${selectedWithdrawal.id}/process`, {
         method: 'POST',
@@ -221,9 +229,14 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
         setAdminNoteInput('');
         fetchData();
         setTimeout(() => setActionSuccessMsg(null), 4000);
+      } else {
+        setActionErrorMsg(data.error || 'Failed to process withdrawal');
+        setTimeout(() => setActionErrorMsg(null), 6000);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Payout process error', err);
+      setActionErrorMsg(err?.message || 'Network error occurred while processing payout');
+      setTimeout(() => setActionErrorMsg(null), 6000);
     } finally {
       setIsProcessingAction(false);
     }
@@ -342,6 +355,14 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
           <div className="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs font-bold text-emerald-400 flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4" />
             <span>{actionSuccessMsg}</span>
+          </div>
+        )}
+
+        {/* Action Error Alert */}
+        {actionErrorMsg && (
+          <div className="mt-4 p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs font-bold text-rose-400 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4" />
+            <span>{actionErrorMsg}</span>
           </div>
         )}
 

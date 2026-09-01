@@ -7,6 +7,10 @@ interface ProfileModalProps {
   balance: number;
   userName?: string;
   userAvatar?: string;
+  userId?: string;
+  userEmail?: string;
+  onLogout?: () => void;
+  onAvatarUpdate?: (newAvatarUrl: string) => void;
 }
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({
@@ -15,6 +19,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   balance,
   userName = 'Player 1',
   userAvatar = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=160&auto=format&fit=crop&q=80',
+  userId,
+  userEmail,
+  onLogout,
+  onAvatarUpdate,
 }) => {
   return (
     <GameSettingsModal
@@ -23,6 +31,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       balance={balance}
       userName={userName}
       userAvatar={userAvatar}
+      userId={userId}
+      userEmail={userEmail}
+      onLogout={onLogout}
+      onAvatarUpdate={onAvatarUpdate}
     />
   );
 };

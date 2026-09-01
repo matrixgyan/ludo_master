@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
@@ -23,8 +23,11 @@ import {
   Award,
   Swords,
   Zap,
+  Camera,
+  Loader2,
 } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
+import { AuthClientService } from '../../services/authClientService';
 
 interface GameSettingsModalProps {
   isOpen: boolean;
@@ -32,6 +35,10 @@ interface GameSettingsModalProps {
   balance?: number;
   userName?: string;
   userAvatar?: string;
+  userId?: string;
+  userEmail?: string;
+  onLogout?: () => void;
+  onAvatarUpdate?: (newAvatarUrl: string) => void;
 }
 
 type SubModalType = null | 'save_load' | 'support' | 'terms' | 'privacy' | 'language' | 'player_profile';
@@ -55,7 +62,71 @@ export const GameSettingsModal: React.FC<GameSettingsModalProps> = ({
   balance = 0.0,
   userName = 'Player 1',
   userAvatar = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=160&auto=format&fit=crop&q=80',
+  userId,
+  userEmail,
+  onLogout,
+  onAvatarUpdate,
 }) => {
+  const [copiedUserId, setCopiedUserId] = useState(false);
+  const [localAvatar, setLocalAvatar] = useState(userAvatar);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [avatarUploadSuccess, setAvatarUploadSuccess] = useState(false);
+  const [avatarUploadError, setAvatarUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setLocalAvatar(userAvatar);
+  }, [userAvatar]);
+
+  const handleAvatarClick = () => {
+    SoundManager.play('click');
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Reset state
+    setAvatarUploadError(null);
+    setAvatarUploadSuccess(false);
+    setIsUploadingAvatar(true);
+
+    try {
+      const res = await AuthClientService.uploadAvatar(file);
+      if (!res.success || !res.avatarUrl) {
+        setAvatarUploadError(res.error || 'Failed to upload photo to Cloudflare R2.');
+        setIsUploadingAvatar(false);
+        return;
+      }
+
+      setLocalAvatar(res.avatarUrl);
+      setAvatarUploadSuccess(true);
+      SoundManager.play('match-found');
+      if (onAvatarUpdate) {
+        onAvatarUpdate(res.avatarUrl);
+      }
+      setTimeout(() => setAvatarUploadSuccess(false), 3000);
+    } catch (err: any) {
+      setAvatarUploadError(err?.message || 'Error uploading photo');
+    } finally {
+      setIsUploadingAvatar(false);
+      if (e.target) {
+        e.target.value = '';
+      }
+    }
+  };
+
+  const handleCopyUserId = () => {
+    SoundManager.play('turn');
+    if (typeof window !== 'undefined' && navigator.clipboard && userId) {
+      navigator.clipboard.writeText(userId).catch(() => {});
+    }
+    setCopiedUserId(true);
+    setTimeout(() => setCopiedUserId(false), 2500);
+  };
   // Volume & Preferences State
   const [sfxVolume, setSfxVolumeState] = useState<number>(() => {
     return SoundManager.getSfxVolume();
@@ -326,7 +397,129 @@ export const GameSettingsModal: React.FC<GameSettingsModalProps> = ({
           {/* ========================================================================= */}
           {/* 3. CARD BODY (WARM CREAM CASUAL GAME PANEL) */}
           {/* ========================================================================= */}
-          <div className="relative w-full bg-[#fdfbf2] border-x-4 border-b-4 border-[#e6d8ba] rounded-b-[2.5rem] pt-6 pb-6 px-5 sm:px-6 shadow-[0_20px_45px_rgba(0,0,0,0.5),inset_0_2px_6px_rgba(255,255,255,0.8)] text-slate-800 flex flex-col items-center space-y-4">
+          <div className="relative w-full bg-[#fdfbf2] border-x-4 border-b-4 border-[#e6d8ba] rounded-b-[2.5rem] pt-5 pb-6 px-5 sm:px-6 shadow-[0_20px_45px_rgba(0,0,0,0.5),inset_0_2px_6px_rgba(255,255,255,0.8)] text-slate-800 flex flex-col items-center space-y-3.5">
+            {/* PLAYER PROFILE SUMMARY & UNIQUE ID BADGE & AVATAR UPLOAD */}
+            <div className="w-full bg-[#ede3ce]/70 border border-[#d6c7a7] rounded-2xl p-3 flex flex-col gap-2">
+              <div className="flex items-center gap-3">
+                {/* Interactive Avatar with Camera Upload Badge */}
+                <div className="relative group shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleAvatarClick}
+                    disabled={isUploadingAvatar}
+                    className="relative w-12 h-12 rounded-2xl overflow-hidden border-2 border-amber-400 shadow-md group-hover:scale-105 transition-transform cursor-pointer focus:outline-none"
+                    title="Change Profile Picture (Upload to Cloudflare R2)"
+                  >
+                    <img
+                      src={localAvatar}
+                      alt={userName}
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover"
+                    />
+                    
+                    {/* Hover Camera Overlay */}
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Camera className="w-4 h-4 text-white drop-shadow" />
+                    </div>
+
+                    {/* Uploading Indicator */}
+                    {isUploadingAvatar && (
+                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                        <Loader2 className="w-5 h-5 text-amber-400 animate-spin" />
+                      </div>
+                    )}
+                  </button>
+
+                  {/* Camera icon badge */}
+                  <button
+                    type="button"
+                    onClick={handleAvatarClick}
+                    className="absolute -bottom-1 -right-1 w-5 h-5 bg-gradient-to-tr from-amber-600 to-yellow-400 text-slate-950 rounded-full flex items-center justify-center shadow-md border border-white cursor-pointer hover:scale-110 transition-transform"
+                    title="Upload picture from device"
+                  >
+                    <Camera className="w-2.5 h-2.5 stroke-[2.5]" />
+                  </button>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/jpg,image/gif"
+                    className="hidden"
+                    onChange={handleAvatarFileChange}
+                  />
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-black text-[#5e2b0c] truncate">{userName}</h3>
+                    <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full">
+                      ${balance.toFixed(2)}
+                    </span>
+                  </div>
+                  {userEmail && (
+                    <p className="text-[10px] text-slate-600 truncate">{userEmail}</p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleAvatarClick}
+                    className="text-[9px] font-bold text-amber-800 hover:text-amber-900 underline flex items-center gap-1 mt-0.5 cursor-pointer"
+                  >
+                    <span>Change Profile Picture</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Upload notifications */}
+              {avatarUploadSuccess && (
+                <div className="px-2 py-1 bg-emerald-100 border border-emerald-300 rounded-lg text-[10px] font-bold text-emerald-800 flex items-center gap-1.5 animate-fadeIn">
+                  <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
+                  <span>Profile picture stored in Cloudflare R2!</span>
+                </div>
+              )}
+
+              {avatarUploadError && (
+                <div className="px-2 py-1 bg-rose-100 border border-rose-300 rounded-lg text-[10px] font-bold text-rose-800">
+                  {avatarUploadError}
+                </div>
+              )}
+
+              {/* Permanent Unique User ID with 1-Click Copy */}
+              {userId && (
+                <div className="flex items-center justify-between bg-white/70 px-2 py-1 rounded-xl border border-[#d6c7a7]/60">
+                  <div className="flex flex-col min-w-0 pr-1">
+                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tight">Permanent 10-Digit User ID</span>
+                    <span className="font-mono text-[10px] font-black text-[#78350f] truncate tracking-wider">{userId}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyUserId}
+                    className="p-1 rounded-lg hover:bg-amber-100 text-[#92400e] transition-colors cursor-pointer shrink-0"
+                    title="Copy Permanent User ID"
+                  >
+                    {copiedUserId ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {onLogout && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    SoundManager.play('click');
+                    onClose();
+                    onLogout();
+                  }}
+                  className="w-full py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-[11px] transition-colors cursor-pointer flex items-center justify-center gap-1.5 mt-0.5"
+                >
+                  <span>Log Out / Switch Account</span>
+                </button>
+              )}
+            </div>
+
             {/* SFX VOLUME SLIDER */}
             <div className="w-full flex flex-col items-center">
               <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-[#78350f] mb-1.5 drop-shadow-[0_1px_0_#ffffff]">

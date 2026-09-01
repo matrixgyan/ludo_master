@@ -20,6 +20,8 @@ import { PlayerModeOption, GameVariation, PlayerConfig } from './components/lobb
 import { OnlineMatchmakingScreen, MatchedOpponent } from './components/lobby/OnlineMatchmakingScreen';
 import { VictoryModal } from './components/ludo/effects/VictoryModal';
 import { GameSettingsModal } from './components/lobby/GameSettingsModal';
+import { AuthModal } from './components/auth/AuthModal';
+import { AuthClientService, AuthUser } from './services/authClientService';
 import { UnifiedWalletService } from './services/unifiedWalletService';
 import { realtimeClient } from './services/realtimeClient';
 import { ReferralClientService } from './services/referralClientService';
@@ -133,13 +135,28 @@ export default function App() {
     return 'lobby';
   });
 
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
+    return AuthClientService.getUser();
+  });
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
+    const searchParams = new URLSearchParams(window.location.search);
+    const isHashAdmin = window.location.hash.includes('admin');
+    if (path === 'admin' || path === 'custom' || searchParams.get('view') === 'admin' || isHashAdmin) {
+      return false;
+    }
+    return !AuthClientService.isAuthenticated();
+  });
+
   const [balance, setBalance] = useState<number>(0.0);
   const [usdtBalanceStr, setUsdtBalanceStr] = useState<string>('$0.00');
 
-  // Real Wallet Balance Synchronization with Server Ledger
+  // Real Wallet Balance Synchronization with Server Ledger (Specific to Authenticated User)
   const fetchRealWalletBalance = useCallback(async () => {
+    const activeUserId = currentUser?.id || 'user_guest_default';
     try {
-      const data = await UnifiedWalletService.fetchWallet('user_guest_default');
+      const data = await UnifiedWalletService.fetchWallet(activeUserId);
       if (data && data.availableBalance !== undefined) {
         const parsed = parseFloat(data.availableBalance) || 0.0;
         setBalance(parsed);
@@ -148,7 +165,7 @@ export default function App() {
     } catch {
       // Keep real fallback 0.00
     }
-  }, []);
+  }, [currentUser?.id]);
 
   useEffect(() => {
     // Clear any legacy test/mock balances from browser storage
@@ -169,6 +186,37 @@ export default function App() {
     });
     fetchRealWalletBalance();
   }, [fetchRealWalletBalance]);
+
+  const handleAuthSuccess = (user: AuthUser) => {
+    setCurrentUser(user);
+    setShowAuthModal(false);
+    setGameState((prev) => ({
+      ...prev,
+      players: {
+        ...prev.players,
+        blue: {
+          ...prev.players.blue,
+          name: user.displayName || user.username,
+          avatarUrl: user.avatarUrl,
+        },
+      },
+    }));
+    UnifiedWalletService.fetchWallet(user.id).then((data) => {
+      if (data && data.availableBalance !== undefined) {
+        const parsed = parseFloat(data.availableBalance) || 0.0;
+        setBalance(parsed);
+        setUsdtBalanceStr(`$${parsed.toFixed(2)}`);
+      }
+    }).catch(() => {});
+  };
+
+  const handleLogout = () => {
+    AuthClientService.clearSession();
+    setCurrentUser(null);
+    setBalance(0.0);
+    setUsdtBalanceStr('$0.00');
+    setShowAuthModal(true);
+  };
   const [adminToken, setAdminToken] = useState<string | null>(() => {
     try {
       return localStorage.getItem('ludo_admin_token') || sessionStorage.getItem('ludo_admin_token');
@@ -1028,20 +1076,54 @@ export default function App() {
   // 1. GAME LOBBY VIEW
   if (viewMode === 'lobby') {
     return (
-      <GameLobby
-        balance={balance}
-        onAddFunds={handleUpdateBalance}
-        onPlayLudo={() => {
-          SoundManager.play('click');
-          setPlayerMode(4);
-          setViewMode('ludo_game');
-        }}
-        onPlaySnakeLudo={() => {
-          SoundManager.play('click');
-          setViewMode('snake_ludo');
-        }}
-        onStartOnlineMatch={handleStartOnlineMatch}
-      />
+      <>
+        <GameLobby
+          balance={balance}
+          onAddFunds={handleUpdateBalance}
+          onPlayLudo={() => {
+            if (!currentUser) {
+              setShowAuthModal(true);
+              return;
+            }
+            SoundManager.play('click');
+            setPlayerMode(4);
+            setViewMode('ludo_game');
+          }}
+          onPlaySnakeLudo={() => {
+            if (!currentUser) {
+              setShowAuthModal(true);
+              return;
+            }
+            SoundManager.play('click');
+            setViewMode('snake_ludo');
+          }}
+          onStartOnlineMatch={(mode, fee, prize, gType, varN, pConfig) => {
+            if (!currentUser) {
+              setShowAuthModal(true);
+              return;
+            }
+            handleStartOnlineMatch(mode, fee, prize, gType, varN, pConfig);
+          }}
+          userId={currentUser?.id || 'user_guest_default'}
+          userName={currentUser?.displayName || currentUser?.username || 'Player 1'}
+          userAvatar={currentUser?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=160&auto=format&fit=crop&q=80'}
+          userEmail={currentUser?.email}
+          onLogout={handleLogout}
+          onAvatarUpdate={(newAvatarUrl) => {
+            setCurrentUser((prev) => (prev ? { ...prev, avatarUrl: newAvatarUrl } : prev));
+          }}
+        />
+
+        <AuthModal
+          isOpen={showAuthModal || !currentUser}
+          onClose={() => {
+            if (currentUser) {
+              setShowAuthModal(false);
+            }
+          }}
+          onSuccess={handleAuthSuccess}
+        />
+      </>
     );
   }
 
@@ -1074,6 +1156,8 @@ export default function App() {
   }
 
   // 3. SNAKE LUDO MINI-GAME VIEW
+  const humanPlayer = (Object.values(gameState.players) as Player[]).find((p) => p?.isHuman);
+
   if (viewMode === 'snake_ludo') {
     return (
       <SnakeLudoGame
@@ -1083,13 +1167,21 @@ export default function App() {
         }}
         isMuted={gameState.isMuted}
         onToggleMute={handleToggleMute}
+        entryFee={currentMatchConfig?.entryFee || 0}
+        prizePool={currentMatchConfig?.prizePool || 0}
+        userName={humanPlayer?.name || 'Player 1'}
+        userAvatar={humanPlayer?.avatarUrl || ''}
+        playerCount={currentMatchConfig?.mode || 2}
+        onMatchWon={(prize) => {
+          if (prize > 0) {
+            setBalance((b) => Number((b + prize).toFixed(2)));
+          }
+        }}
       />
     );
   }
 
   // 4. CLASSIC & MULTI-PLAYER LUDO BOARD VIEW (2P, 3P, 4P DYNAMIC)
-  const humanPlayer = (Object.values(gameState.players) as Player[]).find((p) => p?.isHuman);
-
   return (
     <BoardEnvironment>
       {/* 1. TOP HUD HEADER */}

@@ -7,14 +7,18 @@ export const users = pgTable('users', {
   id: text('id').primaryKey(),
   username: text('username').notNull(),
   displayName: text('display_name'),
-  email: text('email'),
+  email: text('email').unique(),
+  passwordHash: text('password_hash'),
+  gender: text('gender'), // 'male' | 'female'
   avatarUrl: text('avatar_url'),
   walletAddress: text('wallet_address'),
   coins: integer('coins').notNull().default(1000),
   diamonds: integer('diamonds').notNull().default(10),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+  emailIdx: uniqueIndex('users_email_uniq').on(table.email),
+}));
 
 // -----------------------------------------------------------------------------
 // 2. WALLET ACCOUNTS (Unified USDT Balance Account)

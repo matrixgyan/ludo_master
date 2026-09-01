@@ -1,13 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { SoundManager } from '../../../audio/soundManager';
 
-interface SnakeLudo3DDiceProps {
+export interface SnakeLudo3DDiceProps {
   value: number;
   isRolling: boolean;
   disabled: boolean;
-  currentTurn: 'p1' | 'p2';
+  isActiveTurn: boolean;
+  playerTheme?: 'p1' | 'p2' | 'p3' | 'p4' | 'red' | 'green' | 'yellow' | 'blue';
   onRoll: () => void;
+  size?: number;
 }
 
 // 3D rotation angles to face the camera for each dice value
@@ -24,8 +26,10 @@ export const SnakeLudo3DDice: React.FC<SnakeLudo3DDiceProps> = ({
   value,
   isRolling,
   disabled,
-  currentTurn,
+  isActiveTurn,
+  playerTheme = 'p1',
   onRoll,
+  size = 44,
 }) => {
   const [rotation, setRotation] = useState<{ x: number; y: number; z: number }>({
     x: 0,
@@ -33,9 +37,8 @@ export const SnakeLudo3DDice: React.FC<SnakeLudo3DDiceProps> = ({
     z: 0,
   });
   const [isTumbling, setIsTumbling] = useState(false);
-  const lastValRef = useRef<number>(value || 1);
 
-  const cubeSize = 54; // px
+  const cubeSize = size; // px
   const translateZ = cubeSize / 2;
 
   const triggerTumble = (targetVal: number) => {
@@ -63,19 +66,19 @@ export const SnakeLudo3DDice: React.FC<SnakeLudo3DDiceProps> = ({
   }, [isRolling, value]);
 
   const handleClick = () => {
-    if (disabled || isRolling || isTumbling) return;
+    if (disabled || !isActiveTurn || isRolling || isTumbling) return;
     onRoll();
   };
 
   // Render authentic inlaid pips
   const renderPips = (val: number) => {
     const darkDot =
-      'w-2.5 h-2.5 rounded-full bg-[#262017] shadow-[inset_0_1px_2px_rgba(0,0,0,0.85)] ring-[0.5px] ring-[#3d3324]';
+      'w-2 h-2 rounded-full bg-[#262017] shadow-[inset_0_1px_2px_rgba(0,0,0,0.85)] ring-[0.5px] ring-[#3d3324]';
     const redDot =
-      'w-3.5 h-3.5 rounded-full bg-gradient-to-br from-[#dc2626] to-[#7f1d1d] shadow-[inset_0_1px_2px_rgba(0,0,0,0.7)] ring-[0.5px] ring-[#fca5a5]';
-    const redSmallDot =
       'w-2.5 h-2.5 rounded-full bg-gradient-to-br from-[#dc2626] to-[#7f1d1d] shadow-[inset_0_1px_2px_rgba(0,0,0,0.7)] ring-[0.5px] ring-[#fca5a5]';
-    const pad = 'p-2';
+    const redSmallDot =
+      'w-2 h-2 rounded-full bg-gradient-to-br from-[#dc2626] to-[#7f1d1d] shadow-[inset_0_1px_2px_rgba(0,0,0,0.7)] ring-[0.5px] ring-[#fca5a5]';
+    const pad = 'p-1.5';
 
     switch (val) {
       case 1:
@@ -155,10 +158,10 @@ export const SnakeLudo3DDice: React.FC<SnakeLudo3DDiceProps> = ({
     width: `${cubeSize}px`,
     height: `${cubeSize}px`,
     background: 'linear-gradient(135deg, #ffffff 0%, #f7f3e8 45%, #DCCBA7 100%)',
-    border: '1.5px solid #a8997a',
-    borderRadius: '10px',
+    border: '1px solid #a8997a',
+    borderRadius: '8px',
     boxShadow:
-      'inset 0 0 5px rgba(0,0,0,0.12), inset 0 2px 3px rgba(255,255,255,0.95), 0 2px 4px rgba(0,0,0,0.22)',
+      'inset 0 0 4px rgba(0,0,0,0.15), inset 0 1.5px 2px rgba(255,255,255,0.95), 0 2px 4px rgba(0,0,0,0.25)',
     backfaceVisibility: 'hidden',
     WebkitBackfaceVisibility: 'hidden',
     transform: transformStr,
@@ -168,43 +171,61 @@ export const SnakeLudo3DDice: React.FC<SnakeLudo3DDiceProps> = ({
     userSelect: 'none',
   });
 
-  const isInteractive = !disabled && !isRolling && !isTumbling;
+  const isInteractive = isActiveTurn && !disabled && !isRolling && !isTumbling;
+
+  // Theme color accents
+  const isP1 = playerTheme === 'p1' || playerTheme === 'red';
+  const isP2 = playerTheme === 'p2' || playerTheme === 'green';
+  const isP3 = playerTheme === 'p3' || playerTheme === 'yellow';
+
+  const glowClass = isP1
+    ? 'shadow-[0_0_18px_rgba(239,68,68,0.55)] ring-1.5 ring-red-500/60'
+    : isP2
+    ? 'shadow-[0_0_18px_rgba(16,185,129,0.55)] ring-1.5 ring-emerald-500/60'
+    : isP3
+    ? 'shadow-[0_0_18px_rgba(234,179,8,0.55)] ring-1.5 ring-yellow-500/60'
+    : 'shadow-[0_0_18px_rgba(59,130,246,0.55)] ring-1.5 ring-blue-500/60';
+
+  const dockBg = isP1
+    ? 'radial-gradient(circle, rgba(239,68,68,0.18) 0%, rgba(26,20,16,0.85) 75%, transparent 100%)'
+    : isP2
+    ? 'radial-gradient(circle, rgba(16,185,129,0.18) 0%, rgba(16,24,20,0.85) 75%, transparent 100%)'
+    : isP3
+    ? 'radial-gradient(circle, rgba(234,179,8,0.18) 0%, rgba(26,24,16,0.85) 75%, transparent 100%)'
+    : 'radial-gradient(circle, rgba(59,130,246,0.18) 0%, rgba(16,20,28,0.85) 75%, transparent 100%)';
 
   return (
     <div
-      className="relative flex items-center justify-center select-none"
+      className="relative flex flex-col items-center justify-center select-none"
       style={{ perspective: '600px' }}
     >
-      {/* Interactive 3D Dice Button Container */}
+      {/* 3D Interactive Dice Button Container */}
       <motion.button
-        id="snake-ludo-3d-dice-btn"
+        id={`snake-ludo-dice-${playerTheme}`}
         role="button"
         tabIndex={0}
-        aria-label="Roll 3D Dice"
-        whileHover={isInteractive ? { scale: 1.12, y: -4 } : {}}
-        whileTap={isInteractive ? { scale: 0.94, y: 2 } : {}}
+        aria-label={`Roll 3D Dice for ${playerTheme}`}
+        whileHover={isInteractive ? { scale: 1.08, y: -2 } : {}}
+        whileTap={isInteractive ? { scale: 0.92, y: 1 } : {}}
         onClick={handleClick}
         disabled={!isInteractive}
-        className={`relative w-20 h-20 sm:w-22 sm:h-22 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+        className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-xl flex items-center justify-center transition-all duration-300 ${
           isInteractive
             ? 'cursor-pointer'
-            : 'cursor-not-allowed opacity-80'
+            : isActiveTurn
+            ? 'cursor-wait opacity-90'
+            : 'cursor-not-allowed opacity-60 grayscale-[35%]'
         }`}
         style={{
-          background:
-            currentTurn === 'p1'
-              ? 'radial-gradient(circle, rgba(239,68,68,0.22) 0%, rgba(20,15,12,0.8) 70%, transparent 100%)'
-              : 'radial-gradient(circle, rgba(16,185,129,0.22) 0%, rgba(20,15,12,0.8) 70%, transparent 100%)',
+          background: dockBg,
           perspective: '500px',
         }}
       >
         {/* Active Player Radial Pulsing Glow Halo */}
-        {isInteractive && (
+        {isActiveTurn && (
           <div
-            className={`absolute inset-0 rounded-2xl animate-pulse pointer-events-none ${
-              currentTurn === 'p1'
-                ? 'shadow-[0_0_24px_rgba(239,68,68,0.45)] ring-1 ring-red-500/40'
-                : 'shadow-[0_0_24px_rgba(16,185,129,0.45)] ring-1 ring-emerald-500/40'
+            className={`absolute inset-0 rounded-xl pointer-events-none ${
+              isInteractive ? `animate-pulse ${glowClass}` : 'ring-1 ring-white/20'
             }`}
           />
         )}
@@ -213,11 +234,11 @@ export const SnakeLudo3DDice: React.FC<SnakeLudo3DDiceProps> = ({
         <motion.div
           animate={
             isTumbling || isRolling
-              ? { scale: [1, 0.35, 0.8, 1.15, 1], opacity: [0.6, 0.12, 0.4, 0.7, 0.6] }
-              : { scale: 1, opacity: 0.6 }
+              ? { scale: [1, 0.3, 0.8, 1.2, 1], opacity: [0.6, 0.1, 0.4, 0.7, 0.6] }
+              : { scale: 1, opacity: 0.55 }
           }
           transition={{ duration: 0.75, ease: 'easeInOut' }}
-          className="absolute bottom-2 w-12 h-3 rounded-full bg-black/80 blur-[3px] pointer-events-none"
+          className="absolute bottom-1 w-9 h-2.5 rounded-full bg-black/80 blur-[2.5px] pointer-events-none"
         />
 
         {/* 3D Physical Cube Mesh */}
@@ -226,8 +247,8 @@ export const SnakeLudo3DDice: React.FC<SnakeLudo3DDiceProps> = ({
             rotateX: rotation.x,
             rotateY: rotation.y,
             rotateZ: rotation.z,
-            y: isTumbling || isRolling ? [0, -32, 4, -8, 2, 0] : 0,
-            scale: isTumbling || isRolling ? [1, 1.15, 0.92, 1.06, 0.98, 1] : 1,
+            y: isTumbling || isRolling ? [0, -26, 3, -6, 2, 0] : 0,
+            scale: isTumbling || isRolling ? [1, 1.12, 0.94, 1.04, 0.98, 1] : 1,
           }}
           transition={{
             duration: 0.75,

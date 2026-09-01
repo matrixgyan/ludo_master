@@ -1,8 +1,20 @@
 import { Router, Request, Response } from 'express';
 import { notificationService } from '../services/notificationService';
+import { AuthService } from '../services/authService';
 import { Logger } from '../config/env';
 
 export const notificationRouter = Router();
+
+function resolveUserId(req: Request): string {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const verified = AuthService.verifyToken(authHeader.substring(7));
+    if (verified?.userId) return verified.userId;
+  }
+  const headerUser = req.headers['x-user-id'] as string;
+  const queryUser = (req.query.userId || req.body?.userId) as string;
+  return headerUser || queryUser || 'user_guest_default';
+}
 
 /**
  * GET /api/notifications
@@ -10,7 +22,7 @@ export const notificationRouter = Router();
  */
 notificationRouter.get('/api/notifications', (req: Request, res: Response): void => {
   try {
-    const userId = (req.query.userId as string) || 'user_guest_default';
+    const userId = resolveUserId(req);
     const notifications = notificationService.getNotificationsForUser(userId);
     const unreadCount = notificationService.getUnreadCount(userId);
 
@@ -32,7 +44,7 @@ notificationRouter.get('/api/notifications', (req: Request, res: Response): void
 notificationRouter.post('/api/notifications/:id/read', (req: Request, res: Response): void => {
   try {
     const id = req.params.id;
-    const userId = (req.body.userId as string) || 'user_guest_default';
+    const userId = resolveUserId(req);
     const success = notificationService.markAsRead(id, userId);
 
     res.json({ success });
@@ -47,7 +59,7 @@ notificationRouter.post('/api/notifications/:id/read', (req: Request, res: Respo
  */
 notificationRouter.post('/api/notifications/read-all', (req: Request, res: Response): void => {
   try {
-    const userId = (req.body.userId as string) || 'user_guest_default';
+    const userId = resolveUserId(req);
     const updatedCount = notificationService.markAllAsRead(userId);
 
     res.json({ success: true, updatedCount });
@@ -62,7 +74,7 @@ notificationRouter.post('/api/notifications/read-all', (req: Request, res: Respo
  */
 notificationRouter.post('/api/notifications/clear', (req: Request, res: Response): void => {
   try {
-    const userId = (req.body.userId as string) || 'user_guest_default';
+    const userId = resolveUserId(req);
     notificationService.clearNotifications(userId);
 
     res.json({ success: true });

@@ -1,12 +1,18 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { ManualPaymentService } from '../services/manualPaymentService';
+import { AuthService } from '../services/authService';
 import { platformSettings } from '../routes/adminApi';
 import { Logger } from '../config/env';
 
 export const manualPaymentRouter = Router();
 
 function resolveUserId(req: Request): string {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const verified = AuthService.verifyToken(authHeader.substring(7));
+    if (verified?.userId) return verified.userId;
+  }
   const headerUser = req.headers['x-user-id'] as string;
   const queryUser = req.query.userId as string;
   return headerUser || queryUser || 'user_guest_default';

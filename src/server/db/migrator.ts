@@ -24,6 +24,7 @@ export async function ensureDatabaseTables(): Promise<void> {
         username TEXT NOT NULL,
         display_name TEXT,
         email TEXT,
+        password_hash TEXT,
         avatar_url TEXT,
         wallet_address TEXT,
         coins INTEGER NOT NULL DEFAULT 1000,
@@ -32,11 +33,15 @@ export async function ensureDatabaseTables(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
-      -- Ensure display_name column compatibility and relax username unique constraint
+      -- Ensure display_name and password_hash column compatibility and relax username unique constraint
       ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS gender TEXT;
       ALTER TABLE users ALTER COLUMN display_name DROP NOT NULL;
       ALTER TABLE users DROP CONSTRAINT IF EXISTS users_username_key;
       ALTER TABLE users DROP CONSTRAINT IF EXISTS users_username_unique;
+      CREATE UNIQUE INDEX IF NOT EXISTS users_email_uniq ON users(email) WHERE email IS NOT NULL;
 
       -- 2. Wallet Accounts (Unified USDT Balance Account)
       CREATE TABLE IF NOT EXISTS wallet_accounts (

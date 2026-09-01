@@ -52,14 +52,19 @@ export function getR2Client(): S3Client | null {
   }
 
   if (!globalThis.__ludo_s3_client) {
+    let endpoint = config.R2_ENDPOINT?.trim() || '';
+    // Ensure endpoint has protocol
+    if (endpoint && !endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
+      endpoint = `https://${endpoint}`;
+    }
+
     globalThis.__ludo_s3_client = new S3Client({
       region: 'auto',
-      endpoint: config.R2_ENDPOINT,
+      endpoint,
       credentials: {
-        accessKeyId: config.R2_ACCESS_KEY_ID!,
-        secretAccessKey: config.R2_SECRET_ACCESS_KEY!,
+        accessKeyId: config.R2_ACCESS_KEY_ID!.trim(),
+        secretAccessKey: config.R2_SECRET_ACCESS_KEY!.trim(),
       },
-      // Cloudflare R2 requires path-style or virtual-hosted; endpoint provided handles this
       forcePathStyle: true,
     });
   }
@@ -231,11 +236,21 @@ export async function generatePresignedUploadUrl(params: {
 /**
  * Fetch object stream from Cloudflare R2 or local cache for proxy serving
  */
-export async function getObjectFromR2(key: string): Promise<{
+export async function getObjectFromR2(rawKey: string): Promise<{
   stream: Readable;
   contentType: string;
   contentLength?: number;
 } | null> {
+  // Normalize key by stripping leading slash or decoding
+  let key = rawKey.trim();
+  try {
+    key = decodeURIComponent(key);
+  } catch {
+    // keep raw if decode fails
+  }
+  if (key.startsWith('/')) key = key.slice(1);
+  if (key.startsWith('api/storage/file/')) key = key.replace(/^api\/storage\/file\//, '');
+
   // 1. Try Cloudflare R2
   if (isR2Configured()) {
     const client = getR2Client();
@@ -249,8 +264,19 @@ export async function getObjectFromR2(key: string): Promise<{
         );
 
         if (response.Body) {
+          let stream: Readable;
+          // AWS SDK v3 Body can be IncomingMessage, ReadableStream, or stream-like
+          if (typeof (response.Body as any).pipe === 'function') {
+            stream = response.Body as Readable;
+          } else if (typeof (response.Body as any).transformToByteArray === 'function') {
+            const byteArray = await (response.Body as any).transformToByteArray();
+            stream = Readable.from(Buffer.from(byteArray));
+          } else {
+            stream = response.Body as any;
+          }
+
           return {
-            stream: response.Body as Readable,
+            stream,
             contentType: response.ContentType || 'image/jpeg',
             contentLength: response.ContentLength,
           };
@@ -261,25 +287,32 @@ export async function getObjectFromR2(key: string): Promise<{
     }
   }
 
-  // 2. Check Local File Storage fallback
+  // 2. Check Local File Storage fallback (try exact key, sanitized key, and filename only)
   try {
     ensureUploadsDir();
-    const safeLocalPath = path.join(uploadsLocalDir, key.replace(/\//g, '_'));
-    if (fs.existsSync(safeLocalPath)) {
-      const stats = fs.statSync(safeLocalPath);
-      const stream = fs.createReadStream(safeLocalPath);
-      const ext = path.extname(safeLocalPath).toLowerCase();
-      let contentType = 'image/jpeg';
-      if (ext === '.png') contentType = 'image/png';
-      else if (ext === '.webp') contentType = 'image/webp';
-      else if (ext === '.svg') contentType = 'image/svg+xml';
-      else if (ext === '.pdf') contentType = 'application/pdf';
+    const candidatePaths = [
+      path.join(uploadsLocalDir, key.replace(/\//g, '_')),
+      path.join(uploadsLocalDir, path.basename(key)),
+      path.join(uploadsLocalDir, key),
+    ];
 
-      return {
-        stream,
-        contentType,
-        contentLength: stats.size,
-      };
+    for (const safeLocalPath of candidatePaths) {
+      if (fs.existsSync(safeLocalPath) && fs.statSync(safeLocalPath).isFile()) {
+        const stats = fs.statSync(safeLocalPath);
+        const stream = fs.createReadStream(safeLocalPath);
+        const ext = path.extname(safeLocalPath).toLowerCase();
+        let contentType = 'image/jpeg';
+        if (ext === '.png') contentType = 'image/png';
+        else if (ext === '.webp') contentType = 'image/webp';
+        else if (ext === '.svg') contentType = 'image/svg+xml';
+        else if (ext === '.pdf') contentType = 'application/pdf';
+
+        return {
+          stream,
+          contentType,
+          contentLength: stats.size,
+        };
+      }
     }
   } catch (err) {
     Logger.warn(`Local file read fallback error for ${key}: ${String(err)}`);
