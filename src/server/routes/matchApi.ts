@@ -7,6 +7,8 @@ import { LudoSupremeEngine } from '../game/ludoSupremeEngine';
 import { AuthoritativeLudoEngine } from '../game/authoritativeEngine';
 import { GamePersistenceService } from '../game/persistenceService';
 import { MatchSettlementService } from '../wallet/matchSettlementService';
+import { LedgerService } from '../wallet/ledgerService';
+import { LedgerMath } from '../wallet/ledgerMath';
 import { rateLimiter } from '../redis/rateLimit';
 import { getDbPool, isPostgresConfigured } from '../db/client';
 import { Logger } from '../config/env';
@@ -120,14 +122,143 @@ matchApiRouter.post(
 
       res.status(200).json(joinResult);
     } catch (err: any) {
-      Logger.error('Match join API error', err);
+      const errMsg = err?.message || 'Failed to join match';
+      const isInsufficient = errMsg.toLowerCase().includes('insufficient');
+      if (isInsufficient) {
+        Logger.warn(`Match join rejected: ${errMsg}`);
+        res.status(400).json({
+          success: false,
+          code: 'INSUFFICIENT_BALANCE',
+          error: errMsg,
+        });
+        return;
+      }
+
+      Logger.warn(`Match join error: ${errMsg}`);
       res.status(400).json({
         success: false,
-        error: err.message || 'Failed to join match',
+        error: errMsg,
       });
     }
   }
 );
+
+// POST /api/matches/lock-entry (Pre-locks entry fee for real cash matches)
+matchApiRouter.post('/api/matches/lock-entry', async (req: Request, res: Response) => {
+  try {
+    const { userId, username, matchId, gameMode, playerCount, entryFee, prizePool } = req.body;
+    if (!userId) {
+      res.status(400).json({ success: false, error: 'Missing userId' });
+      return;
+    }
+
+    const feeNum = parseFloat(String(entryFee || 0));
+    const pCount = parseInt(String(playerCount || 2), 10);
+    const mId = matchId || `match_${(gameMode || 'arena').toLowerCase()}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+    if (feeNum > 0) {
+      const summary = await LedgerService.getUserWallet(userId);
+      const avail = parseFloat(summary.availableBalance || '0');
+      if (avail < feeNum || LedgerMath.isLessThan(summary.availableBalance, feeNum.toFixed(8))) {
+        res.status(400).json({
+          success: false,
+          code: 'INSUFFICIENT_BALANCE',
+          error: `Insufficient balance. Required: ${feeNum.toFixed(2)}, Available: ${avail.toFixed(2)}`,
+        });
+        return;
+      }
+
+      // Lock entry fee in double-entry ledger
+      const lockIdemp = `lock_entry_${mId}_${userId}`;
+      await LedgerService.lockFundsForWithdrawal(userId, feeNum.toFixed(8), lockIdemp);
+    }
+
+    res.json({
+      success: true,
+      matchId: mId,
+      lockedFee: feeNum,
+      entryFee: feeNum.toFixed(8),
+    });
+  } catch (err: any) {
+    const errMsg = err?.message || 'Failed to lock match entry fee';
+    const isInsufficient = errMsg.toLowerCase().includes('insufficient');
+    if (isInsufficient) {
+      Logger.warn(`Lock match entry rejected: ${errMsg}`);
+      res.status(400).json({
+        success: false,
+        code: 'INSUFFICIENT_BALANCE',
+        error: errMsg,
+      });
+      return;
+    }
+    Logger.error('Lock match entry error:', err);
+    res.status(400).json({ success: false, error: errMsg });
+  }
+});
+
+// POST /api/matches/settle (Authoritatively settles match, debits loser, credits winner)
+matchApiRouter.post('/api/matches/settle', async (req: Request, res: Response) => {
+  try {
+    const {
+      matchId,
+      winnerUserId,
+      winnerName,
+      winnerColor,
+      gameMode,
+      entryFee,
+      prizePool,
+      playerCount,
+      playerResults,
+      playerUsernames,
+    } = req.body;
+
+    if (!matchId || !winnerUserId) {
+      res.status(400).json({ success: false, error: 'Missing matchId or winnerUserId' });
+      return;
+    }
+
+    const safeResults = Array.isArray(playerResults) && playerResults.length > 0
+      ? playerResults.map((pr: any) => ({
+          userId: pr.userId || pr.id,
+          rank: pr.rank || (pr.userId === winnerUserId ? 1 : 2),
+          finalScore: pr.finalScore || pr.score || 0,
+          tokensHome: pr.tokensHome || 0,
+          capturesMade: pr.capturesMade || 0,
+          totalDistanceMoved: pr.totalDistanceMoved || 0,
+        }))
+      : [
+          { userId: winnerUserId, rank: 1, finalScore: 100, tokensHome: 4, capturesMade: 0, totalDistanceMoved: 50 },
+        ];
+
+    const settlement = await MatchSettlementService.settleMatch(
+      matchId,
+      winnerUserId,
+      safeResults,
+      {
+        entryFee,
+        prizePool,
+        gameMode,
+        playerCount: playerCount || safeResults.length || 2,
+        winnerName,
+        winnerColor,
+        playerUsernames,
+      }
+    );
+
+    // Fetch updated balance for the winner user
+    const updatedWallet = await LedgerService.getUserWallet(winnerUserId);
+
+    res.json({
+      success: true,
+      ...settlement,
+      userBalance: updatedWallet.availableBalance,
+      totalBalance: updatedWallet.totalBalance,
+    });
+  } catch (err: any) {
+    Logger.error(`Match settlement endpoint error: ${err.message}`, err);
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
 
 // POST /api/matches/:id/leave
 matchApiRouter.post('/api/matches/:id/leave', async (req: Request, res: Response) => {

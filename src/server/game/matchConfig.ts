@@ -1,6 +1,7 @@
 export enum GameMode {
   ONLINE_ARENA = 'ONLINE_ARENA',
   LUDO_SUPREME = 'LUDO_SUPREME',
+  SNAKE_LUDO = 'SNAKE_LUDO',
 }
 
 export const SUPPORTED_PLAYER_COUNTS = [2, 3, 4] as const;
@@ -15,10 +16,13 @@ export const SUPPORTED_ENTRY_FEES = [
   '25.00000000',
   '50.00000000',
   '100.00000000',
+  '250.00000000',
+  '500.00000000',
+  '1000.00000000',
 ] as const;
 export type EntryFee = (typeof SUPPORTED_ENTRY_FEES)[number];
 
-export const ENTRY_FEE_NUMBERS = [0, 1, 5, 10, 20, 25, 50, 100] as const;
+export const ENTRY_FEE_NUMBERS = [0, 1, 5, 10, 20, 25, 50, 100, 250, 500, 1000] as const;
 
 export interface GameModeConfig {
   gameMode: GameMode;
@@ -64,6 +68,20 @@ export const DEFAULT_GAME_CONFIGS: Record<GameMode, GameModeConfig> = {
     captureBonus: 10, // +10 points on capture
     enabled: true,
   },
+  [GameMode.SNAKE_LUDO]: {
+    gameMode: GameMode.SNAKE_LUDO,
+    name: 'Snake Ludo (1-100 Adventure)',
+    description: 'Classic Snakes & Ladders 100-tile race with 1 token per player. First to tile 100 wins.',
+    ruleVersion: 'v1',
+    pawnsPerPlayer: 1,
+    matchDurationSeconds: 0,
+    turnTimeoutSeconds: 10,
+    reconnectGraceSeconds: 60,
+    defaultPlatformFeeRate: 0.10,
+    homeMultiplier: 1,
+    captureBonus: 0,
+    enabled: true,
+  },
 };
 
 export interface MatchPoolDefinition {
@@ -84,7 +102,7 @@ export interface MatchPoolDefinition {
  */
 export function generateAllMatchPools(): MatchPoolDefinition[] {
   const pools: MatchPoolDefinition[] = [];
-  const modes = [GameMode.ONLINE_ARENA, GameMode.LUDO_SUPREME];
+  const modes = [GameMode.ONLINE_ARENA, GameMode.LUDO_SUPREME, GameMode.SNAKE_LUDO];
 
   for (const mode of modes) {
     const config = DEFAULT_GAME_CONFIGS[mode];
@@ -121,7 +139,43 @@ export function findMatchPool(
   entryFee: number | string,
   ruleVersion = 'v1'
 ): MatchPoolDefinition | undefined {
+  let mode = gameMode as GameMode;
+  if (mode !== GameMode.ONLINE_ARENA && mode !== GameMode.LUDO_SUPREME && mode !== GameMode.SNAKE_LUDO) {
+    mode = GameMode.ONLINE_ARENA;
+  }
+  const count = Number(playerCount) as PlayerCount;
+  if (!SUPPORTED_PLAYER_COUNTS.includes(count)) {
+    return undefined;
+  }
   const feeNum = typeof entryFee === 'string' ? parseFloat(entryFee) : entryFee;
-  const targetKey = `${gameMode}:${playerCount}:${feeNum}:${ruleVersion}`;
-  return ALL_MATCH_POOLS.find((p) => p.poolKey === targetKey || (p.gameMode === gameMode && p.playerCount === playerCount && p.entryFeeUsdt === feeNum));
+  if (isNaN(feeNum) || feeNum < 0) {
+    return undefined;
+  }
+
+  const targetKey = `${mode}:${count}:${feeNum}:${ruleVersion}`;
+  const existing = ALL_MATCH_POOLS.find(
+    (p) =>
+      p.poolKey === targetKey ||
+      (p.gameMode === mode && p.playerCount === count && p.entryFeeUsdt === feeNum)
+  );
+  if (existing) {
+    return existing;
+  }
+
+  // Create & register dynamic pool
+  const config = DEFAULT_GAME_CONFIGS[mode] || DEFAULT_GAME_CONFIGS[GameMode.ONLINE_ARENA];
+  const dynamicPool: MatchPoolDefinition = {
+    poolId: `pool_${mode.toLowerCase()}_${count}p_${feeNum}u_${ruleVersion}`,
+    poolKey: targetKey,
+    gameMode: mode,
+    playerCount: count,
+    entryFee: feeNum.toFixed(8),
+    entryFeeUsdt: feeNum,
+    ruleVersion: ruleVersion || config.ruleVersion,
+    platformFeeRate: config.defaultPlatformFeeRate,
+    isActive: true,
+    minBufferRooms: 1,
+  };
+  ALL_MATCH_POOLS.push(dynamicPool);
+  return dynamicPool;
 }

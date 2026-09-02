@@ -317,6 +317,32 @@ export class ManualPaymentService {
     const id = `mdep_${uuidv4().replace(/-/g, '').slice(0, 16)}`;
     const gateway = inMemoryGateways.find((g) => g.id === data.gatewayId);
 
+    let finalScreenshotUrl = data.screenshotUrl ? data.screenshotUrl.trim() : '';
+
+    // If a base64 data URL was submitted, upload it automatically to Cloudflare R2 / local storage
+    if (finalScreenshotUrl && finalScreenshotUrl.startsWith('data:image/')) {
+      try {
+        const matches = finalScreenshotUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          const contentType = matches[1];
+          const buffer = Buffer.from(matches[2], 'base64');
+          const { uploadToR2 } = await import('../storage/r2Client');
+          const uploadRes = await uploadToR2({
+            category: 'payment_receipts',
+            buffer,
+            contentType,
+            userId: data.userId,
+          });
+          finalScreenshotUrl = uploadRes.url;
+        }
+      } catch (uploadErr) {
+        Logger.warn(`Base64 screenshot auto-upload error: ${String(uploadErr)}`);
+      }
+    } else if (finalScreenshotUrl.startsWith('blob:')) {
+      // Ephemeral browser blob URLs cannot be viewed by other clients or after page refresh
+      Logger.warn(`Received ephemeral blob URL in deposit submission for user ${data.userId}`);
+    }
+
     const deposit: ManualDepositItem = {
       id,
       userId: data.userId,
@@ -327,7 +353,7 @@ export class ManualPaymentService {
       utrNumber: data.utrNumber.trim(),
       senderName: data.senderName?.trim() || '',
       senderUpiOrAccount: data.senderUpiOrAccount?.trim() || '',
-      screenshotUrl: data.screenshotUrl || '',
+      screenshotUrl: finalScreenshotUrl,
       status: 'PENDING',
       createdAt: new Date().toISOString(),
     };

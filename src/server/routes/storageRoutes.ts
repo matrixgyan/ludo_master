@@ -1,23 +1,10 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { uploadToR2, getObjectFromR2, generatePresignedUploadUrl } from '../storage/r2Client';
-import { AuthService } from '../services/authService';
 import { Logger } from '../config/env';
 import path from 'path';
 
 export const storageRouter = Router();
-
-function resolveUserId(req: Request): string {
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const verified = AuthService.verifyToken(authHeader.substring(7));
-    if (verified?.userId) return verified.userId;
-  }
-  const headerUser = req.headers['x-user-id'] as string;
-  const queryUser = req.query.userId as string;
-  const bodyUser = req.body?.userId as string;
-  return bodyUser || headerUser || queryUser || 'anonymous';
-}
 
 // Configure memory storage for standard multipart uploads
 const upload = multer({
@@ -26,7 +13,7 @@ const upload = multer({
     fileSize: 15 * 1024 * 1024, // 15 MB
   },
   fileFilter: (_req, file, cb) => {
-    // Allow standard image receipts, avatars, and documents
+    // Allow standard image receipts and documents
     const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'image/gif', 'application/pdf'];
     if (allowed.includes(file.mimetype) || file.mimetype.startsWith('image/')) {
       cb(null, true);
@@ -39,7 +26,6 @@ const upload = multer({
 /**
  * POST /api/storage/upload
  * Multi-part form upload directly to Cloudflare R2 with automatic fallback
- * Prefixes all uploads with user's unique 10-digit ID
  */
 storageRouter.post('/api/storage/upload', upload.single('file'), async (req: Request, res: Response): Promise<void> => {
   try {
@@ -48,27 +34,17 @@ storageRouter.post('/api/storage/upload', upload.single('file'), async (req: Req
       return;
     }
 
-    const userId = resolveUserId(req);
-    const cleanUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '') || 'anonymous';
-    const rawCategory = (req.body.category as string) || 'payment_receipts';
-    const category = rawCategory === 'avatars' ? 'avatars' : 'payments';
-    
-    const ext = path.extname(req.file.originalname) || `.${req.file.mimetype.split('/')[1] || 'jpg'}`;
-    const cleanExt = ext.startsWith('.') ? ext.replace('jpeg', 'jpg') : `.${ext.replace('jpeg', 'jpg')}`;
-    
-    const uniqueKey = category === 'avatars'
-      ? `${cleanUserId}/avatars/avatar_${Date.now()}_${Math.random().toString(36).substring(2, 8)}${cleanExt}`
-      : `${cleanUserId}/payments/receipt_${Date.now()}_${Math.random().toString(36).substring(2, 8)}${cleanExt}`;
+    const category = (req.body.category as string) || 'payment_receipts';
+    const userId = (req.body.userId as string) || 'anonymous';
+    const ext = path.extname(req.file.originalname) || '.jpg';
+    const uniqueKey = `${category}/${Date.now()}_${Math.random().toString(36).substring(2, 9)}${ext}`;
 
     const uploadResult = await uploadToR2({
       key: uniqueKey,
       buffer: req.file.buffer,
       contentType: req.file.mimetype,
-      userId: cleanUserId,
-      category,
+      userId,
     });
-
-    Logger.info(`[R2 STORAGE] Uploaded file for user ${cleanUserId} to Cloudflare R2: ${uniqueKey}`);
 
     res.json({
       success: true,
@@ -76,8 +52,6 @@ storageRouter.post('/api/storage/upload', upload.single('file'), async (req: Req
       key: uploadResult.key,
       sizeBytes: uploadResult.sizeBytes,
       contentType: uploadResult.contentType,
-      userId: cleanUserId,
-      storage: 'Cloudflare R2',
     });
   } catch (err: any) {
     Logger.error('Storage upload route error', err);
@@ -86,35 +60,59 @@ storageRouter.post('/api/storage/upload', upload.single('file'), async (req: Req
 });
 
 /**
- * GET /api/storage/file/:key(*)
- * Stream object directly from Cloudflare R2 or local disk storage
+ * GET /api/storage/file and /api/storage/file/*
+ * Stream or return object directly from Cloudflare R2 or local disk storage
  */
-storageRouter.get('/api/storage/file/:key(*)', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const key = req.params.key;
-    if (!key) {
-      res.status(400).json({ error: 'Missing object key' });
-      return;
-    }
+storageRouter.get(
+  ['/api/storage/file', '/api/storage/file/*', '/api/storage/file/:key(*)'],
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      // Extract key from params, query, or originalUrl
+      let key =
+        (req.params as any)?.key ||
+        (req.params as any)?.[0] ||
+        (req.query.key as string) ||
+        '';
 
-    const objectData = await getObjectFromR2(key);
-    if (!objectData) {
-      res.status(404).json({ error: 'File not found in storage' });
-      return;
-    }
+      if (!key) {
+        const urlPart = req.originalUrl || req.url || '';
+        const match = urlPart.match(/\/api\/storage\/file\/(.+)$/);
+        if (match && match[1]) {
+          key = match[1];
+        }
+      }
 
-    res.setHeader('Content-Type', objectData.contentType);
-    if (objectData.contentLength) {
-      res.setHeader('Content-Length', objectData.contentLength);
-    }
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      if (!key) {
+        res.status(400).json({ error: 'Missing object key' });
+        return;
+      }
 
-    objectData.stream.pipe(res);
-  } catch (err: any) {
-    Logger.error('Storage file retrieve route error', err);
-    res.status(500).json({ error: err?.message || 'Failed to retrieve storage object' });
+      const objectData = await getObjectFromR2(key);
+      if (!objectData) {
+        res.status(404).json({ error: 'File not found in storage' });
+        return;
+      }
+
+      // Allow cross-origin image embedding
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Content-Type', objectData.contentType);
+      if (objectData.contentLength) {
+        res.setHeader('Content-Length', objectData.contentLength);
+      }
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+
+      if (objectData.buffer) {
+        res.status(200).send(objectData.buffer);
+      } else {
+        objectData.stream.pipe(res);
+      }
+    } catch (err: any) {
+      Logger.error('Storage file retrieve route error', err);
+      res.status(500).json({ error: err?.message || 'Failed to retrieve storage object' });
+    }
   }
-});
+);
 
 /**
  * POST /api/storage/presigned-url

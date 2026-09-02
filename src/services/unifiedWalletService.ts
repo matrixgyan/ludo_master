@@ -431,49 +431,79 @@ export class UnifiedWalletService {
   }
 
   /**
-   * Match Settlement: Instantly credits match prize winnings to the winner's account
+   * Pre-locks entry fee from user ledger for real cash match entry
    */
-  public static async creditMatchWinnings(
-    userId: string,
-    matchId: string,
-    prizePool: number,
-    gameType?: string
-  ): Promise<any> {
-    try {
-      const res = await fetch(`${API_BASE}/api/wallet/match-win`, {
-        method: 'POST',
-        headers: this.getHeaders(userId),
-        body: JSON.stringify({ userId, matchId, prizePool, gameType }),
-      });
-      const data = await res.json();
-      return data;
-    } catch (err) {
-      console.warn('creditMatchWinnings network warning:', err);
-      return { success: false };
+  public static async lockMatchEntry(params: {
+    userId: string;
+    username?: string;
+    matchId?: string;
+    gameMode: string;
+    playerCount: number;
+    entryFee: number;
+    prizePool: number;
+  }): Promise<{ success: boolean; matchId: string; lockedFee: number }> {
+    const res = await fetch(`${API_BASE}/api/matches/lock-entry`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': params.userId,
+      },
+      body: JSON.stringify(params),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to lock match entry fee');
     }
+    return data;
   }
 
   /**
-   * Match Entry Fee: Deducts and locks match entry fee for real cash matches
+   * Settles match outcome authoritatively: debits entry fee from loser, credits net prize pool to winner
    */
-  public static async deductMatchEntryFee(
-    userId: string,
-    matchId: string,
-    entryFee: number,
-    gameType?: string
-  ): Promise<any> {
-    try {
-      const res = await fetch(`${API_BASE}/api/wallet/match-entry`, {
-        method: 'POST',
-        headers: this.getHeaders(userId),
-        body: JSON.stringify({ userId, matchId, entryFee, gameType }),
-      });
-      const data = await res.json();
-      return data;
-    } catch (err) {
-      console.warn('deductMatchEntryFee network warning:', err);
-      return { success: false };
+  public static async settleMatchOutcome(params: {
+    matchId: string;
+    gameMode?: string;
+    winnerUserId: string;
+    winnerName?: string;
+    winnerColor?: string;
+    entryFee?: number;
+    prizePool?: number;
+    playerCount?: number;
+    playerResults?: Array<{
+      userId: string;
+      username?: string;
+      rank: number;
+      finalScore?: number;
+      tokensHome?: number;
+      capturesMade?: number;
+      totalDistanceMoved?: number;
+      isHuman?: boolean;
+    }>;
+    playerUsernames?: Record<string, string>;
+  }): Promise<{
+    success: boolean;
+    settlementId: string;
+    matchId: string;
+    winnerUserId: string;
+    grossPool: string;
+    platformFee: string;
+    prizePool: string;
+    payoutTxId: string;
+    userBalance?: string;
+  }> {
+    const res = await fetch(`${API_BASE}/api/matches/settle`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': params.winnerUserId,
+      },
+      body: JSON.stringify(params),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to settle match outcome');
     }
+    return data;
   }
 
   /**

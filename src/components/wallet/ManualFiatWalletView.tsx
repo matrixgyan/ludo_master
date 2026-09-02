@@ -259,36 +259,42 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
     }
 
     setScreenshotFile(file);
-    const localUrl = URL.createObjectURL(file);
-    setScreenshotPreview(localUrl);
     setDepositErrorMsg(null);
 
-    // Upload immediately to Cloudflare R2 via storage API
-    setIsUploadingScreenshot(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('category', 'payment_receipts');
-      formData.append('userId', userId);
+    // Read base64 for persistent client-side preview & reliable fallback
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64Data = reader.result as string;
+      setScreenshotPreview(base64Data);
 
-      const res = await fetch('/api/storage/upload', {
-        method: 'POST',
-        body: formData,
-      });
+      // Upload immediately to Cloudflare R2 via storage API
+      setIsUploadingScreenshot(true);
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('category', 'payment_receipts');
+        formData.append('userId', userId);
 
-      const data = await res.json();
-      if (data.success && data.url) {
-        setUploadedScreenshotUrl(data.url);
-      } else {
-        console.warn('R2 upload endpoint response without direct URL, using fallback URL');
-        setUploadedScreenshotUrl(localUrl);
+        const res = await fetch('/api/storage/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const data = await res.json();
+        if (data.success && data.url) {
+          setUploadedScreenshotUrl(data.url);
+        } else {
+          // If direct R2 endpoint returned error, use base64 data URL fallback so server can process it
+          setUploadedScreenshotUrl(base64Data);
+        }
+      } catch (err) {
+        console.warn('Screenshot upload fallback to base64 payload:', err);
+        setUploadedScreenshotUrl(base64Data);
+      } finally {
+        setIsUploadingScreenshot(false);
       }
-    } catch (err) {
-      console.warn('Screenshot R2 upload direct stream fallback:', err);
-      setUploadedScreenshotUrl(localUrl);
-    } finally {
-      setIsUploadingScreenshot(false);
-    }
+    };
+    reader.readAsDataURL(file);
   };
 
   const removeScreenshot = () => {
@@ -324,8 +330,8 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
       SoundManager.play('click');
 
       let finalScreenshotUrl = uploadedScreenshotUrl;
-      // If file was selected but not uploaded yet, do it now
-      if (screenshotFile && !finalScreenshotUrl) {
+      // If file was selected but server upload is not yet complete or missing
+      if (screenshotFile && (!finalScreenshotUrl || finalScreenshotUrl.startsWith('blob:'))) {
         try {
           const formData = new FormData();
           formData.append('file', screenshotFile);
@@ -341,7 +347,10 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
             finalScreenshotUrl = upData.url;
           }
         } catch {
-          // ignore
+          // If multipart upload fails, fallback to screenshotPreview base64
+          if (screenshotPreview && screenshotPreview.startsWith('data:image/')) {
+            finalScreenshotUrl = screenshotPreview;
+          }
         }
       }
 

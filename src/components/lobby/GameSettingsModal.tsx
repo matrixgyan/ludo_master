@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
 import { AuthClientService } from '../../services/authClientService';
+import { useBackHandler } from '../../hooks/useBackHandler';
 
 interface GameSettingsModalProps {
   isOpen: boolean;
@@ -167,6 +168,25 @@ export const GameSettingsModal: React.FC<GameSettingsModalProps> = ({
   const [activeSubModal, setActiveSubModal] = useState<SubModalType>(null);
   const [copiedSupportId, setCopiedSupportId] = useState(false);
   const [supportId] = useState('TM-KRSMQWLQSKMPTTLN');
+
+  // Step-by-step Mobile Back Handlers for GameSettingsModal
+  useBackHandler(
+    isOpen && activeSubModal !== null,
+    () => {
+      setActiveSubModal(null);
+    },
+    'modal_settings_sub_item',
+    'Settings Sub Menu'
+  );
+
+  useBackHandler(
+    isOpen && activeSubModal === null,
+    () => {
+      onClose();
+    },
+    'modal_settings_root',
+    'Game Settings'
+  );
 
   // Support Form State
   const [ticketSubject, setTicketSubject] = useState('');

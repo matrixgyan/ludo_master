@@ -276,7 +276,11 @@ export class RoomJoinService {
                   'Atomic join failure rollback'
                 ).catch(() => {});
               }
-              Logger.error(`Atomic join error for user ${req.userId} in match ${targetRoomId}`, err);
+              if (err?.message?.includes('Insufficient USDT balance')) {
+                Logger.warn(`Atomic join balance check for user ${req.userId} in match ${targetRoomId}: ${err.message}`);
+              } else {
+                Logger.error(`Atomic join error for user ${req.userId} in match ${targetRoomId}`, err);
+              }
               throw err;
             } finally {
               client.release();

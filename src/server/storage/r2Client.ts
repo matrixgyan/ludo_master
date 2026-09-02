@@ -33,6 +33,13 @@ function ensureUploadsDir() {
   }
 }
 
+export interface ObjectData {
+  buffer?: Buffer;
+  stream: Readable;
+  contentType: string;
+  contentLength?: number;
+}
+
 export function isR2Configured(): boolean {
   return Boolean(
     config.R2_ENDPOINT &&
@@ -57,6 +64,8 @@ export function getR2Client(): S3Client | null {
     if (endpoint && !endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
       endpoint = `https://${endpoint}`;
     }
+    // Remove trailing slashes
+    endpoint = endpoint.replace(/\/+$/, '');
 
     globalThis.__ludo_s3_client = new S3Client({
       region: 'auto',
@@ -66,6 +75,7 @@ export function getR2Client(): S3Client | null {
         secretAccessKey: config.R2_SECRET_ACCESS_KEY!.trim(),
       },
       forcePathStyle: true,
+      maxAttempts: 3,
     });
   }
 
@@ -128,51 +138,44 @@ export interface UploadResult {
 
 /**
  * Upload buffer or stream directly to Cloudflare R2 bucket and record in PostgreSQL (with robust local disk fallback)
- * Uses the user's unique 10-digit ID as the file path prefix for organization, partitioning, and security.
  */
 export async function uploadToR2(params: {
   key?: string;
   buffer: Buffer;
   contentType: string;
   userId?: string;
-  category?: 'avatars' | 'images' | 'assets' | 'logs' | 'payment_receipts' | 'payments' | string;
+  category?: 'avatars' | 'images' | 'assets' | 'logs' | 'payment_receipts';
 }): Promise<UploadResult> {
   const category = params.category || 'payment_receipts';
-  const extension = params.contentType.split('/')[1]?.split(';')[0]?.replace('jpeg', 'jpg') || 'jpg';
-  
-  // Format clean 10-digit ID prefix (e.g. 7849102834) for folder organization & security
-  let userPrefix = 'anonymous';
-  if (params.userId && params.userId.trim().length > 0) {
-    userPrefix = params.userId.trim().replace(/[^a-zA-Z0-9_-]/g, '');
-  }
-
-  let objectKey = params.key;
-  if (!objectKey) {
-    const timestamp = Date.now();
-    const uniqueSuffix = uuidv4().slice(0, 10);
-    if (category === 'avatars') {
-      objectKey = `${userPrefix}/avatars/avatar_${timestamp}_${uniqueSuffix}.${extension}`;
-    } else if (category === 'payment_receipts' || category === 'payments' || category === 'screenshots') {
-      objectKey = `${userPrefix}/payments/receipt_${timestamp}_${uniqueSuffix}.${extension}`;
-    } else {
-      objectKey = `${userPrefix}/${category}/${timestamp}_${uniqueSuffix}.${extension}`;
-    }
-  } else if (!objectKey.startsWith(`${userPrefix}/`)) {
-    // Ensure 10-digit user prefix is formatted as root prefix
-    objectKey = `${userPrefix}/${objectKey.replace(/^\/+/, '')}`;
-  }
-
+  const rawExt = params.contentType.split('/')[1]?.split(';')[0] || 'jpg';
+  const extension = rawExt === 'jpeg' ? 'jpg' : rawExt;
+  const objectKey = params.key || `${category}/${Date.now()}-${uuidv4().slice(0, 12)}.${extension}`;
   const publicUrl = `/api/storage/file/${encodeURIComponent(objectKey)}`;
 
-  // Always write local backup copy
+  // Always write local backup copy to multiple candidate locations for 100% retrieval reliability
   try {
     ensureUploadsDir();
+    
+    // 1. Write to nested folder if path has slashes
+    const nestedPath = path.join(uploadsLocalDir, objectKey);
+    const parentDir = path.dirname(nestedPath);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
+    fs.writeFileSync(nestedPath, params.buffer);
+
+    // 2. Write to flat sanitized path with underscore
     const safeLocalPath = path.join(uploadsLocalDir, objectKey.replace(/\//g, '_'));
     fs.writeFileSync(safeLocalPath, params.buffer);
+
+    // 3. Write to flat basename path
+    const baseLocalPath = path.join(uploadsLocalDir, path.basename(objectKey));
+    fs.writeFileSync(baseLocalPath, params.buffer);
   } catch (err) {
     Logger.warn(`Local upload file cache write error: ${String(err)}`);
   }
 
+  // Upload to Cloudflare R2 if credentials exist
   if (isR2Configured()) {
     try {
       const client = getR2Client();
@@ -184,16 +187,15 @@ export async function uploadToR2(params: {
             Body: params.buffer,
             ContentType: params.contentType,
             Metadata: {
-              userId: userPrefix,
-              category,
+              userId: params.userId || 'system',
               uploadedAt: new Date().toISOString(),
             },
           })
         );
-        Logger.info(`Successfully uploaded object to Cloudflare R2 bucket: ${objectKey} (${params.buffer.length} bytes, User: ${userPrefix})`);
+        Logger.info(`Successfully uploaded object to Cloudflare R2: ${objectKey} (${params.buffer.length} bytes)`);
       }
     } catch (err: unknown) {
-      Logger.warn(`Cloudflare R2 putObject error, falling back to cached disk stream: ${String(err)}`);
+      Logger.warn(`Cloudflare R2 putObject error, relying on local disk cache: ${String(err)}`);
     }
   }
 
@@ -206,11 +208,18 @@ export async function uploadToR2(params: {
           id: `obj_${uuidv4()}`,
           key: objectKey,
           bucket: config.R2_BUCKET_NAME || 'local_storage',
-          userId: userPrefix !== 'anonymous' ? userPrefix : null,
+          userId: params.userId || null,
           contentType: params.contentType,
           sizeBytes: params.buffer.length,
           url: publicUrl,
           createdAt: new Date(),
+        }).onConflictDoUpdate({
+          target: storageObjects.key,
+          set: {
+            url: publicUrl,
+            sizeBytes: params.buffer.length,
+            contentType: params.contentType,
+          },
         });
       }
     } catch (err) {
@@ -258,84 +267,139 @@ export async function generatePresignedUploadUrl(params: {
 }
 
 /**
- * Fetch object stream from Cloudflare R2 or local cache for proxy serving
+ * Helper to infer content type from file extension
  */
-export async function getObjectFromR2(rawKey: string): Promise<{
-  stream: Readable;
-  contentType: string;
-  contentLength?: number;
-} | null> {
-  // Normalize key by stripping leading slash or decoding
+function inferContentType(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  switch (ext) {
+    case '.png':
+      return 'image/png';
+    case '.webp':
+      return 'image/webp';
+    case '.svg':
+      return 'image/svg+xml';
+    case '.gif':
+      return 'image/gif';
+    case '.pdf':
+      return 'application/pdf';
+    case '.jpg':
+    case '.jpeg':
+    default:
+      return 'image/jpeg';
+  }
+}
+
+/**
+ * Fetch object buffer and stream from Cloudflare R2 or local cache for proxy serving
+ */
+export async function getObjectFromR2(rawKey: string): Promise<ObjectData | null> {
+  if (!rawKey || typeof rawKey !== 'string') return null;
+
+  // Clean raw key
   let key = rawKey.trim();
+  // Strip query string if present
+  if (key.includes('?')) {
+    key = key.split('?')[0];
+  }
+  // Strip leading slashes and route prefix
+  while (key.startsWith('/')) {
+    key = key.slice(1);
+  }
+  key = key.replace(/^api\/storage\/file\//, '');
+  key = key.replace(/^storage\/file\//, '');
+
+  let decodedKey = key;
   try {
-    key = decodeURIComponent(key);
+    decodedKey = decodeURIComponent(key);
   } catch {
     // keep raw if decode fails
   }
-  if (key.startsWith('/')) key = key.slice(1);
-  if (key.startsWith('api/storage/file/')) key = key.replace(/^api\/storage\/file\//, '');
+  // Handle double encoded
+  if (decodedKey.includes('%')) {
+    try {
+      decodedKey = decodeURIComponent(decodedKey);
+    } catch {
+      // ignore
+    }
+  }
 
-  // 1. Try Cloudflare R2
+  // 1. Try Cloudflare R2 (check both encoded and decoded key)
   if (isR2Configured()) {
     const client = getR2Client();
     if (client && config.R2_BUCKET_NAME) {
-      try {
-        const response = await client.send(
-          new GetObjectCommand({
-            Bucket: config.R2_BUCKET_NAME,
-            Key: key,
-          })
-        );
+      const keysToTry = Array.from(new Set([decodedKey, key, key.replace(/^\/+/, '')]));
+      for (const tryKey of keysToTry) {
+        try {
+          const response = await client.send(
+            new GetObjectCommand({
+              Bucket: config.R2_BUCKET_NAME,
+              Key: tryKey,
+            })
+          );
 
-        if (response.Body) {
-          let stream: Readable;
-          // AWS SDK v3 Body can be IncomingMessage, ReadableStream, or stream-like
-          if (typeof (response.Body as any).pipe === 'function') {
-            stream = response.Body as Readable;
-          } else if (typeof (response.Body as any).transformToByteArray === 'function') {
-            const byteArray = await (response.Body as any).transformToByteArray();
-            stream = Readable.from(Buffer.from(byteArray));
-          } else {
-            stream = response.Body as any;
+          if (response.Body) {
+            let buffer: Buffer;
+            if (typeof (response.Body as any).transformToByteArray === 'function') {
+              const byteArray = await (response.Body as any).transformToByteArray();
+              buffer = Buffer.from(byteArray);
+            } else if (typeof (response.Body as any).pipe === 'function') {
+              const chunks: Buffer[] = [];
+              const stream = response.Body as Readable;
+              for await (const chunk of stream) {
+                chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+              }
+              buffer = Buffer.concat(chunks);
+            } else {
+              buffer = Buffer.from(response.Body as any);
+            }
+
+            const contentType = response.ContentType || inferContentType(tryKey);
+
+            return {
+              buffer,
+              stream: Readable.from(buffer),
+              contentType,
+              contentLength: buffer.length,
+            };
           }
-
-          return {
-            stream,
-            contentType: response.ContentType || 'image/jpeg',
-            contentLength: response.ContentLength,
-          };
+        } catch (err) {
+          // Continue to next key candidate or local fallback
         }
-      } catch (err) {
-        Logger.warn(`Object not found in Cloudflare R2: ${key}, checking local fallback...`);
       }
     }
   }
 
-  // 2. Check Local File Storage fallback (try exact key, sanitized key, and filename only)
+  // 2. Check Local File Storage fallback (try all candidate locations)
   try {
     ensureUploadsDir();
     const candidatePaths = [
-      path.join(uploadsLocalDir, key.replace(/\//g, '_')),
-      path.join(uploadsLocalDir, path.basename(key)),
+      path.join(uploadsLocalDir, decodedKey),
       path.join(uploadsLocalDir, key),
+      path.join(uploadsLocalDir, decodedKey.replace(/\//g, '_')),
+      path.join(uploadsLocalDir, key.replace(/\//g, '_')),
+      path.join(uploadsLocalDir, path.basename(decodedKey)),
+      path.join(uploadsLocalDir, path.basename(key)),
+      path.join(process.cwd(), 'data', decodedKey),
     ];
 
     for (const safeLocalPath of candidatePaths) {
-      if (fs.existsSync(safeLocalPath) && fs.statSync(safeLocalPath).isFile()) {
-        const stats = fs.statSync(safeLocalPath);
-        const stream = fs.createReadStream(safeLocalPath);
-        const ext = path.extname(safeLocalPath).toLowerCase();
-        let contentType = 'image/jpeg';
-        if (ext === '.png') contentType = 'image/png';
-        else if (ext === '.webp') contentType = 'image/webp';
-        else if (ext === '.svg') contentType = 'image/svg+xml';
-        else if (ext === '.pdf') contentType = 'application/pdf';
+      if (fs.existsSync(safeLocalPath)) {
+        try {
+          const stats = fs.statSync(safeLocalPath);
+          if (stats.isFile() && stats.size > 0) {
+            const buffer = fs.readFileSync(safeLocalPath);
+            const contentType = inferContentType(safeLocalPath);
 
-        return {
-          stream,
-          contentType,
-          contentLength: stats.size,
-        };
+            return {
+              buffer,
+              stream: Readable.from(buffer),
+              contentType,
+              contentLength: buffer.length,
+            };
+          }
+        } catch {
+          // continue checking
+        }
       }
     }
   } catch (err) {

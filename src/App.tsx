@@ -25,6 +25,10 @@ import { AuthClientService, AuthUser } from './services/authClientService';
 import { UnifiedWalletService } from './services/unifiedWalletService';
 import { realtimeClient } from './services/realtimeClient';
 import { ReferralClientService } from './services/referralClientService';
+import { navigationHistory } from './services/navigationHistory';
+import { useBackHandler } from './hooks/useBackHandler';
+import { MatchExitConfirmationModal } from './components/common/MatchExitConfirmationModal';
+import { BackExitToast } from './components/common/BackExitToast';
 
 type ViewMode = 'lobby' | 'ludo_game' | 'snake_ludo' | 'admin' | 'matchmaking';
 
@@ -227,9 +231,110 @@ export default function App() {
   const [adminData, setAdminData] = useState<any | null>(null);
   const [adminAlias, setAdminAlias] = useState<string>('admin');
 
+  // Mobile Back Button Navigation & Exit Warning State
+  const [backToastMsg, setBackToastMsg] = useState<string | null>(null);
+  const [exitConfirmationConfig, setExitConfirmationConfig] = useState<{
+    title: string;
+    message: string;
+    confirmText: string;
+    cancelText: string;
+    onConfirm: () => void;
+  } | null>(null);
+  const backToastTimeoutRef = useRef<any>(null);
+
+  // Initialize central navigation stack on mount
+  useEffect(() => {
+    navigationHistory.init();
+    navigationHistory.setToastCallback((msg) => {
+      setBackToastMsg(msg);
+      if (backToastTimeoutRef.current) clearTimeout(backToastTimeoutRef.current);
+      backToastTimeoutRef.current = setTimeout(() => {
+        setBackToastMsg(null);
+      }, 2200);
+    });
+    navigationHistory.setConfirmationCallback((config) => {
+      setExitConfirmationConfig(config);
+    });
+  }, []);
+
   // Matchmaking & Dynamic Player Mode State
   const [playerMode, setPlayerMode] = useState<PlayerModeOption>(4);
   const [currentMatchConfig, setCurrentMatchConfig] = useState<MatchConfig | null>(null);
+  const [activeMatchId, setActiveMatchId] = useState<string>('');
+
+  // Authoritative double-entry ledger match settlement
+  const settleAndFinalizeMatch = useCallback(
+    async (winnerColor: PlayerColor, customWinnerPlayer?: Player) => {
+      const gs = gameStateRef.current;
+      const cfg = currentMatchConfigRef.current;
+      const winnerP = customWinnerPlayer || gs.players[winnerColor];
+      const mId = activeMatchId || `match_${(cfg?.gameType || 'supreme')}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const activeCols = activeColorsRef.current;
+      const activeList = activeCols.map((c) => gs.players[c]).filter(Boolean);
+      const sorted = [...activeList].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+
+      const activeUserId = currentUser?.id || 'user_guest_default';
+      const isWinnerHuman = winnerP?.isHuman || winnerP?.id === 'p1';
+      const winnerUserId = isWinnerHuman ? activeUserId : `bot_${winnerColor}`;
+      const winnerName = winnerP?.name || `${winnerColor.toUpperCase()} Player`;
+      const effectivePrize = cfg?.prizePool && cfg.prizePool > 0 ? cfg.prizePool : (cfg?.entryFee ? cfg.entryFee * 1.8 : 0);
+
+      // Instant optimistic UI update for the user if human won
+      if (isWinnerHuman && effectivePrize > 0) {
+        setBalance((prevBal) => {
+          const updated = Number((prevBal + effectivePrize).toFixed(2));
+          setUsdtBalanceStr(`$${updated.toFixed(2)}`);
+          return updated;
+        });
+      }
+
+      const playerResults = sorted.map((p, idx) => ({
+        userId: p.isHuman || p.id === 'p1' ? activeUserId : `bot_${p.color}`,
+        username: p.name,
+        rank: p.color === winnerColor ? 1 : idx + 1,
+        finalScore: p.score ?? 0,
+        tokensHome: p.pawns.filter((pawn) => pawn.state === 'goal').length,
+        capturesMade: 0,
+        totalDistanceMoved: 50,
+        isHuman: p.isHuman || p.id === 'p1',
+      }));
+
+      // Make sure winner is rank 1
+      playerResults.forEach((pr) => {
+        if (pr.userId === winnerUserId) pr.rank = 1;
+        else if (pr.rank === 1) pr.rank = 2;
+      });
+
+      try {
+        const settleRes = await UnifiedWalletService.settleMatchOutcome({
+          matchId: mId,
+          gameMode: cfg?.gameType === 'snake' ? 'SNAKE_LUDO' : cfg?.gameType === 'classic' ? 'LUDO_CLASSIC' : 'LUDO_SUPREME',
+          winnerUserId,
+          winnerName,
+          winnerColor,
+          entryFee: cfg?.entryFee || 0,
+          prizePool: effectivePrize,
+          playerCount: activeCols.length || 2,
+          playerResults,
+        });
+
+        if (settleRes?.userBalance && isWinnerHuman) {
+          const authoritativeBal = parseFloat(settleRes.userBalance);
+          if (!isNaN(authoritativeBal)) {
+            setBalance(authoritativeBal);
+            setUsdtBalanceStr(`$${authoritativeBal.toFixed(2)}`);
+          }
+        }
+
+        // Trigger wallet and transactions sync from backend
+        fetchRealWalletBalance();
+      } catch (err) {
+        console.error('Ludo match settlement error:', err);
+        fetchRealWalletBalance();
+      }
+    },
+    [activeMatchId, currentUser?.id, fetchRealWalletBalance]
+  );
 
   // URL Path & Query Detection for Admin Portal and Realtime Sync (Runs once on mount)
   useEffect(() => {
@@ -381,16 +486,9 @@ export default function App() {
 
           if (topPlayer) {
             SoundManager.play('pawn-finish');
-            confetti({ particleCount: 120, spread: 90, origin: { y: 0.5 } });
 
-            if (topPlayer.isHuman && cfg && cfg.prizePool > 0) {
-              const prize = cfg.prizePool;
-              setBalance((b) => Number((b + prize).toFixed(2)));
-              const activeUserId = currentUser?.id || 'user_guest_default';
-              UnifiedWalletService.creditMatchWinnings(activeUserId, `match_${Date.now()}`, prize, cfg.gameType || 'supreme')
-                .then(() => fetchRealWalletBalance())
-                .catch(() => {});
-            }
+            // Authoritative double-entry ledger settlement
+            settleAndFinalizeMatch(topPlayer.color, topPlayer);
 
             setGameState((g) => ({
               ...g,
@@ -405,7 +503,7 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(matchInterval);
-  }, [viewMode, Boolean(gameState.winner), currentMatchConfig?.gameType]);
+  }, [viewMode, Boolean(gameState.winner), currentMatchConfig?.gameType, settleAndFinalizeMatch]);
 
   // Flatten all pawns of active players for rendering
   const allPawns = activeColors.flatMap((c) => gameState.players[c].pawns);
@@ -444,7 +542,7 @@ export default function App() {
   );
 
   // Handle Match Start from Lobby
-  const handleStartOnlineMatch = (
+  const handleStartOnlineMatch = async (
     mode: PlayerModeOption,
     entryFee: number,
     prizePool: number,
@@ -452,13 +550,44 @@ export default function App() {
     variation: GameVariation = 'Classic',
     playersConfig?: PlayerConfig[]
   ) => {
-    if (entryFee > 0) {
-      setBalance((b) => Math.max(0, Number((b - entryFee).toFixed(2))));
-      const activeUserId = currentUser?.id || 'user_guest_default';
-      UnifiedWalletService.deductMatchEntryFee(activeUserId, `match_${Date.now()}`, entryFee, gameType)
-        .then(() => fetchRealWalletBalance())
-        .catch(() => {});
+    // 1. Client-Side Balance Validation
+    if (entryFee > 0 && balance < entryFee) {
+      setBackToastMsg(`⚠️ Insufficient balance ($${balance.toFixed(2)}). Please add funds or play Free Practice!`);
+      if (backToastTimeoutRef.current) clearTimeout(backToastTimeoutRef.current);
+      backToastTimeoutRef.current = setTimeout(() => setBackToastMsg(null), 3500);
+      return;
     }
+
+    const newMatchId = `match_${gameType}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    setActiveMatchId(newMatchId);
+
+    if (entryFee > 0) {
+      try {
+        await UnifiedWalletService.lockMatchEntry({
+          userId: currentUser?.id || 'user_guest_default',
+          username: currentUser?.displayName || currentUser?.username || 'Player 1',
+          matchId: newMatchId,
+          gameMode: gameType === 'snake' ? 'SNAKE_LUDO' : gameType === 'supreme' ? 'LUDO_SUPREME' : 'LUDO_CLASSIC',
+          playerCount: Number(mode) === 2 ? 2 : Number(mode) === 3 ? 3 : 4,
+          entryFee,
+          prizePool,
+        });
+
+        setBalance((b) => Math.max(0, Number((b - entryFee).toFixed(2))));
+        setUsdtBalanceStr(`$${Math.max(0, Number((balance - entryFee).toFixed(2))).toFixed(2)}`);
+      } catch (err: any) {
+        console.warn('Match entry lock notice:', err.message);
+        const errMsg = err?.message || 'Insufficient balance';
+        if (errMsg.toLowerCase().includes('insufficient')) {
+          setBackToastMsg(`⚠️ Insufficient balance to join ($${balance.toFixed(2)}). Please add funds!`);
+          if (backToastTimeoutRef.current) clearTimeout(backToastTimeoutRef.current);
+          backToastTimeoutRef.current = setTimeout(() => setBackToastMsg(null), 3500);
+          fetchRealWalletBalance();
+          return;
+        }
+      }
+    }
+
     setPlayerMode(mode);
     setCurrentMatchConfig({ mode, entryFee, prizePool, gameType, variation, playersConfig });
     setViewMode('matchmaking');
@@ -543,24 +672,20 @@ export default function App() {
       pawns: createPawnsForColor(p1Color, 'p1'),
     };
 
-    const isRealMatch = (currentMatchConfig?.entryFee || 0) > 0;
-
     // Configure Opponents
     for (let i = 1; i < playerMode; i++) {
       const oppColor = assignedPlayerColors[i];
       const oppIndex = i - 1;
       const opp = matchedOpponents[oppIndex];
       const customP = customPlayers?.[i];
-      const isOppReal = opp?.isRealPlayer ?? isRealMatch;
 
       updatedPlayers[oppColor] = {
         ...DEFAULT_PLAYERS[oppColor],
-        id: opp?.id || `p${i + 1}`,
         name: customP?.name || opp?.name || `Player ${i + 1}`,
         avatarUrl: customP?.avatarUrl || opp?.avatarUrl || DEFAULT_PLAYERS[oppColor].avatarUrl,
         color: oppColor,
         isActive: true,
-        isHuman: isOppReal,
+        isHuman: false,
         score: 0,
         pawns: createPawnsForColor(oppColor, `p${i + 1}`),
       };
@@ -781,15 +906,10 @@ export default function App() {
       const allReachedGoal = curPlayer.pawns.length > 0 && curPlayer.pawns.every((p) => p.state === 'goal');
       if (allReachedGoal) {
         SoundManager.play('pawn-finish');
-        confetti({ particleCount: 150, spread: 100, origin: { y: 0.5 } });
-        if (curPlayer.isHuman && currentMatchConfig && currentMatchConfig.prizePool > 0) {
-          const prize = currentMatchConfig.prizePool;
-          setBalance((b) => Number((b + prize).toFixed(2)));
-          const activeUserId = currentUser?.id || 'user_guest_default';
-          UnifiedWalletService.creditMatchWinnings(activeUserId, `match_${Date.now()}`, prize, currentMatchConfig.gameType || 'supreme')
-            .then(() => fetchRealWalletBalance())
-            .catch(() => {});
-        }
+
+        // Authoritative double-entry ledger settlement
+        settleAndFinalizeMatch(prev.currentTurn, curPlayer);
+
         return {
           ...prev,
           players: updatedPlayers,
@@ -1050,44 +1170,154 @@ export default function App() {
     setActiveAngelFlight(null);
   }, []);
 
+  // Back Navigation Handlers for App Level Screens and Modals
+  useBackHandler(
+    viewMode === 'matchmaking',
+    () => {
+      if (currentMatchConfig && currentMatchConfig.entryFee > 0) {
+        setBalance((b) => Number((b + currentMatchConfig.entryFee).toFixed(2)));
+      }
+      setViewMode('lobby');
+    },
+    'view_matchmaking',
+    'Matchmaking'
+  );
+
+  useBackHandler(
+    viewMode === 'ludo_game' && !gameState.winner && !isMenuOpen && !exitConfirmationConfig,
+    () => {
+      navigationHistory.requestMatchLeaveConfirmation(() => {
+        handleReturnToLobby();
+      });
+      return false;
+    },
+    'view_ludo_game',
+    'Ludo Game'
+  );
+
+  useBackHandler(
+    viewMode === 'snake_ludo' && !exitConfirmationConfig,
+    () => {
+      navigationHistory.requestMatchLeaveConfirmation(() => {
+        handleReturnToLobby();
+      });
+      return false;
+    },
+    'view_snake_ludo',
+    'Snake Ludo'
+  );
+
+  useBackHandler(
+    viewMode === 'admin',
+    () => {
+      setViewMode('lobby');
+      window.history.pushState({}, '', '/');
+    },
+    'view_admin',
+    'Admin'
+  );
+
+  useBackHandler(
+    isMenuOpen,
+    () => {
+      setIsMenuOpen(false);
+    },
+    'modal_game_settings',
+    'Settings'
+  );
+
+  useBackHandler(
+    Boolean(gameState.winner),
+    () => {
+      handleReturnToLobby();
+    },
+    'modal_victory',
+    'Victory'
+  );
+
+  useBackHandler(
+    showAuthModal && Boolean(currentUser),
+    () => {
+      setShowAuthModal(false);
+    },
+    'modal_auth',
+    'Auth'
+  );
+
+  useBackHandler(
+    Boolean(exitConfirmationConfig),
+    () => {
+      setExitConfirmationConfig(null);
+    },
+    'modal_match_exit_confirmation',
+    'Exit Confirmation'
+  );
+
+  const sharedExitAndToastUI = (
+    <>
+      <MatchExitConfirmationModal
+        isOpen={Boolean(exitConfirmationConfig)}
+        title={exitConfirmationConfig?.title}
+        message={exitConfirmationConfig?.message}
+        confirmText={exitConfirmationConfig?.confirmText}
+        cancelText={exitConfirmationConfig?.cancelText}
+        onConfirm={() => {
+          const cb = exitConfirmationConfig?.onConfirm;
+          setExitConfirmationConfig(null);
+          if (cb) cb();
+        }}
+        onCancel={() => {
+          setExitConfirmationConfig(null);
+        }}
+      />
+      <BackExitToast message={backToastMsg} />
+    </>
+  );
+
   // 0. ADMIN CONTROL PANEL VIEW
   if (viewMode === 'admin') {
     if (!adminToken) {
       return (
-        <AdminLogin
+        <>
+          <AdminLogin
+            adminAlias={adminAlias}
+            onLoginSuccess={(token, admin) => {
+              setAdminToken(token);
+              setAdminData(admin);
+            }}
+            onBackToGame={() => {
+              setViewMode('lobby');
+              window.history.pushState({}, '', '/');
+            }}
+          />
+          {sharedExitAndToastUI}
+        </>
+      );
+    }
+
+    return (
+      <>
+        <AdminLayout
+          token={adminToken}
+          adminData={adminData}
           adminAlias={adminAlias}
-          onLoginSuccess={(token, admin) => {
-            setAdminToken(token);
-            setAdminData(admin);
+          onLogout={() => {
+            localStorage.removeItem('ludo_admin_token');
+            sessionStorage.removeItem('ludo_admin_token');
+            setAdminToken(null);
+            setAdminData(null);
+          }}
+          onAdminAliasChange={(newAlias) => {
+            setAdminAlias(newAlias);
+            window.history.replaceState({}, '', `/${newAlias}`);
           }}
           onBackToGame={() => {
             setViewMode('lobby');
             window.history.pushState({}, '', '/');
           }}
         />
-      );
-    }
-
-    return (
-      <AdminLayout
-        token={adminToken}
-        adminData={adminData}
-        adminAlias={adminAlias}
-        onLogout={() => {
-          localStorage.removeItem('ludo_admin_token');
-          sessionStorage.removeItem('ludo_admin_token');
-          setAdminToken(null);
-          setAdminData(null);
-        }}
-        onAdminAliasChange={(newAlias) => {
-          setAdminAlias(newAlias);
-          window.history.replaceState({}, '', `/${newAlias}`);
-        }}
-        onBackToGame={() => {
-          setViewMode('lobby');
-          window.history.pushState({}, '', '/');
-        }}
-      />
+        {sharedExitAndToastUI}
+      </>
     );
   }
 
@@ -1141,6 +1371,7 @@ export default function App() {
           }}
           onSuccess={handleAuthSuccess}
         />
+        {sharedExitAndToastUI}
       </>
     );
   }
@@ -1153,24 +1384,26 @@ export default function App() {
     const userAvatar = p1Config?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
 
     return (
-      <OnlineMatchmakingScreen
-        playerCount={playerMode}
-        entryFee={currentMatchConfig?.entryFee || 0}
-        prizePool={currentMatchConfig?.prizePool || 0}
-        userName={userName}
-        userAvatar={userAvatar}
-        userColor={userColor}
-        customOpponents={currentMatchConfig?.playersConfig?.slice(1)}
-        userId={currentUser?.id || '7849102834'}
-        onCancel={() => {
-          // Refund fee on cancel
-          if (currentMatchConfig && currentMatchConfig.entryFee > 0) {
-            setBalance((b) => Number((b + currentMatchConfig.entryFee).toFixed(2)));
-          }
-          setViewMode('lobby');
-        }}
-        onMatchComplete={handleMatchComplete}
-      />
+      <>
+        <OnlineMatchmakingScreen
+          playerCount={playerMode}
+          entryFee={currentMatchConfig?.entryFee || 0}
+          prizePool={currentMatchConfig?.prizePool || 0}
+          userName={userName}
+          userAvatar={userAvatar}
+          userColor={userColor}
+          customOpponents={currentMatchConfig?.playersConfig?.slice(1)}
+          onCancel={() => {
+            // Refund fee on cancel
+            if (currentMatchConfig && currentMatchConfig.entryFee > 0) {
+              setBalance((b) => Number((b + currentMatchConfig.entryFee).toFixed(2)));
+            }
+            setViewMode('lobby');
+          }}
+          onMatchComplete={handleMatchComplete}
+        />
+        {sharedExitAndToastUI}
+      </>
     );
   }
 
@@ -1179,24 +1412,29 @@ export default function App() {
 
   if (viewMode === 'snake_ludo') {
     return (
-      <SnakeLudoGame
-        onBackToLobby={() => {
-          SoundManager.play('click');
-          setViewMode('lobby');
-        }}
-        isMuted={gameState.isMuted}
-        onToggleMute={handleToggleMute}
-        entryFee={currentMatchConfig?.entryFee || 0}
-        prizePool={currentMatchConfig?.prizePool || 0}
-        userName={humanPlayer?.name || 'Player 1'}
-        userAvatar={humanPlayer?.avatarUrl || ''}
-        playerCount={currentMatchConfig?.mode || 2}
-        onMatchWon={(prize) => {
-          if (prize > 0) {
-            setBalance((b) => Number((b + prize).toFixed(2)));
-          }
-        }}
-      />
+      <>
+        <SnakeLudoGame
+          onBackToLobby={() => {
+            SoundManager.play('click');
+            setViewMode('lobby');
+          }}
+          isMuted={gameState.isMuted}
+          onToggleMute={handleToggleMute}
+          entryFee={currentMatchConfig?.entryFee || 0}
+          prizePool={currentMatchConfig?.prizePool || 0}
+          userId={currentUser?.id || 'user_guest_default'}
+          userName={humanPlayer?.name || currentUser?.displayName || currentUser?.username || 'Player 1'}
+          userAvatar={humanPlayer?.avatarUrl || currentUser?.avatarUrl || ''}
+          playerCount={currentMatchConfig?.mode || 2}
+          onMatchWon={(prize) => {
+            if (prize > 0) {
+              setBalance((b) => Number((b + prize).toFixed(2)));
+              fetchRealWalletBalance();
+            }
+          }}
+        />
+        {sharedExitAndToastUI}
+      </>
     );
   }
 
@@ -1209,7 +1447,11 @@ export default function App() {
         isMuted={gameState.isMuted}
         onToggleMute={handleToggleMute}
         balance={balance}
-        onBackToLobby={handleReturnToLobby}
+        onBackToLobby={() => {
+          navigationHistory.requestMatchLeaveConfirmation(() => {
+            handleReturnToLobby();
+          });
+        }}
         gameType={currentMatchConfig?.gameType || 'supreme'}
         matchTimeLeft={matchTimeLeft}
         prizePool={currentMatchConfig?.prizePool || 0}
@@ -1341,7 +1583,7 @@ export default function App() {
         winnerColor={gameState.winner}
         players={gameState.players}
         prizePool={currentMatchConfig?.prizePool || 0}
-        userId={currentUser?.id || '7849102834'}
+        entryFee={currentMatchConfig?.entryFee || 0}
         gameType={currentMatchConfig?.gameType || 'supreme'}
         onRematch={() => {
           if (currentMatchConfig) {
@@ -1357,6 +1599,9 @@ export default function App() {
         }}
         onBackToLobby={handleReturnToLobby}
       />
+
+      {/* 8. EXIT CONFIRMATION MODAL & SYSTEM BACK TOAST */}
+      {sharedExitAndToastUI}
     </BoardEnvironment>
   );
 }

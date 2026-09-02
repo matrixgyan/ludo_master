@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Smile, MessageSquare, Mic, MicOff, X, Send } from 'lucide-react';
 import { SoundManager } from '../../../audio/soundManager';
 import { ChatMessage, PlayerColor } from '../../../types/game';
+import { useBackHandler } from '../../../hooks/useBackHandler';
 
 interface BottomControlsProps {
   isMutedMic: boolean;
@@ -32,6 +33,25 @@ export const BottomControls: React.FC<BottomControlsProps> = ({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showChatBox, setShowChatBox] = useState(false);
   const [customInput, setCustomInput] = useState('');
+
+  // Mobile Back Handlers for Overlays
+  useBackHandler(
+    showEmojiPicker,
+    () => {
+      setShowEmojiPicker(false);
+    },
+    'hud_emoji_picker',
+    'Emoji Picker'
+  );
+
+  useBackHandler(
+    showChatBox,
+    () => {
+      setShowChatBox(false);
+    },
+    'hud_chat_box',
+    'Quick Chat'
+  );
 
   const handleSendEmoji = (emoji: string) => {
     SoundManager.play('click');

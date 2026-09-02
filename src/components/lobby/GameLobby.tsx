@@ -18,6 +18,7 @@ import { PlayerModeOption, LudoModeSelectorModal, GameVariation, PlayerConfig } 
 import { MatchArenaListView } from './MatchArenaListView';
 import { AssetsView } from '../wallet/AssetsView';
 import { useLiveTheme } from '../../hooks/useLiveTheme';
+import { useBackHandler } from '../../hooks/useBackHandler';
 import { Sparkles, Shield, Crown } from 'lucide-react';
 
 interface GameLobbyProps {
@@ -95,6 +96,91 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   // Local Pass & Play Customizer Modal State
   const [isModeSelectorOpen, setIsModeSelectorOpen] = useState(false);
   const [modalGameType, setModalGameType] = useState<'classic' | 'supreme' | 'snake'>('classic');
+
+  // Mobile Back Button Navigation Handlers (LIFO Stack)
+  useBackHandler(
+    isMatchListOpen,
+    () => {
+      setIsMatchListOpen(false);
+    },
+    'lobby_match_list',
+    'Match Arena List'
+  );
+
+  useBackHandler(
+    isModeSelectorOpen,
+    () => {
+      setIsModeSelectorOpen(false);
+    },
+    'lobby_mode_selector',
+    'Mode Selector'
+  );
+
+  useBackHandler(
+    isLeagueModalOpen,
+    () => {
+      setIsLeagueModalOpen(false);
+    },
+    'lobby_league_modal',
+    'Supreme League'
+  );
+
+  useBackHandler(
+    isLeaderboardOpen,
+    () => {
+      setIsLeaderboardOpen(false);
+      setActiveTab('home');
+    },
+    'lobby_leaderboard',
+    'Leaderboard'
+  );
+
+  useBackHandler(
+    isStudioOpen,
+    () => {
+      setIsStudioOpen(false);
+      setActiveTab('home');
+    },
+    'lobby_studio',
+    'Studio'
+  );
+
+  useBackHandler(
+    isReferOpen,
+    () => {
+      setIsReferOpen(false);
+      setActiveTab('home');
+    },
+    'lobby_refer',
+    'Refer & Earn'
+  );
+
+  useBackHandler(
+    isProfileOpen,
+    () => {
+      setIsProfileOpen(false);
+    },
+    'lobby_profile',
+    'Profile'
+  );
+
+  useBackHandler(
+    isNotificationsOpen,
+    () => {
+      setIsNotificationsOpen(false);
+    },
+    'lobby_notifications',
+    'Notifications'
+  );
+
+  useBackHandler(
+    activeTab !== 'home' && !isLeaderboardOpen && !isStudioOpen && !isReferOpen && !isMatchListOpen,
+    () => {
+      setActiveTab('home');
+    },
+    'lobby_tab_home',
+    'Main Lobby'
+  );
 
   const handleSelectTab = (tab: NavTab) => {
     setActiveTab(tab);
@@ -208,6 +294,8 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
         isOpen={isMatchListOpen}
         initialMode={matchListMode}
         balance={balance}
+        userId={userId}
+        userName={userName}
         onClose={() => setIsMatchListOpen(false)}
         onSelectAndJoinMatch={handleSelectGameModeAndStart}
         onOpenDeposit={() => setActiveTab('assets')}

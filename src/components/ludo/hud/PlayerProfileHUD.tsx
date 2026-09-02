@@ -96,32 +96,15 @@ export const PlayerProfileHUD: React.FC<PlayerProfileHUDProps> = ({
           )}
         </div>
 
-        {/* Live Score Tag Pill & Player Name */}
-        <div className="flex flex-col items-center gap-0.5 mt-0.5">
-          <div
-            className={`flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] sm:text-[10px] font-black border shadow-md ${
-              scoreRank === 1
-                ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 border-yellow-200'
-                : 'bg-black/75 text-amber-300 border-white/20'
-            }`}
-          >
-            <span>⭐ {player.score ?? 0}</span>
-          </div>
-
-          <div className="flex items-center gap-1">
-            <span className="text-[9px] sm:text-[10px] font-bold text-white max-w-[60px] truncate drop-shadow">
-              {player.name}
-            </span>
-            <span
-              className={`text-[7px] font-black px-1 rounded-full ${
-                player.isHuman
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                  : 'bg-slate-800/80 text-slate-400 border border-slate-700'
-              }`}
-            >
-              {player.isHuman ? 'REAL' : 'BOT'}
-            </span>
-          </div>
+        {/* Live Score Tag Pill */}
+        <div
+          className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-black border shadow-md ${
+            scoreRank === 1
+              ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 border-yellow-200'
+              : 'bg-black/75 text-amber-300 border-white/20'
+          }`}
+        >
+          <span>⭐ {player.score ?? 0}</span>
         </div>
       </div>
 

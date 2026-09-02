@@ -317,7 +317,7 @@ export class LedgerService {
           );
 
           if (updateRes.rows.length === 0) {
-            throw new Error('Insufficient funds or concurrent withdrawal detected');
+            throw new Error(`Insufficient available USDT balance. Requested: ${amountUsdt}`);
           }
 
           const txId = `ltx_${uuidv4()}`;

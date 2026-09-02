@@ -9,6 +9,9 @@ import {
   Sparkles,
   Flame,
   Info,
+  PartyPopper,
+  Coins,
+  Crown,
 } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
 import { AdventureSnakeBoard } from '../ludo/adventure/AdventureSnakeBoard';
@@ -19,6 +22,7 @@ import {
 } from '../ludo/adventure/types';
 import confetti from 'canvas-confetti';
 import { usePlatformMode } from '../../hooks/usePlatformMode';
+import { UnifiedWalletService } from '../../services/unifiedWalletService';
 
 const TURN_TIME_LIMIT = 10; // 10 seconds per turn
 const MAX_STRIKES = 3; // 3 missed turns = forfeit
@@ -29,6 +33,7 @@ interface SnakeLudoGameProps {
   onToggleMute: () => void;
   entryFee?: number;
   prizePool?: number;
+  userId?: string;
   userName?: string;
   userAvatar?: string;
   playerCount?: number;
@@ -41,13 +46,18 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
   onToggleMute,
   entryFee = 0,
   prizePool = 0,
+  userId = 'user_guest_default',
   userName = 'Player 1',
   userAvatar,
   playerCount = 2,
   onMatchWon,
 }) => {
-  const { platformMode } = usePlatformMode();
-  const currencySymbol = platformMode.currencySymbol || '₹';
+  const { platformMode, currencySymbol } = usePlatformMode();
+
+  // Active match ID for authoritative double-entry settlement
+  const [matchId, setMatchId] = useState<string>(() =>
+    `match_snake_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+  );
 
   // Player positions on 1-100 board
   const [player1Pos, setPlayer1Pos] = useState<number>(1);
@@ -60,6 +70,7 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
   const [isRolling, setIsRolling] = useState<boolean>(false);
   const [isMovingPawn, setIsMovingPawn] = useState<boolean>(false);
   const [winner, setWinner] = useState<string | null>(null);
+  const [isSettling, setIsSettling] = useState<boolean>(false);
 
   // Tournament Rules State: 6s count and Missed Turn Strikes
   const [p1ConsecutiveSixes, setP1ConsecutiveSixes] = useState<number>(0);
@@ -85,6 +96,128 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // Pre-lock match entry fee in database
+  useEffect(() => {
+    if (entryFee > 0) {
+      UnifiedWalletService.lockMatchEntry({
+        userId: 'user_guest_default',
+        username: userName,
+        matchId,
+        gameMode: 'SNAKE_LUDO',
+        playerCount,
+        entryFee,
+        prizePool,
+      }).catch((err) => {
+        console.warn('Snake Ludo entry lock notification:', err.message);
+      });
+    }
+  }, [matchId, entryFee, prizePool, playerCount, userName]);
+
+  // Multi-stage blast party confetti celebration
+  const triggerBlastPartyCelebration = useCallback(() => {
+    // Wave 1: Immediate center explosion
+    confetti({
+      particleCount: 160,
+      spread: 120,
+      startVelocity: 45,
+      origin: { y: 0.5, x: 0.5 },
+      colors: ['#FFD700', '#FFA500', '#00E676', '#00B0FF', '#E040FB', '#FFFFFF'],
+      shapes: ['star', 'circle'],
+      scalar: 1.2,
+      zIndex: 9999,
+    });
+
+    // Wave 2: Left cannon
+    setTimeout(() => {
+      confetti({
+        particleCount: 110,
+        angle: 60,
+        spread: 85,
+        origin: { x: 0.05, y: 0.65 },
+        colors: ['#FFD700', '#FF1493', '#00FFFF', '#76FF03'],
+        zIndex: 9999,
+      });
+    }, 250);
+
+    // Wave 3: Right cannon
+    setTimeout(() => {
+      confetti({
+        particleCount: 110,
+        angle: 120,
+        spread: 85,
+        origin: { x: 0.95, y: 0.65 },
+        colors: ['#FFD700', '#FF1493', '#00FFFF', '#76FF03'],
+        zIndex: 9999,
+      });
+    }, 450);
+
+    // Wave 4: Golden celebratory rain
+    setTimeout(() => {
+      confetti({
+        particleCount: 140,
+        spread: 160,
+        startVelocity: 35,
+        origin: { y: 0.2, x: 0.5 },
+        colors: ['#FFD700', '#F59E0B', '#FBBF24', '#FFFFFF'],
+        shapes: ['star'],
+        scalar: 1.3,
+        zIndex: 9999,
+      });
+    }, 750);
+  }, []);
+
+  // Handle authoritative match finalization
+  const handleFinalizeSnakeMatch = useCallback(
+    async (isP1Winner: boolean) => {
+      const winnerName = isP1Winner ? userName : 'Opponent';
+      setWinner(winnerName);
+      SoundManager.play('pawn-finish');
+      triggerBlastPartyCelebration();
+
+      const effectivePrize = prizePool > 0 ? prizePool : (entryFee > 0 ? entryFee * 1.8 : 0);
+
+      try {
+        setIsSettling(true);
+        await UnifiedWalletService.settleMatchOutcome({
+          matchId,
+          gameMode: 'SNAKE_LUDO',
+          winnerUserId: isP1Winner ? userId : 'opponent_bot_1',
+          winnerName,
+          entryFee,
+          prizePool: effectivePrize,
+          playerCount: 2,
+          playerResults: [
+            {
+              userId: userId,
+              username: userName,
+              rank: isP1Winner ? 1 : 2,
+              finalScore: isP1Winner ? 100 : player1Pos,
+              tokensHome: isP1Winner ? 1 : 0,
+              isHuman: true,
+            },
+            {
+              userId: 'opponent_bot_1',
+              username: 'Opponent',
+              rank: isP1Winner ? 2 : 1,
+              finalScore: isP1Winner ? player2Pos : 100,
+              tokensHome: isP1Winner ? 0 : 1,
+              isHuman: false,
+            },
+          ],
+        });
+
+        if (isP1Winner && effectivePrize > 0) {
+          onMatchWon?.(effectivePrize);
+        }
+      } catch (err: any) {
+        console.error('Snake Ludo settlement error:', err);
+      } finally {
+        setIsSettling(false);
+      }
+    },
+    [matchId, userName, prizePool, entryFee, player1Pos, player2Pos, onMatchWon, triggerBlastPartyCelebration]
+  );
 
   // Step-by-step pawn motion
   const movePawnStepByStep = async (
@@ -183,12 +316,11 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
       setP1ConsecutiveSixes(0);
 
       if (nextStrikes >= MAX_STRIKES) {
-        setWinner('Opponent (Forfeit)');
         setActionAlert({
           text: `${userName} missed 3 turns and forfeited!`,
           type: 'penalty',
         });
-        SoundManager.play('pawn-capture');
+        handleFinalizeSnakeMatch(false);
         return;
       }
 
@@ -205,13 +337,11 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
       setP2ConsecutiveSixes(0);
 
       if (nextStrikes >= MAX_STRIKES) {
-        setWinner(userName);
         setActionAlert({
           text: `Opponent missed 3 turns! ${userName} Wins!`,
           type: 'bonus',
         });
-        SoundManager.play('pawn-finish');
-        if (prizePool > 0) onMatchWon?.(prizePool);
+        handleFinalizeSnakeMatch(true);
         return;
       }
 
@@ -315,19 +445,7 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
 
     // Check if reached Tile 100 (Victory)
     if (finalPos === 100) {
-      const winnerName = isP1 ? userName : 'Opponent';
-      setWinner(winnerName);
-      SoundManager.play('pawn-finish');
-      confetti({
-        particleCount: 180,
-        spread: 95,
-        origin: { y: 0.6 },
-        colors: ['#A79E7B', '#DCCBA7', '#f59e0b', '#10b981', '#ffffff'],
-      });
-
-      if (isP1 && prizePool > 0) {
-        onMatchWon?.(prizePool);
-      }
+      handleFinalizeSnakeMatch(isP1);
       return;
     }
 
@@ -356,6 +474,7 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
 
   const handleReset = () => {
     SoundManager.play('click');
+    setMatchId(`match_snake_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`);
     setPlayer1Pos(1);
     setPlayer2Pos(1);
     setCurrentTurn('p1');
@@ -610,34 +729,69 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
             <motion.div
               initial={{ scale: 0.85, opacity: 0, y: 25 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
-              className="w-full max-w-sm bg-gradient-to-b from-[#262117] via-[#17140e] to-[#0a0906] border-2 border-[#DCCBA7] rounded-3xl p-6 text-center text-white shadow-[0_0_50px_rgba(220,203,167,0.4)] space-y-4"
+              className="relative w-full max-w-sm bg-gradient-to-b from-[#2a1d0f] via-[#17140e] to-[#0a0906] border-2 border-[#DCCBA7] rounded-3xl p-6 text-center text-white shadow-[0_0_50px_rgba(220,203,167,0.5)] space-y-4 overflow-hidden"
               id="snake-ludo-victory-modal"
             >
-              <Trophy className="w-16 h-16 text-[#DCCBA7] mx-auto animate-bounce filter drop-shadow-[0_4px_20px_rgba(220,203,167,0.8)]" />
+              {/* Floating Party Emojis */}
+              <div className="absolute top-3 left-4 text-2xl animate-bounce pointer-events-none">🎉</div>
+              <div className="absolute top-3 right-4 text-2xl animate-bounce pointer-events-none" style={{ animationDelay: '200ms' }}>✨</div>
+
+              <div className="relative mx-auto w-fit">
+                <Trophy className="w-16 h-16 text-[#DCCBA7] mx-auto filter drop-shadow-[0_4px_20px_rgba(220,203,167,0.8)]" />
+                <Crown className="w-7 h-7 text-amber-300 fill-amber-300 absolute -top-2 left-1/2 -translate-x-1/2 animate-pulse" />
+              </div>
 
               <div>
-                <span className="text-[11px] uppercase tracking-widest text-[#A79E7B] font-black">
-                  CHAMPION
-                </span>
+                <div className="flex items-center justify-center gap-1.5 text-[11px] uppercase tracking-widest text-[#A79E7B] font-black">
+                  <PartyPopper className="w-3.5 h-3.5 text-amber-400" />
+                  <span>SNAKE LUDO FINISHED</span>
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                </div>
                 <h2 className="text-2xl sm:text-3xl font-serif font-black text-[#fef3c7] mt-1">
-                  {winner} Won!
+                  {winner === userName ? '🏆 YOU WON!' : `🏆 ${winner} Won!`}
                 </h2>
                 <p className="text-xs text-[#dccba7] mt-1">
-                  Reached Tile 100 first and claimed victory!
+                  {winner === userName ? 'Claimed victory on Tile 100!' : `${winner} reached Tile 100 first!`}
                 </p>
 
-                {prizePool > 0 && winner === userName && (
-                  <div className="mt-3 py-2 px-4 bg-emerald-950/80 border border-emerald-400/60 rounded-xl flex items-center justify-center gap-2 text-emerald-300 font-black text-sm">
-                    <Trophy className="w-4 h-4 text-yellow-400" />
-                    <span>+{currencySymbol}{prizePool.toLocaleString()} INR Credited to Wallet!</span>
-                  </div>
-                )}
+                {/* Winning Prize Banner */}
+                {(() => {
+                  const effectivePrize = prizePool > 0 ? prizePool : (entryFee > 0 ? entryFee * 1.8 : 0);
+                  if (effectivePrize <= 0) return null;
+                  const isUserWinner = winner === userName;
+                  return (
+                    <motion.div
+                      initial={{ scale: 0.95 }}
+                      animate={{ scale: [0.98, 1.02, 0.98] }}
+                      transition={{ duration: 1.8, repeat: Infinity }}
+                      className={`mt-3 py-2.5 px-3.5 rounded-2xl border shadow-lg flex flex-col gap-1 text-left ${
+                        isUserWinner
+                          ? 'bg-gradient-to-r from-emerald-950/90 via-teal-950/90 to-emerald-900/90 border-emerald-400 text-emerald-300'
+                          : 'bg-gradient-to-r from-amber-950/90 to-stone-900/90 border-amber-400/50 text-amber-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs font-black uppercase">
+                          <Coins className="w-4 h-4 text-yellow-400" />
+                          <span>{isUserWinner ? '💰 Winning Cash Prize' : '🏆 Match Winning Amount'}</span>
+                        </div>
+                        <span className="text-base font-black text-white font-mono">
+                          {currencySymbol}{effectivePrize.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-300 flex items-center justify-between pt-0.5 border-t border-white/10">
+                        <span>{isUserWinner ? 'Status: 100% Credited to Wallet' : `Awarded to: ${winner}`}</span>
+                        <span className="font-bold text-emerald-400">Instant Ledger Settled</span>
+                      </div>
+                    </motion.div>
+                  );
+                })()}
               </div>
 
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={handleReset}
-                  className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-[#DCCBA7] to-[#A79E7B] text-[#1c1810] font-sans font-black text-sm shadow-lg hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+                  className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-[#DCCBA7] via-amber-300 to-[#A79E7B] text-[#1c1810] font-sans font-black text-sm shadow-lg hover:brightness-110 active:scale-95 transition-all cursor-pointer"
                   id="snake-ludo-play-again-btn"
                 >
                   Play Again

@@ -30,6 +30,7 @@ import { UsdtTreasuryCustodyTab } from './tabs/UsdtTreasuryCustodyTab';
 import { RpcManagementTab } from './tabs/RpcManagementTab';
 import { ManualPaymentsTab } from './tabs/ManualPaymentsTab';
 import { Coins } from 'lucide-react';
+import { useBackHandler } from '../../hooks/useBackHandler';
 
 interface AdminLayoutProps {
   token: string;
@@ -52,6 +53,25 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const [metrics, setMetrics] = useState<any | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [copiedAliasUrl, setCopiedAliasUrl] = useState(false);
+
+  // Mobile Back Handlers for Admin Panel
+  useBackHandler(
+    isMobileMenuOpen,
+    () => {
+      setIsMobileMenuOpen(false);
+    },
+    'admin_mobile_menu',
+    'Admin Menu'
+  );
+
+  useBackHandler(
+    !isMobileMenuOpen && activeTab !== 'overview',
+    () => {
+      setActiveTab('overview');
+    },
+    'admin_sub_tab',
+    'Admin Overview'
+  );
 
   const fetchMetrics = async () => {
     if (!token) return;

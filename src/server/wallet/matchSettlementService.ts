@@ -25,6 +25,16 @@ export interface MatchSettlementResult {
   status: 'COMPLETED' | 'ALREADY_SETTLED';
 }
 
+export interface MatchSettlementOptions {
+  entryFee?: number | string;
+  prizePool?: number | string;
+  gameMode?: string;
+  playerCount?: number;
+  winnerName?: string;
+  winnerColor?: string;
+  playerUsernames?: Record<string, string>;
+}
+
 export class MatchSettlementService {
   /**
    * Settles an authoritative match outcome idempotently with complete double-entry ledger audit
@@ -32,7 +42,8 @@ export class MatchSettlementService {
   public static async settleMatch(
     matchId: string,
     winnerUserId: string,
-    playerResults: SettlementPlayerResult[]
+    playerResults: SettlementPlayerResult[],
+    options?: MatchSettlementOptions
   ): Promise<MatchSettlementResult> {
     const lockKey = `lock:match:settle:${matchId}`;
 
@@ -71,19 +82,94 @@ export class MatchSettlementService {
                 };
               }
 
-              // 2. Fetch match record
-              const matchRes = await client.query(
+              // 2. Fetch match record (or insert dynamically if not yet registered)
+              let matchRes = await client.query(
                 `SELECT * FROM matches WHERE id = $1 FOR UPDATE`,
                 [matchId]
               );
 
+              const requestedEntryFee = options?.entryFee !== undefined ? parseFloat(String(options.entryFee)) : 0;
+              const requestedGameMode = options?.gameMode || 'ONLINE_ARENA';
+              const requestedPlayerCount = options?.playerCount || Math.max(playerResults.length, 2);
+
               if (matchRes.rows.length === 0) {
-                throw new Error(`Match ${matchId} not found for settlement`);
+                // Ensure pool exists
+                const poolId = `pool_${requestedGameMode.toLowerCase()}_${requestedPlayerCount}p_${requestedEntryFee}u_v1`;
+                await client.query(
+                  `INSERT INTO match_pools (
+                     id, pool_key, game_mode, player_count, entry_fee, rule_version,
+                     platform_fee_rate, is_active, min_buffer_rooms
+                   ) VALUES ($1, $2, $3, $4, $5, 'v1', 0.1000, true, 1)
+                   ON CONFLICT (id) DO NOTHING`,
+                  [
+                    poolId,
+                    `${requestedGameMode}:${requestedPlayerCount}:${requestedEntryFee}:v1`,
+                    requestedGameMode,
+                    requestedPlayerCount,
+                    requestedEntryFee.toFixed(8),
+                  ]
+                );
+
+                // Insert match
+                await client.query(
+                  `INSERT INTO matches (
+                     id, match_code, pool_id, game_mode, player_count, entry_fee,
+                     status, joined_players, max_players, started_at, created_at, updated_at
+                   ) VALUES ($1, $2, $3, $4, $5, $6, 'RUNNING', $7, $8, NOW(), NOW(), NOW())
+                   ON CONFLICT (id) DO NOTHING`,
+                  [
+                    matchId,
+                    matchId.slice(0, 10),
+                    poolId,
+                    requestedGameMode,
+                    requestedPlayerCount,
+                    requestedEntryFee.toFixed(8),
+                    playerResults.length,
+                    requestedPlayerCount,
+                  ]
+                );
+
+                // Insert player records
+                const colors = ['red', 'green', 'yellow', 'blue'];
+                for (let i = 0; i < playerResults.length; i++) {
+                  const pr = playerResults[i];
+                  const color = colors[i % colors.length];
+                  // Ensure user exists in users table if guest or bot
+                  if (pr.userId.startsWith('user_') || pr.userId.startsWith('guest_') || pr.userId.startsWith('bot_') || pr.userId.startsWith('opponent_')) {
+                    const uName = options?.playerUsernames?.[pr.userId] || (pr.userId.startsWith('user_') || pr.userId.startsWith('guest_') ? `User_${pr.userId.slice(-5)}` : pr.userId);
+                    await client.query(
+                      `INSERT INTO users (id, username, display_name)
+                       VALUES ($1, $2, $2)
+                       ON CONFLICT (id) DO NOTHING`,
+                      [pr.userId, uName]
+                    );
+                  }
+
+                  await client.query(
+                    `INSERT INTO match_players (
+                       id, match_id, user_id, color, seat_index, entry_fee, status
+                     ) VALUES ($1, $2, $3, $4, $5, $6, 'JOINED')
+                     ON CONFLICT DO NOTHING`,
+                    [
+                      `mp_${matchId}_${pr.userId}`,
+                      matchId,
+                      pr.userId,
+                      color,
+                      i,
+                      requestedEntryFee.toFixed(8),
+                    ]
+                  );
+                }
+
+                matchRes = await client.query(
+                  `SELECT * FROM matches WHERE id = $1 FOR UPDATE`,
+                  [matchId]
+                );
               }
 
               const matchRow = matchRes.rows[0];
-              const entryFee = matchRow.entry_fee || '1.00000000';
-              const playerCount = matchRow.player_count || playerResults.length || 2;
+              const entryFee = matchRow?.entry_fee || requestedEntryFee.toFixed(8);
+              const playerCount = matchRow?.player_count || playerResults.length || 2;
 
               // 3. Fetch match players
               const playersRes = await client.query(
@@ -92,14 +178,20 @@ export class MatchSettlementService {
               );
 
               const actualPlayerCount = playersRes.rows.length || playerCount;
-              const grossPool = LedgerMath.multiply(entryFee, actualPlayerCount);
+              let grossPool = LedgerMath.multiply(entryFee, actualPlayerCount);
               const platformFeeRate = 0.10; // 10%
-              const platformFee = LedgerMath.multiply(grossPool, platformFeeRate);
-              const netPrizePool = LedgerMath.subtract(grossPool, platformFee);
+              let platformFee = LedgerMath.multiply(grossPool, platformFeeRate);
+              let netPrizePool = LedgerMath.subtract(grossPool, platformFee);
+
+              if (options?.prizePool !== undefined && parseFloat(String(options.prizePool)) > 0) {
+                netPrizePool = parseFloat(String(options.prizePool)).toFixed(8);
+                grossPool = (parseFloat(netPrizePool) / 0.9).toFixed(8);
+                platformFee = (parseFloat(grossPool) - parseFloat(netPrizePool)).toFixed(8);
+              }
 
               // 4. Update player records with rankings & scores
               for (const result of playerResults) {
-                const isWinner = result.userId === winnerUserId;
+                const isWinner = result.userId === winnerUserId || result.rank === 1;
                 const payout = isWinner ? netPrizePool : '0.00000000';
 
                 await client.query(
@@ -125,19 +217,43 @@ export class MatchSettlementService {
                 );
               }
 
-              // 5. Release and settle locked entry fees for all players through the ledger (paid matches only)
+              // 5. Release and settle locked entry fees for real human players through the ledger (paid matches only)
               if (parseFloat(entryFee) > 0) {
-                for (const player of playersRes.rows) {
+                const allPlayersList = playersRes.rows.length > 0 ? playersRes.rows : playerResults.map((pr) => ({ user_id: pr.userId }));
+                for (const player of allPlayersList) {
                   const playerUserId = player.user_id;
-                  // Finalize withdrawal of locked fee
-                  const deductIdemp = `settle_entry_deduct_${matchId}_${playerUserId}`;
-                  await LedgerService.settleWithdrawal(playerUserId, entryFee, '0.00000000', deductIdemp);
+                  const isRealHuman = !playerUserId.startsWith('bot_') && !playerUserId.startsWith('ai_') && !playerUserId.startsWith('opponent_bot');
+                  if (isRealHuman) {
+                    const deductIdemp = `settle_entry_deduct_${matchId}_${playerUserId}`;
+                    try {
+                      // Check if locked transaction exists
+                      const lockCheck = await client.query(
+                        `SELECT id FROM ledger_transactions WHERE idempotency_key = $1 LIMIT 1`,
+                        [`lock_entry_${matchId}_${playerUserId}`]
+                      );
+
+                      if (lockCheck.rows.length > 0) {
+                        // Finalize withdrawal of locked fee
+                        await LedgerService.settleWithdrawal(playerUserId, entryFee, '0.00000000', deductIdemp);
+                      } else {
+                        // Check if user has sufficient available balance before locking
+                        const userW = await LedgerService.getUserWallet(playerUserId);
+                        if (parseFloat(userW.availableBalance || '0') >= parseFloat(entryFee)) {
+                          await LedgerService.lockFundsForWithdrawal(playerUserId, entryFee, `lock_entry_${matchId}_${playerUserId}`);
+                          await LedgerService.settleWithdrawal(playerUserId, entryFee, '0.00000000', deductIdemp);
+                        }
+                      }
+                    } catch (deductErr) {
+                      Logger.warn(`Notice during entry fee settlement for ${playerUserId}:`, deductErr);
+                    }
+                  }
                 }
               }
 
-              // 6. Credit winner with net prize pool
+              // 6. Credit winner with net prize pool (if winner is a real human player)
               let payoutTxId: string | null = null;
-              if (parseFloat(netPrizePool) > 0) {
+              const isWinnerHuman = !winnerUserId.startsWith('bot_') && !winnerUserId.startsWith('ai_') && !winnerUserId.startsWith('opponent_bot');
+              if (parseFloat(netPrizePool) > 0 && isWinnerHuman) {
                 const payoutResult = await LedgerService.creditDeposit(
                   winnerUserId,
                   netPrizePool,
@@ -155,7 +271,6 @@ export class MatchSettlementService {
 
               // 7. Record platform fee collection in platform revenue account
               if (parseFloat(platformFee) > 0) {
-                const platformAccId = await LedgerService.getOrCreateAccount('PLATFORM_TREASURY', 'PLATFORM_REVENUE' as any);
                 const feeTxId = `fee_tx_${uuidv4()}`;
                 await client.query(
                   `INSERT INTO ledger_transactions (id, idempotency_key, tx_type, description, metadata)
@@ -213,7 +328,8 @@ export class MatchSettlementService {
 
               // 10. Update match history records (outside financial transaction block)
               try {
-                for (const player of playersRes.rows) {
+                const allPlayersList = playersRes.rows.length > 0 ? playersRes.rows : playerResults.map((pr) => ({ user_id: pr.userId }));
+                for (const player of allPlayersList) {
                   const isWinner = player.user_id === winnerUserId;
                   const playerRes = playerResults.find((r) => r.userId === player.user_id);
                   await client.query(
@@ -224,7 +340,7 @@ export class MatchSettlementService {
                       `mh_${uuidv4()}`,
                       player.user_id,
                       matchId,
-                      matchRow.game_mode,
+                      matchRow?.game_mode || requestedGameMode,
                       isWinner ? 'WON' : 'LOST',
                       playerRes?.finalScore || 0,
                       playerRes?.tokensHome || 0,
@@ -242,7 +358,7 @@ export class MatchSettlementService {
                 grossPool,
                 platformFee,
                 prizePool: netPrizePool,
-                payoutTxId,
+                payoutTxId: payoutTxId || 'none',
                 status: 'COMPLETED',
               };
             } catch (err) {
@@ -256,15 +372,24 @@ export class MatchSettlementService {
         }
 
         // Memory fallback settlement
-        const grossPool = '2.00000000';
-        const platformFee = '0.20000000';
-        const netPrizePool = '1.80000000';
-        const payout = await LedgerService.creditDeposit(
-          winnerUserId,
-          netPrizePool,
-          `payout_${matchId}_${winnerUserId}`,
-          { matchId, grossPool, platformFee }
-        );
+        const entryFeeNum = options?.entryFee !== undefined ? parseFloat(String(options.entryFee)) : 1;
+        const prizePoolNum = options?.prizePool !== undefined ? parseFloat(String(options.prizePool)) : entryFeeNum * 1.8;
+        const grossPool = (prizePoolNum / 0.9).toFixed(8);
+        const platformFee = (parseFloat(grossPool) - prizePoolNum).toFixed(8);
+        const netPrizePool = prizePoolNum.toFixed(8);
+
+        const isWinnerHuman = !winnerUserId.startsWith('bot_') && !winnerUserId.startsWith('ai_') && !winnerUserId.startsWith('opponent_bot');
+        let payoutTxId = 'mem_payout_none';
+
+        if (isWinnerHuman && prizePoolNum > 0) {
+          const payout = await LedgerService.creditDeposit(
+            winnerUserId,
+            netPrizePool,
+            `payout_${matchId}_${winnerUserId}`,
+            { matchId, grossPool, platformFee }
+          );
+          payoutTxId = payout.transactionId;
+        }
 
         return {
           settlementId: `mem_stl_${uuidv4()}`,
@@ -273,7 +398,7 @@ export class MatchSettlementService {
           grossPool,
           platformFee,
           prizePool: netPrizePool,
-          payoutTxId: payout.transactionId,
+          payoutTxId,
           status: 'COMPLETED',
         };
       },

@@ -27,6 +27,7 @@ import { SoundManager } from '../../audio/soundManager';
 import { NetworkLogo } from './NetworkLogo';
 import { ManualFiatWalletView } from './ManualFiatWalletView';
 import { usePlatformMode } from '../../hooks/usePlatformMode';
+import { useBackHandler } from '../../hooks/useBackHandler';
 import {
   UnifiedWalletService,
   UserWalletData,
@@ -73,6 +74,16 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
   // Manual Tx Hash Tracker state
   const [manualTxHash, setManualTxHash] = useState<string>('');
   const [isTrackingTx, setIsTrackingTx] = useState<boolean>(false);
+
+  // Step-by-step back navigation for Wallet tabs
+  useBackHandler(
+    activeTab !== 'deposit',
+    () => {
+      setActiveTab('deposit');
+    },
+    'wallet_assets_sub_tab',
+    'Deposit Tab'
+  );
   const [trackMsg, setTrackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Synchronized Platform Mode State (Instant zero-delay cache + background server sync)

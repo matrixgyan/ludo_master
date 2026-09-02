@@ -17,6 +17,7 @@ import { SoundManager } from '../../audio/soundManager';
 import { PlayerModeOption, GameVariation, PlayerConfig } from './LudoModeSelectorModal';
 import { ArenaRulesInfoModal } from './ArenaRulesInfoModal';
 import { usePlatformMode } from '../../hooks/usePlatformMode';
+import { useBackHandler } from '../../hooks/useBackHandler';
 import arabAvatarImg from '../../assets/images/arab_avatar_man_1787143002600.jpg';
 import woodBgImg from '../../assets/images/wood_plank_bg_1787143024792.jpg';
 
@@ -43,6 +44,8 @@ interface MatchArenaListViewProps {
   isOpen: boolean;
   initialMode?: 'classic' | 'supreme' | 'snake';
   balance: number;
+  userId?: string;
+  userName?: string;
   onClose: () => void;
   onSelectAndJoinMatch: (
     mode: PlayerModeOption,
@@ -136,6 +139,8 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
   isOpen,
   initialMode = 'classic',
   balance,
+  userId,
+  userName,
   onClose,
   onSelectAndJoinMatch,
   onOpenDeposit,
@@ -149,6 +154,16 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
   const [joiningPoolKey, setJoiningPoolKey] = useState<string | null>(null);
   const [showInfoModal, setShowInfoModal] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Close rules info sub-modal on mobile back before closing the match list
+  useBackHandler(
+    isOpen && showInfoModal,
+    () => {
+      setShowInfoModal(false);
+    },
+    'modal_arena_rules_info',
+    'Arena Rules Info'
+  );
 
   // Sync initialMode when modal opens
   useEffect(() => {
@@ -215,30 +230,50 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
     const poolKey = `${count}p_${entryFee}_${roomId || 'pool'}`;
     setJoiningPoolKey(poolKey);
 
-    // If entry fee > 0 and balance is lower, notify and redirect to deposit if available
+    // 1. Client-Side Balance Validation
     if (entryFee > 0 && balance < entryFee) {
       showToast(`⚠️ Insufficient ${platformMode.platformCurrency} balance (${platformMode.currencySymbol}${balance.toFixed(2)}). Deposit or try free practice!`);
       if (onOpenDeposit) {
-        setTimeout(() => onOpenDeposit(), 700);
+        setTimeout(() => onOpenDeposit(), 600);
       }
       setJoiningPoolKey(null);
       return;
     }
 
+    const activeUserId = userId || 'user_guest_default';
+    const activeUserName = userName || 'Player 1';
+
     try {
       // Direct API Call to reserve room
-      await fetch('/api/matches/join', {
+      const res = await fetch('/api/matches/join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: `user_guest_${Date.now().toString().slice(-6)}`,
-          username: 'Muonimoon',
+          userId: activeUserId,
+          username: activeUserName,
           gameMode: activeGameType === 'classic' ? 'ONLINE_ARENA' : 'LUDO_SUPREME',
           playerCount: count,
           entryFee: entryFee,
           roomId: roomId,
         }),
       });
+
+      const data = await res.json();
+      if (!res.ok || (data && data.success === false)) {
+        const errorText = data?.error || 'Could not join match';
+        if (data?.code === 'INSUFFICIENT_BALANCE' || errorText.toLowerCase().includes('insufficient')) {
+          showToast(`⚠️ Insufficient balance for ${platformMode.currencySymbol}${entryFee} match. Please add funds.`);
+          if (onOpenDeposit) {
+            setTimeout(() => onOpenDeposit(), 600);
+          }
+          setJoiningPoolKey(null);
+          return;
+        }
+
+        showToast(`⚠️ ${errorText}`);
+        setJoiningPoolKey(null);
+        return;
+      }
 
       showToast('✓ Match found! Starting arena...');
       setTimeout(() => {
@@ -251,7 +286,7 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
           [
             {
               id: 'p1',
-              name: 'Muonimoon',
+              name: activeUserName,
               color: 'red',
               avatarUrl: arabAvatarImg,
               isHuman: true,

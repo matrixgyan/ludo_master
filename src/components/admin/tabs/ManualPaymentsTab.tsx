@@ -26,7 +26,9 @@ import {
   IndianRupee,
   DollarSign,
   UploadCloud,
-  Image as ImageIcon
+  Image as ImageIcon,
+  AlertCircle,
+  Download
 } from 'lucide-react';
 
 interface ManualPaymentsTabProps {
@@ -108,6 +110,9 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
   const [actionErrorMsg, setActionErrorMsg] = useState<string | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [previewImageLoading, setPreviewImageLoading] = useState(true);
+  const [previewImageError, setPreviewImageError] = useState(false);
+  const [imageZoom, setImageZoom] = useState(1);
   const [isUploadingGatewayQr, setIsUploadingGatewayQr] = useState(false);
 
   // Gateway form state
@@ -1127,13 +1132,22 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
                     </a>
                   </div>
                   <div
-                    onClick={() => setPreviewImageUrl(selectedDeposit.screenshotUrl!)}
-                    className="relative cursor-pointer group rounded-xl overflow-hidden border border-slate-700 max-h-48 flex items-center justify-center bg-black/60"
+                    onClick={() => {
+                      setPreviewImageLoading(true);
+                      setPreviewImageError(false);
+                      setImageZoom(1);
+                      setPreviewImageUrl(selectedDeposit.screenshotUrl!);
+                    }}
+                    className="relative cursor-pointer group rounded-xl overflow-hidden border border-slate-700 max-h-52 min-h-[120px] flex items-center justify-center bg-black/60"
                   >
                     <img
                       src={selectedDeposit.screenshotUrl}
                       alt="Deposit Proof"
-                      className="max-h-48 object-contain w-full group-hover:scale-105 transition-transform"
+                      className="max-h-52 object-contain w-full group-hover:scale-105 transition-transform"
+                      onError={(e) => {
+                        // Fallback indicator if image path fails
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
                     />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white font-bold text-xs transition-opacity gap-1.5">
                       <Eye className="w-4 h-4" />
@@ -1268,7 +1282,7 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
           onClick={() => setPreviewImageUrl(null)}
         >
           <div
-            className="relative bg-[#0d1321] border border-amber-400/60 rounded-3xl p-3 sm:p-5 max-w-2xl w-full flex flex-col items-center gap-3 shadow-2xl"
+            className="relative bg-[#0d1321] border border-amber-400/60 rounded-3xl p-3 sm:p-5 max-w-3xl w-full flex flex-col items-center gap-3 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-full flex items-center justify-between pb-2 border-b border-slate-800">
@@ -1276,33 +1290,116 @@ export const ManualPaymentsTab: React.FC<ManualPaymentsTabProps> = ({ token }) =
                 <ImageIcon className="w-4 h-4 text-amber-400" />
                 <span>Payment Proof / Receipt Viewer</span>
               </span>
-              <button
-                type="button"
-                onClick={() => setPreviewImageUrl(null)}
-                className="p-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setImageZoom((z) => Math.max(0.5, z - 0.25))}
+                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold"
+                  title="Zoom Out"
+                >
+                  -
+                </button>
+                <span className="text-[11px] font-mono text-slate-300 min-w-[40px] text-center">
+                  {Math.round(imageZoom * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setImageZoom((z) => Math.min(3, z + 0.25))}
+                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold"
+                  title="Zoom In"
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImageZoom(1)}
+                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[10px] font-bold"
+                  title="Reset Zoom"
+                >
+                  Reset
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewImageUrl(null)}
+                  className="p-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white cursor-pointer ml-2"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
-            <div className="w-full max-h-[70vh] overflow-auto flex items-center justify-center bg-black/80 rounded-2xl p-2">
-              <img
-                src={previewImageUrl}
-                alt="Fullscreen Proof"
-                className="max-h-[65vh] w-auto object-contain rounded-lg"
-              />
+            <div className="w-full max-h-[70vh] min-h-[300px] overflow-auto flex items-center justify-center bg-black/80 rounded-2xl p-4 relative">
+              {previewImageLoading && !previewImageError && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-400">
+                  <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs">Loading payment proof from Cloudflare R2...</span>
+                </div>
+              )}
+
+              {previewImageError ? (
+                <div className="p-8 text-center space-y-3">
+                  <AlertCircle className="w-10 h-10 text-rose-400 mx-auto" />
+                  <div className="text-white font-bold text-sm">Receipt Image Unavailable</div>
+                  <p className="text-xs text-slate-400 max-w-sm">
+                    The requested screenshot was not found in storage or the direct network link expired.
+                  </p>
+                  <div className="pt-2 flex justify-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreviewImageError(false);
+                        setPreviewImageLoading(true);
+                      }}
+                      className="px-3 py-1.5 bg-amber-500 text-slate-950 font-bold text-xs rounded-xl"
+                    >
+                      Retry Loading
+                    </button>
+                    <a
+                      href={previewImageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 bg-slate-800 text-cyan-400 font-bold text-xs rounded-xl border border-cyan-500/30"
+                    >
+                      Open Direct Link
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <img
+                  src={previewImageUrl}
+                  alt="Fullscreen Proof"
+                  onLoad={() => setPreviewImageLoading(false)}
+                  onError={() => {
+                    setPreviewImageLoading(false);
+                    setPreviewImageError(true);
+                  }}
+                  style={{ transform: `scale(${imageZoom})`, transformOrigin: 'center center' }}
+                  className="max-h-[65vh] w-auto object-contain rounded-lg transition-transform duration-150"
+                />
+              )}
             </div>
 
             <div className="w-full flex items-center justify-between pt-1">
-              <a
-                href={previewImageUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-cyan-400 hover:underline flex items-center gap-1 font-semibold"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>Open in New Tab</span>
-              </a>
+              <div className="flex items-center gap-3">
+                <a
+                  href={previewImageUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-cyan-400 hover:underline flex items-center gap-1 font-semibold"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open in New Tab</span>
+                </a>
+                <a
+                  href={previewImageUrl}
+                  download="payment-receipt.jpg"
+                  className="text-xs text-emerald-400 hover:underline flex items-center gap-1 font-semibold"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Proof</span>
+                </a>
+              </div>
               <button
                 type="button"
                 onClick={() => setPreviewImageUrl(null)}
