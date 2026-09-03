@@ -523,8 +523,10 @@ export const LudoBoard: React.FC<LudoBoardProps> = ({
                   y: offsetY,
                 }}
                 transition={{
-                  duration: 0.6,
-                  ease: [0.25, 0.1, 0.25, 1], // Smooth weighted arc movement
+                  left: { type: 'spring', stiffness: 280, damping: 20 },
+                  top: { type: 'spring', stiffness: 280, damping: 20 },
+                  x: { duration: 0.15 },
+                  y: { duration: 0.15 },
                 }}
                 className="absolute flex items-center justify-center z-30 pointer-events-auto overflow-visible"
                 style={{

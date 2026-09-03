@@ -1,87 +1,249 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Trophy, Clock, Users, Sparkles, X, ChevronRight, CheckCircle2, Flame, Award, Zap } from 'lucide-react';
-import { SoundManager } from '../../audio/soundManager';
+import {
+  Trophy,
+  Clock,
+  Swords,
+  Crown,
+  Medal,
+  X,
+  ChevronRight,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  Sparkles,
+  Award,
+  Wallet,
+} from 'lucide-react';
 import confetti from 'canvas-confetti';
-import leagueBannerImg from '../../assets/images/ludo_supreme_league_ticket_bg_1787019798437.jpg';
+import { SoundManager } from '../../audio/soundManager';
 import { usePlatformMode } from '../../hooks/usePlatformMode';
+
+interface TournamentParticipation {
+  id: string;
+  matchesPlayed: number;
+  maxMatches: number;
+  highestScore: number;
+  status: string;
+  tier: {
+    tier: string;
+    badge: string;
+    color: string;
+  };
+  isCompleted: boolean;
+}
+
+interface TournamentItem {
+  id: string;
+  gameType: 'supreme' | 'snake';
+  cadence: 'DAILY' | 'WEEKLY';
+  title: string;
+  description: string;
+  entryFee: number;
+  maxMatches: number;
+  prizePool: number;
+  startsAt: string;
+  endsAt: string;
+  status: string;
+  participation: TournamentParticipation | null;
+}
+
+interface LeaderboardEntry {
+  rank: number;
+  userId: string;
+  username: string;
+  avatar: string;
+  highestScore: number;
+  matchesPlayed: number;
+  maxMatches: number;
+  tier: string;
+  tierBadge: string;
+  tierColor: string;
+  isCompleted: boolean;
+}
 
 interface SupremeLeagueModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onJoinLeague: () => void;
+  userId?: string;
   balance: number;
+  onPlayTournamentMatch: (gameType: 'supreme' | 'snake', tournamentId: string) => void;
+  onRefreshBalance?: () => void;
+  onOpenDeposit?: () => void;
 }
 
 export const SupremeLeagueModal: React.FC<SupremeLeagueModalProps> = ({
   isOpen,
   onClose,
-  onJoinLeague,
+  userId = 'default_user',
   balance,
+  onPlayTournamentMatch,
+  onRefreshBalance,
+  onOpenDeposit,
 }) => {
   const { platformMode } = usePlatformMode();
-  const [joined, setJoined] = useState(false);
-  const [activeTab, setActiveTab] = useState<'prizes' | 'leaderboard' | 'rules'>('prizes');
-
-  // Dynamic countdown timer
-  const [timeLeft, setTimeLeft] = useState({ hours: 1, minutes: 14, seconds: 28 });
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const interval = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev.seconds > 0) return { ...prev, seconds: prev.seconds - 1 };
-        if (prev.minutes > 0) return { ...prev, minutes: 59, seconds: 59 };
-        if (prev.hours > 0) return { ...prev, hours: prev.hours - 1, minutes: 59, seconds: 59 };
-        return prev;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isOpen]);
-
-  const handleJoin = () => {
-    SoundManager.play('score-double');
-    confetti({
-      particleCount: 80,
-      spread: 70,
-      origin: { y: 0.6 },
-    });
-    setJoined(true);
-    setTimeout(() => {
-      setJoined(false);
-      onJoinLeague();
-    }, 900);
-  };
-
   const sym = platformMode.currencySymbol;
 
-  const prizeDistribution = [
-    { rank: '# 1', prize: `${sym}50`, tag: 'Mega Winner', highlight: true, color: 'text-amber-300' },
-    { rank: '# 2', prize: `${sym}20`, tag: 'Runner Up', highlight: false, color: 'text-slate-200' },
-    { rank: '# 3 - 10', prize: `${sym}10`, tag: 'Top Tier', highlight: false, color: 'text-amber-400' },
-    { rank: '# 11 - 100', prize: `${sym}5`, tag: 'Champion Club', highlight: false, color: 'text-emerald-300' },
-    { rank: '# 101 - 65,000', prize: `${sym}2`, tag: 'Assured Winner', highlight: false, color: 'text-cyan-300' },
-  ];
+  const [selectedGameType, setSelectedGameType] = useState<'supreme' | 'snake'>('supreme');
+  const [selectedCadence, setSelectedCadence] = useState<'DAILY' | 'WEEKLY'>('DAILY');
+  const [activeTab, setActiveTab] = useState<'overview' | 'leaderboard' | 'rules'>('overview');
 
-  const sampleLeaderboard = [
-    { rank: 1, name: 'Aarav Sharma', score: 1420, prize: `${sym}50`, avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop' },
-    { rank: 2, name: 'Vikram Singh', score: 1360, prize: `${sym}20`, avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=100&h=100&fit=crop' },
-    { rank: 3, name: 'Priya Patel', score: 1290, prize: `${sym}10`, avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop' },
-    { rank: 4, name: 'Rahul Verma', score: 1180, prize: `${sym}10`, avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop' },
-    { rank: 5, name: 'Ananya Roy', score: 1110, prize: `${sym}10`, avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop' },
-  ];
+  const [tournaments, setTournaments] = useState<TournamentItem[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [myStanding, setMyStanding] = useState<LeaderboardEntry | null>(null);
+
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isJoining, setIsJoining] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Time left calculation
+  const [countdown, setCountdown] = useState<string>('');
+
+  // Fetch active tournaments
+  const fetchTournaments = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setErrorMsg(null);
+      const res = await fetch(`/api/tournaments/active?userId=${encodeURIComponent(userId)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.tournaments)) {
+          setTournaments(data.tournaments);
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching tournaments:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchTournaments();
+    }
+  }, [isOpen, fetchTournaments]);
+
+  // Identify currently selected tournament
+  const currentTournament = tournaments.find(
+    (t) => t.gameType === selectedGameType && t.cadence === selectedCadence
+  );
+
+  // Fetch tournament leaderboard when tab changes or tournament changes
+  const fetchLeaderboard = useCallback(async (tournamentId: string) => {
+    try {
+      const res = await fetch(
+        `/api/tournaments/${encodeURIComponent(tournamentId)}/leaderboard?userId=${encodeURIComponent(userId)}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setLeaderboard(data.leaderboard || []);
+          setMyStanding(data.myStanding || null);
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching tournament leaderboard:', err);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (currentTournament) {
+      fetchLeaderboard(currentTournament.id);
+    }
+  }, [currentTournament, fetchLeaderboard]);
+
+  // Countdown timer for active tournament end time
+  useEffect(() => {
+    if (!currentTournament?.endsAt) return;
+
+    const updateCountdown = () => {
+      const diff = new Date(currentTournament.endsAt).getTime() - Date.now();
+      if (diff <= 0) {
+        setCountdown('Ended');
+        return;
+      }
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const secs = Math.floor((diff % (1000 * 60)) / 1000);
+      setCountdown(`${hours}h ${mins}m ${secs}s`);
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [currentTournament]);
+
+  // Join Tournament Handler (Deducts ₹25 via authoritative backend ledger)
+  const handleJoinTournament = async () => {
+    if (!currentTournament) return;
+    if (balance < currentTournament.entryFee) {
+      setErrorMsg(`Insufficient balance (${sym}${balance.toFixed(2)}). Please add funds!`);
+      SoundManager.play('score-minus');
+      return;
+    }
+
+    try {
+      setIsJoining(true);
+      setErrorMsg(null);
+      SoundManager.play('click');
+
+      const res = await fetch('/api/tournaments/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          tournamentId: currentTournament.id,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to join tournament');
+      }
+
+      SoundManager.play('score-double');
+      confetti({
+        particleCount: 70,
+        spread: 60,
+        origin: { y: 0.6 },
+      });
+
+      // Refresh list & balance
+      await fetchTournaments();
+      onRefreshBalance?.();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Could not join tournament');
+      SoundManager.play('score-minus');
+    } finally {
+      setIsJoining(false);
+    }
+  };
+
+  const handleStartMatch = () => {
+    if (!currentTournament) return;
+    SoundManager.play('dice-roll');
+    onPlayTournamentMatch(currentTournament.gameType, currentTournament.id);
+  };
 
   if (!isOpen) return null;
 
+  const participation = currentTournament?.participation;
+  const matchesPlayed = participation?.matchesPlayed ?? 0;
+  const maxMatches = currentTournament?.maxMatches ?? 25;
+  const highestScore = participation?.highestScore ?? 0;
+  const isEnrolled = !!participation;
+  const isCompleted = matchesPlayed >= maxMatches;
+
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3.5 bg-black/80 backdrop-blur-md select-none">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md select-none">
         <motion.div
-          initial={{ opacity: 0, scale: 0.92, y: 20 }}
+          initial={{ opacity: 0, scale: 0.94, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.92, y: 20 }}
-          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="relative w-full max-w-md bg-gradient-to-b from-[#180b33] via-[#0f0724] to-[#090317] rounded-3xl border border-amber-400/40 shadow-[0_20px_60px_rgba(0,0,0,0.9)] overflow-hidden text-white flex flex-col max-h-[90vh]"
+          exit={{ opacity: 0, scale: 0.94, y: 15 }}
+          transition={{ type: 'spring', damping: 25, stiffness: 320 }}
+          className="relative w-full max-w-xl bg-gradient-to-b from-[#160a2c] via-[#0d051c] to-[#080212] border border-amber-400/40 rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.9)] text-white flex flex-col max-h-[92vh] overflow-hidden"
         >
           {/* TOP CLOSE BUTTON */}
           <button
@@ -89,216 +251,480 @@ export const SupremeLeagueModal: React.FC<SupremeLeagueModalProps> = ({
               SoundManager.play('click');
               onClose();
             }}
-            className="absolute top-3.5 right-3.5 z-20 w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 border border-white/20 flex items-center justify-center text-white/80 hover:text-white transition-all active:scale-90"
+            className="absolute top-4 right-4 z-20 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white/80 hover:text-white transition-all active:scale-95 cursor-pointer"
+            title="Close"
           >
             <X className="w-4 h-4" />
           </button>
 
-          {/* HERO BANNER SECTION */}
-          <div className="relative w-full h-44 overflow-hidden flex-shrink-0">
-            <img
-              src={leagueBannerImg}
-              alt="Ludo Supreme League Banner"
-              referrerPolicy="no-referrer"
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#180b33] via-[#180b33]/40 to-transparent" />
-            
-            {/* Top Live Badge */}
-            <div className="absolute top-3 left-3.5 z-10 flex items-center gap-1.5 bg-emerald-500/90 border border-emerald-300/60 shadow-[0_2px_10px_rgba(16,185,129,0.4)] px-3 py-1 rounded-full text-white text-[11px] font-extrabold tracking-wide">
-              <Clock className="w-3.5 h-3.5 text-white animate-pulse" />
-              <span>
-                Closes in {String(timeLeft.hours).padStart(2, '0')}h {String(timeLeft.minutes).padStart(2, '0')}m {String(timeLeft.seconds).padStart(2, '0')}s
+          {/* HEADER SECTION */}
+          <div className="px-6 pt-5 pb-3 border-b border-white/10">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-300 flex items-center justify-center text-slate-950 shadow-md">
+                <Trophy className="w-5 h-5 fill-slate-950" />
+              </div>
+              <div>
+                <h2 className="text-lg font-black text-white tracking-wide flex items-center gap-2">
+                  Ludo Supreme League
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30 font-bold uppercase">
+                    Tournaments
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Compete in daily & weekly tournaments. Highest score takes the prize pool!
+                </p>
+              </div>
+            </div>
+
+            {/* TOURNAMENT SELECTORS */}
+            <div className="mt-4 flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between">
+              {/* 1. Game Type Selector: Ludo Supreme vs Snake Ludo */}
+              <div className="grid grid-cols-2 gap-1.5 p-1 bg-black/40 rounded-xl border border-white/10 text-xs font-bold">
+                <button
+                  onClick={() => {
+                    SoundManager.play('click');
+                    setSelectedGameType('supreme');
+                  }}
+                  className={`py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    selectedGameType === 'supreme'
+                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Crown className="w-3.5 h-3.5 text-amber-300" />
+                  Ludo Supreme
+                </button>
+                <button
+                  onClick={() => {
+                    SoundManager.play('click');
+                    setSelectedGameType('snake');
+                  }}
+                  className={`py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    selectedGameType === 'snake'
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
+                  Snake Ludo
+                </button>
+              </div>
+
+              {/* 2. Cadence Selector: Daily (25 Matches Target) vs Weekly */}
+              <div className="grid grid-cols-2 gap-1.5 p-1 bg-black/40 rounded-xl border border-white/10 text-xs font-bold">
+                <button
+                  onClick={() => {
+                    SoundManager.play('click');
+                    setSelectedCadence('DAILY');
+                  }}
+                  className={`py-1.5 px-2.5 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                    selectedCadence === 'DAILY'
+                      ? 'bg-amber-500 text-slate-950 shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Clock className="w-3 h-3" />
+                  Daily (25 Matches)
+                </button>
+                <button
+                  onClick={() => {
+                    SoundManager.play('click');
+                    setSelectedCadence('WEEKLY');
+                  }}
+                  className={`py-1.5 px-2.5 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                    selectedCadence === 'WEEKLY'
+                      ? 'bg-amber-500 text-slate-950 shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Award className="w-3 h-3" />
+                  Weekly League
+                </button>
+              </div>
+            </div>
+
+            {/* TAB NAVIGATION */}
+            <div className="flex gap-4 mt-3 pt-2 border-t border-white/5 text-xs font-semibold">
+              <button
+                onClick={() => {
+                  SoundManager.play('click');
+                  setActiveTab('overview');
+                }}
+                className={`pb-1 border-b-2 transition-colors cursor-pointer ${
+                  activeTab === 'overview'
+                    ? 'border-amber-400 text-amber-300'
+                    : 'border-transparent text-slate-400 hover:text-white'
+                }`}
+              >
+                Tournament Info & Play
+              </button>
+              <button
+                onClick={() => {
+                  SoundManager.play('click');
+                  setActiveTab('leaderboard');
+                }}
+                className={`pb-1 border-b-2 transition-colors cursor-pointer ${
+                  activeTab === 'leaderboard'
+                    ? 'border-amber-400 text-amber-300'
+                    : 'border-transparent text-slate-400 hover:text-white'
+                }`}
+              >
+                Live Scores & Ranks
+              </button>
+              <button
+                onClick={() => {
+                  SoundManager.play('click');
+                  setActiveTab('rules');
+                }}
+                className={`pb-1 border-b-2 transition-colors cursor-pointer ${
+                  activeTab === 'rules'
+                    ? 'border-amber-400 text-amber-300'
+                    : 'border-transparent text-slate-400 hover:text-white'
+                }`}
+              >
+                Rules & Scoring
+              </button>
+            </div>
+          </div>
+
+          {/* MAIN MODAL BODY */}
+          <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            {errorMsg && (
+              <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {errorMsg}
+                </span>
+                {onOpenDeposit && (
+                  <button
+                    onClick={onOpenDeposit}
+                    className="px-2.5 py-1 rounded-lg bg-red-500 hover:bg-red-400 text-white font-bold text-[11px] cursor-pointer"
+                  >
+                    Add Funds
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* TAB 1: OVERVIEW & PLAY MATCH */}
+            {activeTab === 'overview' && (
+              <div className="space-y-4">
+                {/* TOURNAMENT HERO STATS CARD */}
+                <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-3 relative overflow-hidden">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="text-base font-black text-white">
+                        {currentTournament?.title || 'Championship Tournament'}
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {currentTournament?.description}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] font-bold text-slate-400 block uppercase">
+                        Prize Pool
+                      </span>
+                      <span className="text-base font-black text-amber-300">
+                        {sym}
+                        {currentTournament?.prizePool?.toLocaleString('en-IN') || '5,000'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Key Stats Row */}
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/5 text-center">
+                    <div className="p-2 rounded-xl bg-black/30 border border-white/5">
+                      <span className="text-[10px] text-slate-400 block font-medium">Entry Fee</span>
+                      <span className="text-xs font-black text-white">
+                        {sym}
+                        {currentTournament?.entryFee ?? 25}
+                      </span>
+                    </div>
+                    <div className="p-2 rounded-xl bg-black/30 border border-white/5">
+                      <span className="text-[10px] text-slate-400 block font-medium">Target Limit</span>
+                      <span className="text-xs font-black text-amber-300">
+                        {maxMatches} Matches
+                      </span>
+                    </div>
+                    <div className="p-2 rounded-xl bg-black/30 border border-white/5">
+                      <span className="text-[10px] text-slate-400 block font-medium">Closes In</span>
+                      <span className="text-xs font-black text-emerald-400 font-mono">
+                        {countdown || 'Active'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* USER PARTICIPATION PROGRESS CARD */}
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-400/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-amber-300 font-bold text-xs">
+                        {isEnrolled ? '✓' : '!'}
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white">
+                          {isEnrolled ? 'Your Tournament Ticket' : 'Not Registered Yet'}
+                        </h4>
+                        <span className="text-[10px] text-slate-300">
+                          {isEnrolled
+                            ? 'Target: Highest score across your 25 matches wins'
+                            : `Entry ticket is ${sym}25 for ${maxMatches} matches`}
+                        </span>
+                      </div>
+                    </div>
+
+                    {isEnrolled && (
+                      <div className="text-right">
+                        <span className="text-[10px] font-bold text-slate-400 block uppercase">
+                          Peak Score
+                        </span>
+                        <span className="text-sm font-black text-amber-300">
+                          {highestScore > 0 ? `${highestScore} PTS` : '0 PTS'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 25 Matches Progress Bar (if enrolled) */}
+                  {isEnrolled && (
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-200">
+                          Matches Played: {matchesPlayed} / {maxMatches}
+                        </span>
+                        <span className="text-amber-300 font-semibold text-[11px]">
+                          {isCompleted
+                            ? 'Quota Completed'
+                            : `${maxMatches - matchesPlayed} matches remaining`}
+                        </span>
+                      </div>
+                      <div className="w-full bg-black/50 h-3 rounded-full overflow-hidden p-0.5 border border-amber-400/30">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-amber-400 to-yellow-300 transition-all duration-300"
+                          style={{
+                            width: `${Math.min(100, (matchesPlayed / maxMatches) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ACTION BUTTON */}
+                  <div className="pt-2">
+                    {!isEnrolled ? (
+                      <button
+                        onClick={handleJoinTournament}
+                        disabled={isJoining}
+                        className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 active:scale-98 transition-all cursor-pointer"
+                      >
+                        {isJoining ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            Registering Ticket...
+                          </>
+                        ) : (
+                          <>
+                            <Trophy className="w-4 h-4 fill-slate-950" />
+                            Join League ({sym}{currentTournament?.entryFee ?? 25} Entry Fee)
+                          </>
+                        )}
+                      </button>
+                    ) : isCompleted ? (
+                      <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-400/40 text-center">
+                        <div className="text-xs font-black text-emerald-300 flex items-center justify-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4" />
+                          All 25 Matches Finished!
+                        </div>
+                        <p className="text-[11px] text-slate-300 mt-1">
+                          Your highest score of <strong className="text-amber-300">{highestScore} PTS</strong> is locked.
+                          Winners receive their prize money automatically at tournament end!
+                        </p>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handleStartMatch}
+                        className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-98 transition-all cursor-pointer"
+                      >
+                        <Swords className="w-4 h-4 fill-slate-950" />
+                        Play Tournament Match ({matchesPlayed + 1}/{maxMatches})
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* HOW WINNER IS DECIDED EXPLANATION */}
+                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 text-xs text-slate-400 space-y-1">
+                  <span className="font-bold text-slate-300 block">🏆 How to Win:</span>
+                  <p>
+                    Every player gets <strong>25 tournament matches</strong>. You don't need to win every match — 
+                    what counts is your <strong>single highest peak score</strong>. Make high pawn runs and double points
+                    at home to achieve the highest score and win the top cash prize!
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: LIVE TOURNAMENT LEADERBOARD */}
+            {activeTab === 'leaderboard' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+                  <span>
+                    Tournament: <strong className="text-white">{currentTournament?.title}</strong>
+                  </span>
+                  <span className="text-amber-400 font-medium">Ranked by Highest Score</span>
+                </div>
+
+                {leaderboard.length === 0 ? (
+                  <div className="py-12 text-center text-slate-400 text-sm flex flex-col items-center justify-center gap-2">
+                    <Trophy className="w-8 h-8 text-amber-400/60" />
+                    <span>No scores recorded yet in this tournament.</span>
+                    <span className="text-xs text-slate-500">
+                      Join and play your first match to top the leaderboard!
+                    </span>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="px-3 py-1 text-[11px] font-semibold text-slate-400 flex items-center justify-between border-b border-white/5 uppercase tracking-wider">
+                      <div className="flex items-center gap-3">
+                        <span className="w-6 text-center">#</span>
+                        <span>Player</span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span>Matches</span>
+                        <span className="w-20 text-right">High Score</span>
+                      </div>
+                    </div>
+
+                    {leaderboard.map((item) => (
+                      <div
+                        key={item.userId}
+                        className={`px-3 py-2.5 rounded-xl border flex items-center justify-between transition-colors ${
+                          item.userId === userId
+                            ? 'bg-amber-500/15 border-amber-400/50 text-white'
+                            : 'bg-white/[0.02] hover:bg-white/[0.04] border-white/5 text-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="w-6 text-center font-bold text-xs text-amber-300">
+                            {item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : `#${item.rank}`}
+                          </span>
+                          <img
+                            src={item.avatar}
+                            alt={item.username}
+                            className="w-7 h-7 rounded-full border border-white/10 object-cover bg-black/40"
+                          />
+                          <div className="leading-tight">
+                            <span className="text-xs font-bold block truncate max-w-[130px] sm:max-w-[180px]">
+                              {item.username}
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              {item.tierBadge} {item.tier}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4">
+                          <span className="text-[11px] text-slate-400 font-mono">
+                            {item.matchesPlayed}/{item.maxMatches}
+                          </span>
+                          <div className="w-20 text-right leading-none">
+                            <span className="text-sm font-black text-amber-300">
+                              {item.highestScore}
+                            </span>
+                            <span className="text-[9px] block text-slate-400 uppercase font-bold mt-0.5">
+                              PTS
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 3: RULES & SCORING */}
+            {activeTab === 'rules' && (
+              <div className="space-y-3 text-xs text-slate-300">
+                <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2">
+                  <h4 className="font-bold text-white text-sm flex items-center gap-1.5">
+                    <Trophy className="w-4 h-4 text-amber-400" />
+                    Tournament Rules & Participation
+                  </h4>
+                  <ul className="list-disc list-inside space-y-1.5 text-slate-300 leading-relaxed">
+                    <li>
+                      <strong>Entry Fee:</strong> {sym}25 fixed entry fee debited securely from your game wallet.
+                    </li>
+                    <li>
+                      <strong>Match Limit:</strong> In the Daily Tournament, every registered user has exactly <strong>25 match attempts</strong>.
+                    </li>
+                    <li>
+                      <strong>Game Modes:</strong> You can choose either <strong>Ludo Supreme Tournament</strong> or <strong>Snake Ludo Tournament</strong>. Both have independent 25-match daily quotas and prize pools.
+                    </li>
+                    <li>
+                      <strong>Winner Determination:</strong> When the tournament concludes, the player who achieved the <strong>highest single match score</strong> is crowned the winner 🏆.
+                    </li>
+                    <li>
+                      <strong>Weekly Marathon:</strong> Weekly championships run across 7 days allowing up to 100 matches to achieve your ultimate peak score.
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2">
+                  <h4 className="font-bold text-white text-sm flex items-center gap-1.5">
+                    <Crown className="w-4 h-4 text-purple-400" />
+                    Score Tiers & Ranks
+                  </h4>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="p-2 rounded-lg bg-black/30 border border-white/5">
+                      <span className="text-amber-600 font-bold block">🥉 Challenger (Bronze)</span>
+                      <span className="text-slate-400">1 – 400 PTS</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-black/30 border border-white/5">
+                      <span className="text-slate-300 font-bold block">🥈 Warrior (Silver)</span>
+                      <span className="text-slate-400">401 – 1,000 PTS</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-black/30 border border-white/5">
+                      <span className="text-yellow-400 font-bold block">🥇 Champion (Gold)</span>
+                      <span className="text-slate-400">1,001 – 2,000 PTS</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-black/30 border border-white/5">
+                      <span className="text-cyan-400 font-bold block">⚡ Master (Platinum)</span>
+                      <span className="text-slate-400">2,001 – 5,000 PTS</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-black/30 border border-white/5">
+                      <span className="text-rose-400 font-bold block">💎 Grandmaster (Ruby)</span>
+                      <span className="text-slate-400">5,001 – 10,000 PTS</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-black/30 border border-white/5">
+                      <span className="text-purple-400 font-bold block">👑 Crown Sovereign</span>
+                      <span className="text-slate-400">10,000+ PTS</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* FOOTER BAR */}
+          <div className="px-6 py-3 border-t border-white/10 bg-[#070210] flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2">
+              <Wallet className="w-4 h-4 text-amber-400" />
+              <span className="text-slate-400">
+                Wallet Balance: <strong className="text-white">{sym}{balance.toFixed(2)}</strong>
               </span>
             </div>
 
-            {/* Banner Titles */}
-            <div className="absolute bottom-3 left-4 right-4 z-10">
-              <div className="flex items-center gap-2 mb-0.5">
-                <span className="bg-amber-400/20 text-amber-300 border border-amber-400/40 text-[10px] font-black uppercase px-2 py-0.5 rounded-md tracking-wider flex items-center gap-1">
-                  <Flame className="w-3 h-3 fill-amber-400 text-amber-400" />
-                  BIG REWARDS LEAGUE
-                </span>
-                <span className="text-emerald-300 text-xs font-black flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> 65,000 Assured Winners
-                </span>
-              </div>
-              <h2 className="text-2xl font-black text-white drop-shadow-md tracking-tight">
-                Ludo Supreme League
-              </h2>
-            </div>
-          </div>
-
-          {/* TAB BAR NAVIGATION */}
-          <div className="flex items-center border-b border-white/10 px-4 bg-white/5 flex-shrink-0">
-            <button
-              onClick={() => {
-                SoundManager.play('click');
-                setActiveTab('prizes');
-              }}
-              className={`flex-1 py-2.5 text-xs font-bold transition-all relative ${
-                activeTab === 'prizes' ? 'text-amber-300' : 'text-white/60 hover:text-white'
-              }`}
-            >
-              Prize Breakup
-              {activeTab === 'prizes' && (
-                <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400" />
-              )}
-            </button>
-            <button
-              onClick={() => {
-                SoundManager.play('click');
-                setActiveTab('leaderboard');
-              }}
-              className={`flex-1 py-2.5 text-xs font-bold transition-all relative ${
-                activeTab === 'leaderboard' ? 'text-amber-300' : 'text-white/60 hover:text-white'
-              }`}
-            >
-              Leaderboard
-              {activeTab === 'leaderboard' && (
-                <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400" />
-              )}
-            </button>
-            <button
-              onClick={() => {
-                SoundManager.play('click');
-                setActiveTab('rules');
-              }}
-              className={`flex-1 py-2.5 text-xs font-bold transition-all relative ${
-                activeTab === 'rules' ? 'text-amber-300' : 'text-white/60 hover:text-white'
-              }`}
-            >
-              Rules & Scoring
-              {activeTab === 'rules' && (
-                <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400" />
-              )}
-            </button>
-          </div>
-
-          {/* TAB CONTENT AREA */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3.5 scrollbar-thin scrollbar-thumb-purple-500/30">
-            {activeTab === 'prizes' && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs text-white/50 px-2 font-medium">
-                  <span>RANK</span>
-                  <span>WINNING PRIZE</span>
-                </div>
-                {prizeDistribution.map((item, idx) => (
-                  <div
-                    key={`prize-rank-${item.rank}-${idx}`}
-                    className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
-                      item.highlight
-                        ? 'bg-gradient-to-r from-amber-500/20 via-yellow-500/10 to-amber-500/20 border-amber-400/50 shadow-[0_4px_16px_rgba(245,158,11,0.15)]'
-                        : 'bg-white/5 border-white/10 hover:bg-white/10'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs ${
-                          idx === 0
-                            ? 'bg-amber-400 text-slate-950 shadow-md'
-                            : idx === 1
-                            ? 'bg-slate-300 text-slate-950'
-                            : idx === 2
-                            ? 'bg-amber-700 text-white'
-                            : 'bg-white/10 text-white/80'
-                        }`}
-                      >
-                        {idx + 1 <= 3 ? <Trophy className="w-4 h-4" /> : idx + 1}
-                      </div>
-                      <div>
-                        <div className="text-sm font-bold text-white">{item.rank}</div>
-                        <div className="text-[10px] text-white/60 font-medium">{item.tag}</div>
-                      </div>
-                    </div>
-                    <div className={`text-base font-black tracking-tight ${item.color}`}>
-                      {item.prize}
-                    </div>
-                  </div>
-                ))}
+            {myStanding && (
+              <div className="text-right text-[11px] text-slate-300">
+                Your Rank:{' '}
+                <strong className="text-amber-300">
+                  {myStanding.rank === 1 ? '🥇 #1' : `#${myStanding.rank}`}
+                </strong>{' '}
+                ({myStanding.highestScore} PTS)
               </div>
             )}
-
-            {activeTab === 'leaderboard' && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs text-white/50 px-2 font-medium">
-                  <span>PLAYER</span>
-                  <span>POINTS / PRIZE</span>
-                </div>
-                {sampleLeaderboard.map((player, idx) => (
-                  <div
-                    key={`sl-player-${player.rank}-${player.name}-${idx}`}
-                    className="flex items-center justify-between p-2.5 rounded-2xl bg-white/5 border border-white/10"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-5 text-center text-xs font-black text-amber-300">
-                        #{player.rank}
-                      </span>
-                      <img
-                        src={player.avatar}
-                        alt={player.name}
-                        className="w-8 h-8 rounded-full border border-white/20 object-cover"
-                      />
-                      <span className="text-xs font-bold text-white">{player.name}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs font-black text-amber-300">{player.score} pts</div>
-                      <div className="text-[10px] text-emerald-400 font-bold">{player.prize}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {activeTab === 'rules' && (
-              <div className="space-y-2.5 text-xs text-white/80 leading-relaxed bg-white/5 p-3.5 rounded-2xl border border-white/10">
-                <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="text-white font-bold block">Open Tokens (No 6 Required):</strong>
-                    All pawns start active and moving from the start tile immediately.
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Award className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="text-white font-bold block">2X Home Multiplier:</strong>
-                    First pawn reaching Home instantly doubles your entire match score (2X multiplier)!
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Clock className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="text-white font-bold block">3:00 Fast Match Timer:</strong>
-                    Highest score when timer finishes wins the 1st prize directly.
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* BOTTOM FIXED ACTION DOCK */}
-          <div className="p-4 bg-gradient-to-t from-black via-black/80 to-transparent border-t border-white/10 flex items-center justify-between gap-3 flex-shrink-0">
-            <div>
-              <div className="text-[10px] uppercase tracking-wider text-white/60 font-semibold">
-                ENTRY FEE
-              </div>
-              <div className="text-lg font-black text-emerald-400 flex items-center gap-1">
-                FREE <span className="text-xs line-through text-white/40">{platformMode.currencySymbol}25</span>
-              </div>
-            </div>
-
-            <motion.button
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.96 }}
-              onClick={handleJoin}
-              disabled={joined}
-              className="flex-1 py-3 px-5 rounded-2xl bg-gradient-to-r from-emerald-500 via-green-500 to-emerald-600 hover:from-emerald-400 hover:to-green-500 text-white font-black text-sm sm:text-base shadow-[0_6px_20px_rgba(16,185,129,0.45)] border border-emerald-300/40 flex items-center justify-center gap-2 transition-all"
-            >
-              <Sparkles className="w-4 h-4 text-white fill-white" />
-              <span>{joined ? 'Joining Match...' : 'Join Tournament (Free)'}</span>
-              <ChevronRight className="w-4 h-4 text-white/80" />
-            </motion.button>
           </div>
         </motion.div>
       </div>

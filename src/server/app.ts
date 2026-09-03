@@ -9,6 +9,7 @@ import { matchApiRouter } from './routes/matchApi';
 import { notificationRouter } from './routes/notificationRoutes';
 import { referralRouter } from './routes/referralRoutes';
 import { authRouter } from './routes/authRoutes';
+import { tournamentRouter } from './routes/tournamentRoutes';
 import { ensureDatabaseTables } from './db/migrator';
 import { isPostgresConfigured } from './db/client';
 import { SettingsStore } from './storage/settingsStore';
@@ -82,6 +83,7 @@ export function createApp(): express.Application {
   app.use(notificationRouter);
   app.use(referralRouter);
   app.use(authRouter);
+  app.use(tournamentRouter);
 
   // Global fallback error handler
   app.use((err: any, req: Request, res: Response, next: NextFunction) => {

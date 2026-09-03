@@ -32,7 +32,8 @@ interface GameLobbyProps {
     prizePool: number,
     gameType?: 'classic' | 'supreme' | 'snake',
     variation?: GameVariation,
-    playersConfig?: PlayerConfig[]
+    playersConfig?: PlayerConfig[],
+    tournamentId?: string
   ) => void;
   userId?: string;
   userName?: string;
@@ -40,6 +41,7 @@ interface GameLobbyProps {
   userEmail?: string;
   onLogout?: () => void;
   onAvatarUpdate?: (newAvatarUrl: string) => void;
+  onRefreshBalance?: () => void;
 }
 
 export const GameLobby: React.FC<GameLobbyProps> = ({
@@ -54,6 +56,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   userEmail,
   onLogout,
   onAvatarUpdate,
+  onRefreshBalance,
 }) => {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
@@ -278,7 +281,11 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
           </main>
 
           {/* FLOATING STUCK RANK BADGE ON THE RIGHT DISPLAY */}
-          <FloatingRankWidget rank={59} onOpenLeaderboard={() => setIsLeaderboardOpen(true)} />
+          <FloatingRankWidget
+            userId={userId}
+            onOpenLeaderboard={() => setIsLeaderboardOpen(true)}
+            onOpenLeague={() => setIsLeagueModalOpen(true)}
+          />
         </>
       )}
 
@@ -317,11 +324,14 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
       <SupremeLeagueModal
         isOpen={isLeagueModalOpen}
         onClose={() => setIsLeagueModalOpen(false)}
-        onJoinLeague={() => {
-          setIsLeagueModalOpen(false);
-          onStartOnlineMatch(4, 0, 50, 'supreme');
-        }}
+        userId={userId}
         balance={balance}
+        onPlayTournamentMatch={(gType, tId) => {
+          setIsLeagueModalOpen(false);
+          onStartOnlineMatch(4, 0, 50, gType, undefined, undefined, tId);
+        }}
+        onRefreshBalance={onRefreshBalance}
+        onOpenDeposit={() => setActiveTab('assets')}
       />
 
       <LeaderboardModal
@@ -330,10 +340,10 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
           setIsLeaderboardOpen(false);
           setActiveTab('home');
         }}
-        userBalance={balance}
+        userId={userId}
         onPlayGame={() => {
           setIsLeaderboardOpen(false);
-          handleOpenOnlineMatchList('supreme');
+          setIsLeagueModalOpen(true);
         }}
       />
 

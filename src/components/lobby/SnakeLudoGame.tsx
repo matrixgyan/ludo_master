@@ -37,6 +37,7 @@ interface SnakeLudoGameProps {
   userName?: string;
   userAvatar?: string;
   playerCount?: number;
+  tournamentId?: string;
   onMatchWon?: (prize: number) => void;
 }
 
@@ -50,6 +51,7 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
   userName = 'Player 1',
   userAvatar,
   playerCount = 2,
+  tournamentId,
   onMatchWon,
 }) => {
   const { platformMode, currencySymbol } = usePlatformMode();
@@ -94,6 +96,7 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
   const [isRulesOpen, setIsRulesOpen] = useState<boolean>(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const hasFinalizedRef = useRef<boolean>(false);
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -170,6 +173,9 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
   // Handle authoritative match finalization
   const handleFinalizeSnakeMatch = useCallback(
     async (isP1Winner: boolean) => {
+      if (hasFinalizedRef.current) return;
+      hasFinalizedRef.current = true;
+
       const winnerName = isP1Winner ? userName : 'Opponent';
       setWinner(winnerName);
       SoundManager.play('pawn-finish');
@@ -205,6 +211,7 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
               isHuman: false,
             },
           ],
+          tournamentId,
         });
 
         if (isP1Winner && effectivePrize > 0) {

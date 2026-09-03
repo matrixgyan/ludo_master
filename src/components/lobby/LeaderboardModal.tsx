@@ -1,443 +1,436 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Trophy,
   Crown,
   Medal,
-  Flame,
-  Sparkles,
-  TrendingUp,
-  Award,
-  Users,
   X,
   RefreshCw,
-  Zap,
-  ArrowUpRight,
-  ShieldCheck,
-  CheckCircle2,
-  Clock,
-  IndianRupee
+  Sparkles,
+  Swords,
+  ChevronRight,
+  TrendingUp,
 } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
-import confetti from 'canvas-confetti';
 
-interface LiveWinnerItem {
-  id: string;
-  username: string;
-  avatar: string;
-  amount: number;
-  gameMode: string;
-  timeAgo: string;
-  badge: string;
-  streak?: number;
-}
-
-interface RankedChampionItem {
+interface LeaderboardItem {
   rank: number;
+  userId: string;
   username: string;
   avatar: string;
-  totalWon: number;
+  highestScore: number;
+  matchesPlayed: number;
   matchesWon: number;
-  winRate: string;
   tier: string;
-  state?: string;
+  tierBadge: string;
+  tierColor: string;
 }
 
 interface LeaderboardModalProps {
   isOpen: boolean;
   onClose: () => void;
-  userBalance?: number;
+  userId?: string;
   onPlayGame?: () => void;
 }
 
 export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
   isOpen,
   onClose,
-  userBalance = 0,
+  userId = 'default_user',
   onPlayGame,
 }) => {
-  const [activeTab, setActiveTab] = useState<'live-winners' | 'daily' | 'weekly' | 'all-time'>('live-winners');
+  const [timeframe, setTimeframe] = useState<'today' | 'weekly' | 'all-time'>('today');
+  const [gameType, setGameType] = useState<'all' | 'supreme' | 'snake'>('all');
+  const [leaderboard, setLeaderboard] = useState<LeaderboardItem[]>([]);
+  const [myStanding, setMyStanding] = useState<LeaderboardItem | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [liveWinners, setLiveWinners] = useState<LiveWinnerItem[]>([]);
-  const [topRanked, setTopRanked] = useState<RankedChampionItem[]>([]);
-  const [totalPaidOutToday, setTotalPaidOutToday] = useState('₹3,42,850');
-  const [activeChampionsCount, setActiveChampionsCount] = useState(1420);
-  const [lastRefreshed, setLastRefreshed] = useState<string>('Just now');
 
-  const fetchLeaderboardData = async () => {
+  const fetchLeaderboard = useCallback(async () => {
     try {
       setIsLoading(true);
-      const res = await fetch('/api/leaderboard/live-winners');
+      const url = `/api/leaderboard/highest-scores?timeframe=${timeframe}&gameType=${gameType}&userId=${encodeURIComponent(userId)}`;
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          setLiveWinners(data.liveWinners || []);
-          setTopRanked(data.topRanked || []);
-          if (data.totalPaidOutToday) setTotalPaidOutToday(data.totalPaidOutToday);
-          if (data.activeChampionsCount) setActiveChampionsCount(data.activeChampionsCount);
-          setLastRefreshed(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+          setLeaderboard(data.leaderboard || []);
+          setMyStanding(data.myStanding || null);
         }
       }
     } catch (err) {
-      console.warn('Leaderboard fetch notice', err);
+      console.warn('Error fetching highest score leaderboard:', err);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [timeframe, gameType, userId]);
 
   useEffect(() => {
     if (isOpen) {
-      fetchLeaderboardData();
-      const interval = setInterval(fetchLeaderboardData, 15000);
+      fetchLeaderboard();
+      const interval = setInterval(fetchLeaderboard, 15000);
       return () => clearInterval(interval);
     }
-  }, [isOpen]);
+  }, [isOpen, fetchLeaderboard]);
 
   if (!isOpen) return null;
 
-  const handleManualRefresh = () => {
-    SoundManager.play('click');
-    fetchLeaderboardData();
-  };
-
-  const getRankBadge = (rank: number) => {
-    if (rank === 1) {
-      return (
-        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-300 text-slate-950 flex items-center justify-center font-black shadow-lg shadow-amber-500/40 border-2 border-yellow-100">
-          <Crown className="w-4 h-4 fill-slate-950 stroke-[2.5]" />
-        </div>
-      );
-    }
-    if (rank === 2) {
-      return (
-        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-slate-200 to-slate-400 text-slate-950 flex items-center justify-center font-black shadow-md border-2 border-white">
-          <Medal className="w-4 h-4 fill-slate-950 stroke-[2.5]" />
-        </div>
-      );
-    }
-    if (rank === 3) {
-      return (
-        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-600 to-orange-500 text-white flex items-center justify-center font-black shadow-md border-2 border-orange-200">
-          <Medal className="w-4 h-4 fill-white stroke-[2.5]" />
-        </div>
-      );
-    }
-    return (
-      <div className="w-7 h-7 rounded-lg bg-white/10 text-slate-300 flex items-center justify-center font-bold text-xs font-mono border border-white/10">
-        #{rank}
-      </div>
-    );
-  };
+  const topThree = leaderboard.slice(0, 3);
+  const remaining = leaderboard.slice(3);
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md select-none overflow-y-auto">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md select-none">
         <motion.div
-          initial={{ opacity: 0, scale: 0.93, y: 15 }}
+          initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.93, y: 15 }}
-          className="relative w-full max-w-xl rounded-3xl bg-[#0c0822] border-2 border-amber-500/40 shadow-[0_25px_60px_rgba(0,0,0,0.9),0_0_35px_rgba(245,158,11,0.25)] text-white overflow-hidden my-auto max-h-[92vh] flex flex-col"
+          exit={{ opacity: 0, scale: 0.95, y: 15 }}
+          transition={{ type: 'spring', damping: 25, stiffness: 320 }}
+          className="relative w-full max-w-xl bg-[#0e0a1f] border border-white/15 rounded-3xl shadow-2xl text-white flex flex-col max-h-[92vh] overflow-hidden"
         >
-          {/* Top Laser Strip */}
-          <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-amber-500 via-yellow-300 to-orange-500 z-10" />
-
-          {/* Modal Header */}
-          <div className="flex items-center justify-between p-4 sm:p-5 border-b border-white/10 bg-[#130d36]/90 sticky top-0 z-20">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-400 p-0.5 shadow-lg shadow-amber-500/30 flex items-center justify-center text-slate-950">
-                <Trophy className="w-5 h-5 stroke-[2.4]" />
+          {/* TOP HEADER */}
+          <div className="px-5 pt-4 pb-3 border-b border-white/10 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-400">
+                <Trophy className="w-4 h-4" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg sm:text-xl font-black text-white tracking-wide">
-                    Live Leaderboard & Winners
-                  </h3>
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-400 font-extrabold text-[10px] uppercase">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                    Live Feed
+                <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+                  Highest Score Leaderboard
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400/15 text-amber-300 border border-amber-400/20 font-semibold">
+                    Live Scores
                   </span>
-                </div>
-                <p className="text-xs text-amber-300/80 font-medium">
-                  Real-time Verified Winning Payouts & Daily Champions
-                </p>
+                </h2>
+                <p className="text-xs text-slate-400">Rankings based strictly on peak match score</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
-                onClick={handleManualRefresh}
+                onClick={() => {
+                  SoundManager.play('click');
+                  fetchLeaderboard();
+                }}
                 disabled={isLoading}
-                title="Refresh Live Data"
-                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+                className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors cursor-pointer"
+                title="Refresh rankings"
               >
-                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
               </button>
-
               <button
                 onClick={() => {
                   SoundManager.play('click');
                   onClose();
                 }}
-                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 hover:text-white transition-colors cursor-pointer"
+                className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors cursor-pointer"
+                title="Close"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* TOTAL CASH PAYOUT TODAY HIGHLIGHT BANNER */}
-          <div className="bg-gradient-to-r from-[#1a1240] via-[#231758] to-[#1a1240] px-4 py-3 border-b border-amber-500/20 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-400">
-                <Sparkles className="w-4 h-4 animate-spin" />
+          {/* TIMEFRAME FILTER PILLS */}
+          <div className="px-5 pt-3 pb-2 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between border-b border-white/5 bg-white/[0.02]">
+            {/* Timeframe selector */}
+            <div className="inline-flex rounded-xl bg-black/40 p-1 border border-white/10 text-xs font-semibold">
+              <button
+                onClick={() => {
+                  SoundManager.play('click');
+                  setTimeframe('today');
+                }}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  timeframe === 'today'
+                    ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Today (Daily)
+              </button>
+              <button
+                onClick={() => {
+                  SoundManager.play('click');
+                  setTimeframe('weekly');
+                }}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  timeframe === 'weekly'
+                    ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                This Week
+              </button>
+              <button
+                onClick={() => {
+                  SoundManager.play('click');
+                  setTimeframe('all-time');
+                }}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  timeframe === 'all-time'
+                    ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                All-Time
+              </button>
+            </div>
+
+            {/* Game mode selector */}
+            <div className="inline-flex rounded-xl bg-black/40 p-1 border border-white/10 text-xs font-medium">
+              <button
+                onClick={() => {
+                  SoundManager.play('click');
+                  setGameType('all');
+                }}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                  gameType === 'all'
+                    ? 'bg-white/20 text-white font-bold'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => {
+                  SoundManager.play('click');
+                  setGameType('supreme');
+                }}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                  gameType === 'supreme'
+                    ? 'bg-purple-600 text-white font-bold'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                👑 Supreme
+              </button>
+              <button
+                onClick={() => {
+                  SoundManager.play('click');
+                  setGameType('snake');
+                }}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                  gameType === 'snake'
+                    ? 'bg-emerald-600 text-white font-bold'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                🐍 Snake
+              </button>
+            </div>
+          </div>
+
+          {/* MAIN CONTENT AREA */}
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+            {isLoading && leaderboard.length === 0 ? (
+              <div className="py-16 text-center text-slate-400 text-sm flex flex-col items-center justify-center gap-2">
+                <RefreshCw className="w-5 h-5 animate-spin text-amber-400" />
+                <span>Loading latest scores...</span>
               </div>
-              <div>
-                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
-                  Total Paid Out Today
-                </span>
-                <span className="text-base sm:text-lg font-black text-amber-300 font-mono tracking-tight drop-shadow">
-                  {totalPaidOutToday}
-                </span>
-              </div>
-            </div>
-
-            <div className="text-right">
-              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
-                Active Champions
-              </span>
-              <span className="text-xs sm:text-sm font-bold text-emerald-400 flex items-center justify-end gap-1 font-mono">
-                <Users className="w-3.5 h-3.5" />
-                {activeChampionsCount.toLocaleString()} Playing
-              </span>
-            </div>
-          </div>
-
-          {/* TAB SELECTOR */}
-          <div className="px-4 pt-3">
-            <div className="flex items-center gap-1 p-1 rounded-2xl bg-white/5 border border-white/10">
-              <button
-                onClick={() => setActiveTab('live-winners')}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                  activeTab === 'live-winners'
-                    ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 shadow-md font-black'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <Flame className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>Live Winners</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('daily')}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                  activeTab === 'daily'
-                    ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 shadow-md font-black'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <Crown className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>Daily Top</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('weekly')}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                  activeTab === 'weekly'
-                    ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 shadow-md font-black'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <Trophy className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>Weekly Mega</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('all-time')}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                  activeTab === 'all-time'
-                    ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 shadow-md font-black'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <Award className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>All-Time</span>
-              </button>
-            </div>
-          </div>
-
-          {/* MAIN LIST BODY */}
-          <div className="p-4 space-y-3 overflow-y-auto flex-1">
-            
-            {/* TAB 1: LIVE WINNERS STREAM */}
-            {activeTab === 'live-winners' && (
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-                  <span className="flex items-center gap-1 font-bold text-amber-300">
-                    <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                    Live Cash Match Winners (Auto-updating)
-                  </span>
-                  <span className="text-[11px] font-mono text-slate-500">
-                    Last update: {lastRefreshed}
-                  </span>
+            ) : leaderboard.length === 0 ? (
+              <div className="py-16 text-center text-slate-400 text-sm flex flex-col items-center justify-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-amber-400">
+                  <Trophy className="w-6 h-6" />
                 </div>
-
-                {liveWinners.map((winner, idx) => (
-                  <motion.div
-                    key={winner.id || idx}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className="relative p-3 rounded-2xl bg-gradient-to-r from-[#150f38] via-[#1a1346] to-[#150f38] border border-white/10 hover:border-amber-500/40 shadow-md flex items-center justify-between gap-3 group transition-all"
+                <div>
+                  <h3 className="text-white font-bold text-base">No match scores yet</h3>
+                  <p className="text-xs text-slate-400 max-w-xs mt-1">
+                    Be the first player to complete a match {timeframe === 'today' ? 'today' : ''} and take the #1 rank!
+                  </p>
+                </div>
+                {onPlayGame && (
+                  <button
+                    onClick={() => {
+                      SoundManager.play('click');
+                      onClose();
+                      onPlayGame();
+                    }}
+                    className="mt-1 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow cursor-pointer active:scale-95"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
+                    <Swords className="w-3.5 h-3.5" />
+                    Play Match Now
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                {/* TOP 3 PODIUM */}
+                {topThree.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2.5 pt-2 pb-3">
+                    {/* Rank 2 (Left) */}
+                    <div className="flex flex-col items-center text-center p-3 rounded-2xl bg-white/[0.03] border border-white/10 relative order-1 sm:order-1 mt-3">
+                      <div className="relative mb-2">
                         <img
-                          src={winner.avatar}
-                          alt={winner.username}
-                          className="w-11 h-11 rounded-2xl object-cover border-2 border-amber-400/60 shadow-inner"
+                          src={topThree[1]?.avatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=p2'}
+                          alt={topThree[1]?.username || 'Player'}
+                          className="w-12 h-12 rounded-full border-2 border-slate-300 object-cover bg-black/40"
                         />
-                        <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center text-[10px] font-black shadow">
-                          ✓
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-black text-sm text-white group-hover:text-amber-300 transition-colors">
-                            {winner.username}
-                          </h4>
-                          <span className="px-2 py-0.2 rounded-md bg-amber-500/20 text-amber-300 font-extrabold text-[9.5px] uppercase tracking-wider border border-amber-500/30">
-                            {winner.badge}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-400">
-                          <span className="text-slate-300 font-medium">{winner.gameMode}</span>
-                          <span>•</span>
-                          <span className="flex items-center gap-0.5 text-emerald-400 font-mono text-[11px]">
-                            <Clock className="w-3 h-3" /> {winner.timeAgo}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <div className="text-base sm:text-lg font-black font-mono text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.4)]">
-                        +₹{winner.amount.toLocaleString()}
-                      </div>
-                      <span className="inline-block px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 font-bold text-[9.5px] uppercase tracking-wider">
-                        Cash Won
-                      </span>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            )}
-
-            {/* TAB 2, 3, 4: RANKED CHAMPIONS LEADERBOARD (Daily, Weekly, All-Time) */}
-            {activeTab !== 'live-winners' && (
-              <div className="space-y-2.5">
-                
-                {/* PODIUM HIGHLIGHT FOR TOP 3 */}
-                <div className="grid grid-cols-3 gap-2 pb-2">
-                  {/* Rank 2 */}
-                  {topRanked[1] && (
-                    <div className="p-2.5 rounded-2xl bg-[#140e36] border border-slate-400/30 text-center flex flex-col items-center justify-end relative mt-3">
-                      <div className="absolute -top-3.5">
-                        {getRankBadge(2)}
-                      </div>
-                      <img src={topRanked[1].avatar} alt="" className="w-10 h-10 rounded-full object-cover border-2 border-slate-300 my-1" />
-                      <span className="text-xs font-bold text-white truncate max-w-full">{topRanked[1].username}</span>
-                      <span className="text-xs font-black font-mono text-amber-300 mt-0.5">₹{topRanked[1].totalWon.toLocaleString()}</span>
-                      <span className="text-[9.5px] text-slate-400">{topRanked[1].matchesWon} Wins</span>
-                    </div>
-                  )}
-
-                  {/* Rank 1 (Supreme Gold) */}
-                  {topRanked[0] && (
-                    <div className="p-3 rounded-2xl bg-gradient-to-b from-[#2a1d63] to-[#170e42] border-2 border-amber-400 text-center flex flex-col items-center justify-end relative shadow-lg shadow-amber-500/20">
-                      <div className="absolute -top-4">
-                        {getRankBadge(1)}
-                      </div>
-                      <img src={topRanked[0].avatar} alt="" className="w-12 h-12 rounded-full object-cover border-2 border-amber-300 my-1 shadow-md" />
-                      <span className="text-xs font-black text-amber-300 truncate max-w-full">{topRanked[0].username}</span>
-                      <span className="text-sm font-black font-mono text-emerald-400 mt-0.5">₹{topRanked[0].totalWon.toLocaleString()}</span>
-                      <span className="text-[10px] text-amber-200 font-bold">{topRanked[0].matchesWon} Wins • {topRanked[0].winRate}</span>
-                    </div>
-                  )}
-
-                  {/* Rank 3 */}
-                  {topRanked[2] && (
-                    <div className="p-2.5 rounded-2xl bg-[#140e36] border border-orange-500/30 text-center flex flex-col items-center justify-end relative mt-3">
-                      <div className="absolute -top-3.5">
-                        {getRankBadge(3)}
-                      </div>
-                      <img src={topRanked[2].avatar} alt="" className="w-10 h-10 rounded-full object-cover border-2 border-orange-300 my-1" />
-                      <span className="text-xs font-bold text-white truncate max-w-full">{topRanked[2].username}</span>
-                      <span className="text-xs font-black font-mono text-amber-300 mt-0.5">₹{topRanked[2].totalWon.toLocaleString()}</span>
-                      <span className="text-[9.5px] text-slate-400">{topRanked[2].matchesWon} Wins</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* REST OF RANKINGS (4 TO 10) */}
-                <div className="space-y-2">
-                  {topRanked.slice(3).map((item) => (
-                    <div
-                      key={item.rank}
-                      className="p-3 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between gap-3 hover:bg-white/10 transition"
-                    >
-                      <div className="flex items-center gap-3">
-                        {getRankBadge(item.rank)}
-                        <img src={item.avatar} alt={item.username} className="w-9 h-9 rounded-xl object-cover border border-white/20" />
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-xs font-bold text-white">{item.username}</h4>
-                            <span className="text-[9.5px] text-slate-400 font-mono">({item.state || 'India'})</span>
-                          </div>
-                          <span className="text-[10.5px] text-slate-400">
-                            {item.matchesWon} Matches Won • <span className="text-amber-300">{item.winRate} Win Rate</span>
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <span className="text-sm font-black font-mono text-amber-300">
-                          ₹{item.totalWon.toLocaleString()}
+                        <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-slate-300 text-slate-950 font-black text-[10px] flex items-center justify-center shadow">
+                          2
                         </span>
-                        <span className="block text-[9px] text-slate-400 uppercase font-bold">Total Winnings</span>
+                      </div>
+                      <span className="text-xs font-bold text-white truncate max-w-[90px]">
+                        {topThree[1]?.username || 'Player 2'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-medium mt-0.5">
+                        {topThree[1]?.tier || 'Warrior'}
+                      </span>
+                      <div className="mt-2 text-sm font-black text-slate-200">
+                        {topThree[1]?.highestScore ?? 0} <span className="text-[10px] font-bold text-slate-400">PTS</span>
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
+
+                    {/* Rank 1 (Center) */}
+                    <div className="flex flex-col items-center text-center p-3.5 rounded-2xl bg-gradient-to-b from-amber-500/15 via-amber-500/5 to-transparent border-2 border-amber-400/50 relative order-2 sm:order-2 shadow-lg shadow-amber-500/10">
+                      <div className="absolute -top-3">
+                        <Crown className="w-6 h-6 fill-amber-400 text-amber-300 drop-shadow" />
+                      </div>
+                      <div className="relative mb-2 mt-1">
+                        <img
+                          src={topThree[0]?.avatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=p1'}
+                          alt={topThree[0]?.username || 'Player'}
+                          className="w-14 h-14 rounded-full border-2 border-amber-400 object-cover bg-black/40 shadow-md shadow-amber-500/30"
+                        />
+                        <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-300 text-slate-950 font-black text-[11px] flex items-center justify-center shadow">
+                          1
+                        </span>
+                      </div>
+                      <span className="text-xs font-black text-amber-300 truncate max-w-[100px]">
+                        {topThree[0]?.username || 'Champion'}
+                      </span>
+                      <span className="text-[10px] text-amber-400/80 font-bold mt-0.5">
+                        {topThree[0]?.tier || 'Master'}
+                      </span>
+                      <div className="mt-2 text-base font-black text-amber-300">
+                        {topThree[0]?.highestScore ?? 0} <span className="text-[10px] font-bold text-amber-400/80">PTS</span>
+                      </div>
+                    </div>
+
+                    {/* Rank 3 (Right) */}
+                    <div className="flex flex-col items-center text-center p-3 rounded-2xl bg-white/[0.03] border border-white/10 relative order-3 sm:order-3 mt-4">
+                      <div className="relative mb-2">
+                        <img
+                          src={topThree[2]?.avatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=p3'}
+                          alt={topThree[2]?.username || 'Player'}
+                          className="w-12 h-12 rounded-full border-2 border-amber-700 object-cover bg-black/40"
+                        />
+                        <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-amber-700 text-white font-black text-[10px] flex items-center justify-center shadow">
+                          3
+                        </span>
+                      </div>
+                      <span className="text-xs font-bold text-white truncate max-w-[90px]">
+                        {topThree[2]?.username || 'Player 3'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-medium mt-0.5">
+                        {topThree[2]?.tier || 'Challenger'}
+                      </span>
+                      <div className="mt-2 text-sm font-black text-amber-600">
+                        {topThree[2]?.highestScore ?? 0} <span className="text-[10px] font-bold text-slate-400">PTS</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* RANKINGS LIST (#4 to #50) */}
+                {remaining.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <div className="px-3 py-1 text-[11px] font-semibold text-slate-400 flex items-center justify-between border-b border-white/5 uppercase tracking-wider">
+                      <div className="flex items-center gap-3">
+                        <span className="w-6 text-center">#</span>
+                        <span>Player</span>
+                      </div>
+                      <div className="flex items-center gap-6">
+                        <span className="hidden sm:inline">Tier</span>
+                        <span className="w-20 text-right">Highest Score</span>
+                      </div>
+                    </div>
+
+                    {remaining.map((item) => (
+                      <div
+                        key={item.userId}
+                        className={`px-3 py-2.5 rounded-xl border flex items-center justify-between transition-colors ${
+                          item.userId === userId
+                            ? 'bg-amber-500/10 border-amber-400/40 text-white'
+                            : 'bg-white/[0.02] hover:bg-white/[0.04] border-white/5 text-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="w-6 text-center font-mono font-bold text-xs text-slate-400">
+                            #{item.rank}
+                          </span>
+                          <img
+                            src={item.avatar}
+                            alt={item.username}
+                            className="w-8 h-8 rounded-full border border-white/10 object-cover bg-black/40"
+                          />
+                          <div className="leading-tight">
+                            <span className="text-xs font-bold block truncate max-w-[120px] sm:max-w-[180px]">
+                              {item.username}
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              {item.matchesWon} wins • {item.matchesPlayed} games
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4">
+                          <span
+                            className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-bold"
+                            style={{
+                              backgroundColor: `${item.tierColor}20`,
+                              color: item.tierColor,
+                              border: `1px solid ${item.tierColor}40`,
+                            }}
+                          >
+                            {item.tier}
+                          </span>
+
+                          <div className="w-20 text-right leading-none">
+                            <span className="text-sm font-black text-amber-300">
+                              {item.highestScore}
+                            </span>
+                            <span className="text-[9px] block text-slate-400 uppercase font-bold mt-0.5">
+                              PTS
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
-          {/* USER'S OWN LIVE RANK HUD FOOTER */}
-          <div className="p-4 border-t border-white/10 bg-[#120b33] flex items-center justify-between gap-3">
+          {/* STICKY BOTTOM BAR: YOUR PERSONAL STANDING */}
+          <div className="px-5 py-3 border-t border-white/10 bg-[#090516] flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center font-black text-amber-300 text-xs">
-                #42
+              <div className="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center font-bold text-xs text-amber-300">
+                {myStanding?.rank ? `#${myStanding.rank}` : '-'}
               </div>
-              <div>
-                <span className="text-xs font-black text-white">Your Rank: #42</span>
-                <span className="block text-[10px] text-slate-400">Play matches to climb to Top 10</span>
+              <div className="leading-tight">
+                <span className="text-xs font-bold text-white block">
+                  Your Standing {timeframe === 'today' ? 'Today' : ''}
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  {myStanding?.highestScore
+                    ? `Peak Score: ${myStanding.highestScore} PTS (${myStanding.tier})`
+                    : 'No score registered yet'}
+                </span>
               </div>
             </div>
 
-            <motion.button
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.96 }}
-              onClick={() => {
-                SoundManager.play('click');
-                onClose();
-                if (onPlayGame) onPlayGame();
-              }}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-500/30 flex items-center gap-1.5 cursor-pointer"
-            >
-              <Zap className="w-4 h-4 fill-slate-950" />
-              <span>Play & Win Cash</span>
-            </motion.button>
+            {onPlayGame && (
+              <button
+                onClick={() => {
+                  SoundManager.play('click');
+                  onClose();
+                  onPlayGame();
+                }}
+                className="py-1.5 px-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 text-xs font-black flex items-center gap-1 shadow cursor-pointer active:scale-95 transition-all"
+              >
+                <Swords className="w-3.5 h-3.5 fill-slate-950" />
+                Play & Climb
+              </button>
+            )}
           </div>
         </motion.div>
       </div>

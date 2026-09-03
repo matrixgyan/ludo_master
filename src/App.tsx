@@ -39,7 +39,11 @@ interface MatchConfig {
   gameType?: 'classic' | 'supreme' | 'snake';
   variation?: GameVariation;
   playersConfig?: PlayerConfig[];
+  tournamentId?: string;
 }
+
+const TURN_TIME_LIMIT = 10;
+const MAX_STRIKES = 3;
 
 const DEFAULT_PLAYERS: Record<PlayerColor, Player> = {
   blue: {
@@ -261,6 +265,8 @@ export default function App() {
   const [playerMode, setPlayerMode] = useState<PlayerModeOption>(4);
   const [currentMatchConfig, setCurrentMatchConfig] = useState<MatchConfig | null>(null);
   const [activeMatchId, setActiveMatchId] = useState<string>('');
+  const settledMatchesRef = useRef<Set<string>>(new Set());
+  const isSettlingMatchRef = useRef<boolean>(false);
 
   // Authoritative double-entry ledger match settlement
   const settleAndFinalizeMatch = useCallback(
@@ -269,6 +275,15 @@ export default function App() {
       const cfg = currentMatchConfigRef.current;
       const winnerP = customWinnerPlayer || gs.players[winnerColor];
       const mId = activeMatchId || `match_${(cfg?.gameType || 'supreme')}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+      // Deduplicate settlement calls - prevent duplicate executions for same match
+      if (settledMatchesRef.current.has(mId) || isSettlingMatchRef.current) {
+        console.log(`[Settlement] Match ${mId} is already settled or in progress, skipping duplicate call.`);
+        return;
+      }
+      settledMatchesRef.current.add(mId);
+      isSettlingMatchRef.current = true;
+
       const activeCols = activeColorsRef.current;
       const activeList = activeCols.map((c) => gs.players[c]).filter(Boolean);
       const sorted = [...activeList].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
@@ -316,6 +331,7 @@ export default function App() {
           prizePool: effectivePrize,
           playerCount: activeCols.length || 2,
           playerResults,
+          tournamentId: cfg?.tournamentId,
         });
 
         if (settleRes?.userBalance && isWinnerHuman) {
@@ -331,6 +347,8 @@ export default function App() {
       } catch (err) {
         console.error('Ludo match settlement error:', err);
         fetchRealWalletBalance();
+      } finally {
+        isSettlingMatchRef.current = false;
       }
     },
     [activeMatchId, currentUser?.id, fetchRealWalletBalance]
@@ -439,7 +457,13 @@ export default function App() {
   const [isDebugGridVisible, setIsDebugGridVisible] = useState(false);
   const [steppingPawnId, setSteppingPawnId] = useState<string | null>(null);
   const [bouncingCellKey, setBouncingCellKey] = useState<string | null>(null);
-  const [turnTimeLeft, setTurnTimeLeft] = useState<number>(30);
+  const [turnTimeLeft, setTurnTimeLeft] = useState<number>(TURN_TIME_LIMIT);
+  const [playerStrikes, setPlayerStrikes] = useState<Record<PlayerColor, number>>({
+    blue: 0,
+    red: 0,
+    green: 0,
+    yellow: 0,
+  });
   const [matchTimeLeft, setMatchTimeLeft] = useState<number>(180); // 2 min 60 sec (180s)
   const [activeAngelFlight, setActiveAngelFlight] = useState<AngelFlightData | null>(null);
 
@@ -451,11 +475,11 @@ export default function App() {
   const activeColorsRef = useRef(activeColors);
   activeColorsRef.current = activeColors;
 
-  // 30-Second Turn Countdown Timer Effect (Strictly active only during ludo_game mode)
+  // 10-Second Turn Countdown Timer Effect (Strictly active only during ludo_game mode - exact match to Snake Ludo)
   useEffect(() => {
     if (viewMode !== 'ludo_game' || Boolean(gameState.winner)) return;
 
-    setTurnTimeLeft(30);
+    setTurnTimeLeft(TURN_TIME_LIMIT);
 
     const timerInterval = setInterval(() => {
       setTurnTimeLeft((prev) => {
@@ -473,37 +497,35 @@ export default function App() {
   useEffect(() => {
     if (viewMode !== 'ludo_game' || Boolean(gameState.winner) || currentMatchConfig?.gameType === 'classic') return;
 
+    if (matchTimeLeft <= 0) {
+      // Timer finished -> Calculate top scorer using current refs
+      const gs = gameStateRef.current;
+      const cols = activeColorsRef.current;
+      const activeList = cols.map((c) => gs.players[c]).filter(Boolean);
+      const sorted = [...activeList].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+      const topPlayer = sorted[0];
+
+      if (topPlayer && !gameState.winner) {
+        SoundManager.play('pawn-finish');
+
+        // Authoritative double-entry ledger settlement
+        settleAndFinalizeMatch(topPlayer.color, topPlayer);
+
+        setGameState((g) => ({
+          ...g,
+          winner: topPlayer.color,
+          statusText: `⏱️ TIME OVER! ${topPlayer.name.toUpperCase()} WINS WITH ${topPlayer.score ?? 0} PTS!`,
+        }));
+      }
+      return;
+    }
+
     const matchInterval = setInterval(() => {
-      setMatchTimeLeft((prev) => {
-        if (prev <= 1) {
-          // Timer finished -> Calculate top scorer using current refs
-          const gs = gameStateRef.current;
-          const cfg = currentMatchConfigRef.current;
-          const cols = activeColorsRef.current;
-          const activeList = cols.map((c) => gs.players[c]).filter(Boolean);
-          const sorted = [...activeList].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-          const topPlayer = sorted[0];
-
-          if (topPlayer) {
-            SoundManager.play('pawn-finish');
-
-            // Authoritative double-entry ledger settlement
-            settleAndFinalizeMatch(topPlayer.color, topPlayer);
-
-            setGameState((g) => ({
-              ...g,
-              winner: topPlayer.color,
-              statusText: `⏱️ TIME OVER! ${topPlayer.name.toUpperCase()} WINS WITH ${topPlayer.score ?? 0} PTS!`,
-            }));
-          }
-          return 0;
-        }
-        return prev - 1;
-      });
+      setMatchTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
 
     return () => clearInterval(matchInterval);
-  }, [viewMode, Boolean(gameState.winner), currentMatchConfig?.gameType, settleAndFinalizeMatch]);
+  }, [viewMode, Boolean(gameState.winner), currentMatchConfig?.gameType, matchTimeLeft, settleAndFinalizeMatch]);
 
   // Flatten all pawns of active players for rendering
   const allPawns = activeColors.flatMap((c) => gameState.players[c].pawns);
@@ -548,7 +570,8 @@ export default function App() {
     prizePool: number,
     gameType: 'classic' | 'supreme' | 'snake' = 'supreme',
     variation: GameVariation = 'Classic',
-    playersConfig?: PlayerConfig[]
+    playersConfig?: PlayerConfig[],
+    tournamentId?: string
   ) => {
     // 1. Client-Side Balance Validation
     if (entryFee > 0 && balance < entryFee) {
@@ -560,6 +583,7 @@ export default function App() {
 
     const newMatchId = `match_${gameType}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     setActiveMatchId(newMatchId);
+    isSettlingMatchRef.current = false;
 
     if (entryFee > 0) {
       try {
@@ -589,7 +613,7 @@ export default function App() {
     }
 
     setPlayerMode(mode);
-    setCurrentMatchConfig({ mode, entryFee, prizePool, gameType, variation, playersConfig });
+    setCurrentMatchConfig({ mode, entryFee, prizePool, gameType, variation, playersConfig, tournamentId });
     setViewMode('matchmaking');
   };
 
@@ -709,6 +733,8 @@ export default function App() {
       homesCount: { blue: 0, red: 0, green: 0, yellow: 0 },
     });
 
+    setPlayerStrikes({ blue: 0, red: 0, green: 0, yellow: 0 });
+    setTurnTimeLeft(TURN_TIME_LIMIT);
     setMatchTimeLeft(180);
     setChatMessages([]);
     setViewMode('ludo_game');
@@ -788,7 +814,7 @@ export default function App() {
         if (prev.movablePawnIds.length === 0 && prev.dice.hasRolled) {
           if (prev.dice.value === 6 && prev.consecutiveSixes < 3) {
             SoundManager.play('turn');
-            setTurnTimeLeft(30);
+            setTurnTimeLeft(TURN_TIME_LIMIT);
             return {
               ...prev,
               dice: { value: prev.dice.value, isRolling: false, hasRolled: false, canRoll: true },
@@ -797,7 +823,7 @@ export default function App() {
           } else {
             const nextTurn = getNextTurnColor(prev.currentTurn, activeColors);
             SoundManager.play('turn');
-            setTurnTimeLeft(30);
+            setTurnTimeLeft(TURN_TIME_LIMIT);
             return {
               ...prev,
               currentTurn: nextTurn,
@@ -823,6 +849,10 @@ export default function App() {
     } else {
       SoundManager.play('pawn-land');
     }
+
+    let didWin = false;
+    let winColor: PlayerColor | null = null;
+    let winPlayer: Player | null = null;
 
     setGameState((prev) => {
       const updatedPlayers = { ...prev.players };
@@ -905,11 +935,9 @@ export default function App() {
       // Check if current player has won by getting all pawns home
       const allReachedGoal = curPlayer.pawns.length > 0 && curPlayer.pawns.every((p) => p.state === 'goal');
       if (allReachedGoal) {
-        SoundManager.play('pawn-finish');
-
-        // Authoritative double-entry ledger settlement
-        settleAndFinalizeMatch(prev.currentTurn, curPlayer);
-
+        didWin = true;
+        winColor = prev.currentTurn;
+        winPlayer = curPlayer;
         return {
           ...prev,
           players: updatedPlayers,
@@ -933,7 +961,7 @@ export default function App() {
         ? `${curPlayer.name} ${diceValue === 6 ? 'ROLLED 6' : didCapture ? 'CAPTURED PAWN' : 'REACHED HOME'}${scoreDoubleMsg}${captureMsg} — BONUS TURN!`
         : `${updatedPlayers[nextTurnColor].name}'S TURN${scoreDoubleMsg}${captureMsg} — ROLL THE DICE!`;
 
-      setTurnTimeLeft(30);
+      setTurnTimeLeft(TURN_TIME_LIMIT);
 
       return {
         ...prev,
@@ -947,6 +975,11 @@ export default function App() {
         statusText: statusMsg,
       };
     });
+
+    if (didWin && winColor && winPlayer) {
+      SoundManager.play('pawn-finish');
+      settleAndFinalizeMatch(winColor, winPlayer);
+    }
 
     setSteppingPawnId(null);
     setTimeout(() => setBouncingCellKey(null), 300);
@@ -976,7 +1009,7 @@ export default function App() {
 
     let stepCount = 0;
     const stepsToPerform = startStep === -1 ? 1 : diceValue;
-    const STEP_DURATION_MS = 320; // Snappy, responsive hops for speed gameplay
+    const STEP_DURATION_MS = 150; // Exact same fast 150ms per cell speed as Snake Ludo
 
     const doStep = () => {
       stepCount++;
@@ -1002,19 +1035,17 @@ export default function App() {
         };
       });
 
-      setTimeout(() => {
-        SoundManager.play('pawn-step');
-        const coord = getPawnGridCoord(color, pawnIndex, currentStep);
-        const cellKey = `${Math.round(coord.x)}-${Math.round(coord.y)}`;
-        setBouncingCellKey(cellKey);
-      }, 180);
+      SoundManager.play('pawn-step');
+      const coord = getPawnGridCoord(color, pawnIndex, currentStep);
+      const cellKey = `${Math.round(coord.x)}-${Math.round(coord.y)}`;
+      setBouncingCellKey(cellKey);
 
       if (stepCount < stepsToPerform) {
         setTimeout(doStep, STEP_DURATION_MS);
       } else {
         setTimeout(() => {
           finalizeMove(clickedPawn, targetStep, diceValue);
-        }, STEP_DURATION_MS + 180);
+        }, STEP_DURATION_MS + 80);
       }
     };
 
@@ -1033,21 +1064,72 @@ export default function App() {
 
     if (gameState.winner || steppingPawnId) return;
 
-    // Handle Timer Expiration -> Forfeit turn
+    // Handle Timer Expiration -> Forfeit turn or Match Disqualification (Life Cycle: 3 Strikes)
     if (isTimerExpired) {
-      const nextTurn = getNextTurnColor(gameState.currentTurn, activeColors);
+      const curColor = gameState.currentTurn;
+      const nextStrikes = (playerStrikes[curColor] || 0) + 1;
+      const newStrikes = { ...playerStrikes, [curColor]: nextStrikes };
+      setPlayerStrikes(newStrikes);
+
       SoundManager.play('turn');
-      setGameState((prev) => ({
-        ...prev,
-        currentTurn: nextTurn,
-        consecutiveSixes: 0,
-        dice: { value: prev.dice.value, isRolling: false, hasRolled: false, canRoll: true },
-        movablePawnIds: [],
-        selectedPawnId: null,
-        statusText: `${curPlayer.name}'S TIME EXPIRED! TURN FORFEITED.`,
-      }));
-      setTurnTimeLeft(30);
-      return;
+
+      if (nextStrikes >= MAX_STRIKES) {
+        // Player missed 3 turns -> Instant Forfeit!
+        // Determine remaining active opponents:
+        const remainingActiveColors = activeColors.filter(
+          (c) => c !== curColor && gameState.players[c]?.isActive
+        );
+
+        if (remainingActiveColors.length <= 1) {
+          const winnerColor = remainingActiveColors[0] || getNextTurnColor(curColor, activeColors);
+          const winnerPlayer = gameState.players[winnerColor];
+
+          SoundManager.play('pawn-finish');
+          settleAndFinalizeMatch(winnerColor, winnerPlayer);
+
+          setGameState((prev) => ({
+            ...prev,
+            winner: winnerColor,
+            statusText: `❌ ${curPlayer.name.toUpperCase()} MISSED 3 TURNS AND FORFEITED! ${winnerPlayer?.name.toUpperCase() || 'OPPONENT'} WINS!`,
+          }));
+          return;
+        } else {
+          // In 3-player or 4-player match, eliminate this player and pass turn
+          const nextTurn = getNextTurnColor(curColor, remainingActiveColors);
+          setGameState((prev) => {
+            const updPlayers = { ...prev.players };
+            if (updPlayers[curColor]) {
+              updPlayers[curColor] = { ...updPlayers[curColor], isActive: false };
+            }
+            return {
+              ...prev,
+              players: updPlayers,
+              currentTurn: nextTurn,
+              consecutiveSixes: 0,
+              dice: { value: prev.dice.value, isRolling: false, hasRolled: false, canRoll: true },
+              movablePawnIds: [],
+              selectedPawnId: null,
+              statusText: `⚠️ ${curPlayer.name.toUpperCase()} MISSED 3 TURNS & WAS DISQUALIFIED!`,
+            };
+          });
+          setTurnTimeLeft(TURN_TIME_LIMIT);
+          return;
+        }
+      } else {
+        // Strike 1 or 2: Skip turn with strike penalty alert
+        const nextTurn = getNextTurnColor(curColor, activeColors);
+        setGameState((prev) => ({
+          ...prev,
+          currentTurn: nextTurn,
+          consecutiveSixes: 0,
+          dice: { value: prev.dice.value, isRolling: false, hasRolled: false, canRoll: true },
+          movablePawnIds: [],
+          selectedPawnId: null,
+          statusText: `⏳ TIME'S UP! ${curPlayer.name.toUpperCase()}'S TURN SKIPPED (${nextStrikes}/${MAX_STRIKES} STRIKES)`,
+        }));
+        setTurnTimeLeft(TURN_TIME_LIMIT);
+        return;
+      }
     }
 
     // Handle Normal Bot Turns
@@ -1085,6 +1167,8 @@ export default function App() {
     turnTimeLeft,
     gameState.winner,
     activeColors,
+    playerStrikes,
+    settleAndFinalizeMatch,
   ]);
 
   // Chat
@@ -1136,7 +1220,8 @@ export default function App() {
     setSteppingPawnId(null);
     setActiveAngelFlight(null);
     setBouncingCellKey(null);
-    setTurnTimeLeft(30);
+    setPlayerStrikes({ blue: 0, red: 0, green: 0, yellow: 0 });
+    setTurnTimeLeft(TURN_TIME_LIMIT);
     setChatMessages([]);
   };
 
@@ -1345,13 +1430,14 @@ export default function App() {
             SoundManager.play('click');
             setViewMode('snake_ludo');
           }}
-          onStartOnlineMatch={(mode, fee, prize, gType, varN, pConfig) => {
+          onStartOnlineMatch={(mode, fee, prize, gType, varN, pConfig, tId) => {
             if (!currentUser) {
               setShowAuthModal(true);
               return;
             }
-            handleStartOnlineMatch(mode, fee, prize, gType, varN, pConfig);
+            handleStartOnlineMatch(mode, fee, prize, gType, varN, pConfig, tId);
           }}
+          onRefreshBalance={fetchRealWalletBalance}
           userId={currentUser?.id || 'user_guest_default'}
           userName={currentUser?.displayName || currentUser?.username || 'Player 1'}
           userAvatar={currentUser?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=160&auto=format&fit=crop&q=80'}
@@ -1426,6 +1512,7 @@ export default function App() {
           userName={humanPlayer?.name || currentUser?.displayName || currentUser?.username || 'Player 1'}
           userAvatar={humanPlayer?.avatarUrl || currentUser?.avatarUrl || ''}
           playerCount={currentMatchConfig?.mode || 2}
+          tournamentId={currentMatchConfig?.tournamentId}
           onMatchWon={(prize) => {
             if (prize > 0) {
               setBalance((b) => Number((b + prize).toFixed(2)));
@@ -1468,6 +1555,9 @@ export default function App() {
             dice={gameState.dice}
             onRollDice={() => handleRollDice()}
             turnTimeLeft={turnTimeLeft}
+            totalTurnTime={TURN_TIME_LIMIT}
+            strikes={playerStrikes.blue}
+            maxStrikes={MAX_STRIKES}
             scoreRank={playerRankMap.blue}
           />
         ) : (
@@ -1482,6 +1572,9 @@ export default function App() {
             dice={gameState.dice}
             onRollDice={() => handleRollDice()}
             turnTimeLeft={turnTimeLeft}
+            totalTurnTime={TURN_TIME_LIMIT}
+            strikes={playerStrikes.red}
+            maxStrikes={MAX_STRIKES}
             scoreRank={playerRankMap.red}
           />
         ) : (
@@ -1536,6 +1629,9 @@ export default function App() {
             dice={gameState.dice}
             onRollDice={() => handleRollDice()}
             turnTimeLeft={turnTimeLeft}
+            totalTurnTime={TURN_TIME_LIMIT}
+            strikes={playerStrikes.yellow}
+            maxStrikes={MAX_STRIKES}
             scoreRank={playerRankMap.yellow}
           />
         ) : (
@@ -1552,6 +1648,9 @@ export default function App() {
             dice={gameState.dice}
             onRollDice={() => handleRollDice()}
             turnTimeLeft={turnTimeLeft}
+            totalTurnTime={TURN_TIME_LIMIT}
+            strikes={playerStrikes.green}
+            maxStrikes={MAX_STRIKES}
             scoreRank={playerRankMap.green}
           />
         ) : (

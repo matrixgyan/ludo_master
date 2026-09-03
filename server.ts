@@ -17,23 +17,10 @@ async function bootstrap() {
   const server = http.createServer(app);
   const PORT = config.PORT || 3000;
 
-  // 1. Initialize PostgreSQL Database Tables if configured
-  await initializeDatabaseOnce();
-
-  // 2. Load and Apply Dynamic Multi-Chain RPC Configurations
-  await RpcConfigService.getStore().catch((err) => Logger.warn('RPC store load notice', err));
-
-  // 3. Initialize BullMQ Background Workers if Redis is configured
-  BackgroundWorkerManager.initialize();
-
-  // 3. Initialize Demand-Aware Automated Match Room Manager & Startup Recovery
-  await RoomManager.initialize().catch((err) => Logger.warn('RoomManager init error', err));
-  await ReconnectService.runStartupRecovery().catch((err) => Logger.warn('Recovery error', err));
-
-  // 4. Attach WebSocket Server
+  // 1. Attach WebSocket Server
   wsServerInstance.initialize(server);
 
-  // 4. Mount Vite middleware for development, or static files in production
+  // 2. Mount Vite middleware for development, or static files in production
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -48,7 +35,7 @@ async function bootstrap() {
     });
   }
 
-  // 5. Start HTTP + WS listener on port 3000
+  // 3. Start HTTP + WS listener on port 3000 immediately
   server.listen(PORT, '0.0.0.0', () => {
     Logger.info(`🚀 Ludo World Master Server running on http://0.0.0.0:${PORT}`);
     const services = getServicesStatusSummary();
@@ -57,7 +44,18 @@ async function bootstrap() {
     Logger.info(`  • Cloudflare R2:   ${services.cloudflareR2.message}`);
   });
 
-  // 7. Graceful Shutdown Handlers
+  // 4. Initialize Database Tables, RPC configs, workers, and rooms asynchronously
+  (async () => {
+    await initializeDatabaseOnce();
+    await RpcConfigService.getStore().catch((err) => Logger.warn('RPC store load notice', err));
+    BackgroundWorkerManager.initialize();
+    await RoomManager.initialize().catch((err) => Logger.warn('RoomManager init error', err));
+    await ReconnectService.runStartupRecovery().catch((err) => Logger.warn('Recovery error', err));
+  })().catch((err) => {
+    Logger.warn('Background services initialization notice:', err);
+  });
+
+  // 5. Graceful Shutdown Handlers
   let isShuttingDown = false;
   async function gracefulShutdown(signal: string) {
     if (isShuttingDown) return;

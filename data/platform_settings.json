@@ -1,0 +1,20 @@
+{
+  "adminUrlAlias": "admin",
+  "maintenanceMode": false,
+  "cryptoWalletEnabled": false,
+  "paymentMode": "MANUAL",
+  "platformCurrency": "INR",
+  "currencySymbol": "₹",
+  "currencyName": "Indian Rupee",
+  "exchangeRateToUsdt": 89.5,
+  "turnTimeoutSeconds": 30,
+  "maxConsecutiveSixes": 3,
+  "entryFee2Player": 100,
+  "entryFee4Player": 250,
+  "entryFeeSnakeLudo": 50,
+  "prizePoolPercentage": 85,
+  "allowedOrigins": [
+    "https://ludo.omyra.org",
+    "http://localhost:3000"
+  ]
+}

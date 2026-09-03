@@ -89,7 +89,7 @@ export const LudoPawn: React.FC<LudoPawnProps> = ({
         }
         transition={
           isJumping
-            ? { duration: 0.58, ease: [0.22, 1, 0.36, 1] }
+            ? { duration: 0.16, ease: [0.22, 1, 0.36, 1] }
             : { duration: 0.25 }
         }
         style={{
@@ -106,9 +106,9 @@ export const LudoPawn: React.FC<LudoPawnProps> = ({
         animate={
           isJumping
             ? {
-                y: [0, -42, -6, 0],
-                scaleX: [1, 0.7, 1.38, 0.86, 1.05, 1],
-                scaleY: [1, 1.42, 0.68, 1.18, 0.94, 1],
+                y: [0, -28, -4, 0],
+                scaleX: [1, 0.78, 1.25, 0.9, 1],
+                scaleY: [1, 1.25, 0.75, 1.1, 1],
               }
             : isSelected
             ? { y: [-2, -6, -2], scale: 1.15 }
@@ -118,7 +118,7 @@ export const LudoPawn: React.FC<LudoPawnProps> = ({
         }
         transition={
           isJumping
-            ? { duration: 0.58, ease: [0.22, 1, 0.36, 1] }
+            ? { duration: 0.16, ease: [0.22, 1, 0.36, 1] }
             : isSelected
             ? { duration: 0.7, repeat: Infinity, ease: 'easeInOut' }
             : isMovable

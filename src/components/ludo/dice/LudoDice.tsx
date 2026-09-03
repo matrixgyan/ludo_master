@@ -10,6 +10,7 @@ interface LudoDiceProps {
   disabled?: boolean;
   size?: 'compact' | 'normal';
   turnTimeLeft?: number;
+  totalTurnTime?: number;
   isTurn?: boolean;
 }
 
@@ -36,7 +37,8 @@ export const LudoDice: React.FC<LudoDiceProps> = ({
   onRoll,
   disabled = false,
   size = 'compact',
-  turnTimeLeft = 30,
+  turnTimeLeft = 10,
+  totalTurnTime = 10,
   isTurn = false,
 }) => {
   const [rotation, setRotation] = useState<{ x: number; y: number; z: number }>({
@@ -207,7 +209,7 @@ export const LudoDice: React.FC<LudoDiceProps> = ({
       className="relative flex items-center justify-center select-none"
       style={{ perspective: isCompact ? '400px' : '600px' }}
     >
-      {/* Square 30-Second Turn Timer Progress Bar around Active Dice */}
+      {/* Square Turn Timer Progress Bar around Active Dice - exact same speed as Snake Ludo */}
       {isTurn && (
         <div className="absolute inset-[-5px] sm:inset-[-6px] pointer-events-none z-30">
           <svg className="w-full h-full overflow-visible">
@@ -222,7 +224,7 @@ export const LudoDice: React.FC<LudoDiceProps> = ({
               stroke="rgba(0, 0, 0, 0.45)"
               strokeWidth="4"
             />
-            {/* Animated 30s Green -> Red Progress Line */}
+            {/* Animated 10s Green -> Red Progress Line */}
             <rect
               x="2"
               y="2"
@@ -230,15 +232,15 @@ export const LudoDice: React.FC<LudoDiceProps> = ({
               height="calc(100% - 4px)"
               rx="14"
               fill="none"
-              stroke={turnTimeLeft <= 10 ? '#ef4444' : '#22c55e'}
+              stroke={turnTimeLeft <= 3 ? '#ef4444' : '#22c55e'}
               strokeWidth="4"
               strokeLinecap="round"
               pathLength="100"
               strokeDasharray="100"
-              strokeDashoffset={Math.max(0, Math.min(100, (1 - turnTimeLeft / 30) * 100))}
-              className="transition-all duration-1000 ease-linear"
+              strokeDashoffset={Math.max(0, Math.min(100, (1 - turnTimeLeft / totalTurnTime) * 100))}
+              className="transition-all duration-200 ease-linear"
               style={{
-                filter: turnTimeLeft <= 10
+                filter: turnTimeLeft <= 3
                   ? 'drop-shadow(0 0 6px rgba(239, 68, 68, 0.9))'
                   : 'drop-shadow(0 0 5px rgba(34, 197, 94, 0.8))',
               }}
@@ -247,8 +249,8 @@ export const LudoDice: React.FC<LudoDiceProps> = ({
 
           {/* Turn Timer Countdown Badge */}
           <div
-            className={`absolute -bottom-3 left-1/2 -translate-x-1/2 px-1 py-0.2 rounded text-[9px] font-black leading-tight tracking-tight shadow-md border ${
-              turnTimeLeft <= 10
+            className={`absolute -bottom-3 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[9px] font-black leading-tight tracking-tight shadow-md border ${
+              turnTimeLeft <= 3
                 ? 'bg-red-600 text-white border-red-300 animate-pulse shadow-red-500/50'
                 : 'bg-emerald-600 text-white border-emerald-300 shadow-emerald-500/50'
             }`}

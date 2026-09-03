@@ -480,6 +480,7 @@ export class UnifiedWalletService {
       isHuman?: boolean;
     }>;
     playerUsernames?: Record<string, string>;
+    tournamentId?: string;
   }): Promise<{
     success: boolean;
     settlementId: string;

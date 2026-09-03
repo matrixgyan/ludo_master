@@ -11,6 +11,7 @@ import { LedgerService } from '../wallet/ledgerService';
 import { LedgerMath } from '../wallet/ledgerMath';
 import { rateLimiter } from '../redis/rateLimit';
 import { getDbPool, isPostgresConfigured } from '../db/client';
+import { TournamentService } from '../services/tournamentService';
 import { Logger } from '../config/env';
 
 export const matchApiRouter = Router();
@@ -248,6 +249,18 @@ matchApiRouter.post('/api/matches/settle', async (req: Request, res: Response) =
     // Fetch updated balance for the winner user
     const updatedWallet = await LedgerService.getUserWallet(winnerUserId);
 
+    // If tournamentId provided or active tournament exists for player, record score in tournament
+    const tId = req.body.tournamentId;
+    if (tId && safeResults.length > 0) {
+      for (const pr of safeResults) {
+        if (pr.userId && !pr.userId.startsWith('bot_')) {
+          TournamentService.recordTournamentScore(pr.userId, tId, matchId, pr.finalScore).catch((err) => {
+            Logger.warn(`Notice recording tournament score for ${pr.userId}:`, err);
+          });
+        }
+      }
+    }
+
     res.json({
       success: true,
       ...settlement,
@@ -255,6 +268,38 @@ matchApiRouter.post('/api/matches/settle', async (req: Request, res: Response) =
       totalBalance: updatedWallet.totalBalance,
     });
   } catch (err: any) {
+    if (
+      err.code === '23505' ||
+      err.message?.includes('match_settlements_match_id_key') ||
+      err.message?.includes('match_settlements_idemp_uniq')
+    ) {
+      try {
+        const pool = getDbPool();
+        if (pool && req.body.matchId) {
+          const rowRes = await pool.query('SELECT * FROM match_settlements WHERE match_id = $1 LIMIT 1', [req.body.matchId]);
+          if (rowRes.rows.length > 0) {
+            const row = rowRes.rows[0];
+            const updatedWallet = await LedgerService.getUserWallet(row.winner_user_id || req.body.winnerUserId);
+            res.json({
+              success: true,
+              settlementId: row.id,
+              matchId: row.match_id,
+              winnerUserId: row.winner_user_id,
+              grossPool: row.gross_pool,
+              platformFee: row.platform_fee,
+              prizePool: row.prize_pool,
+              payoutTxId: row.settlement_details?.payoutTxId || 'already_settled',
+              status: 'ALREADY_SETTLED',
+              userBalance: updatedWallet.availableBalance,
+              totalBalance: updatedWallet.totalBalance,
+            });
+            return;
+          }
+        }
+      } catch (recoveryErr) {
+        Logger.error('Failed to recover from concurrent settlement constraint:', recoveryErr);
+      }
+    }
     Logger.error(`Match settlement endpoint error: ${err.message}`, err);
     res.status(400).json({ success: false, error: err.message });
   }

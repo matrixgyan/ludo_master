@@ -287,11 +287,13 @@ export class MatchSettlementService {
 
               // 8. Insert immutable match settlement record
               const settlementId = `stl_${uuidv4()}`;
-              await client.query(
+              const insertRes = await client.query(
                 `INSERT INTO match_settlements (
                    id, match_id, idempotency_key, gross_pool, platform_fee, prize_pool,
                    winner_user_id, status, settlement_details, processed_at
-                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'COMPLETED', $8, NOW())`,
+                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'COMPLETED', $8, NOW())
+                 ON CONFLICT (match_id) DO NOTHING
+                 RETURNING *`,
                 [
                   settlementId,
                   matchId,
@@ -307,6 +309,20 @@ export class MatchSettlementService {
                   }),
                 ]
               );
+
+              let finalSettlementId = settlementId;
+              let finalPayoutTxId = payoutTxId;
+              if (insertRes.rows.length === 0) {
+                // If already inserted concurrently, fetch the existing record
+                const existing = await client.query(
+                  `SELECT * FROM match_settlements WHERE match_id = $1 LIMIT 1`,
+                  [matchId]
+                );
+                if (existing.rows.length > 0) {
+                  finalSettlementId = existing.rows[0].id;
+                  finalPayoutTxId = existing.rows[0].settlement_details?.payoutTxId || payoutTxId;
+                }
+              }
 
               // 9. Update match status to SETTLED
               await client.query(
@@ -352,17 +368,42 @@ export class MatchSettlementService {
               }
 
               return {
-                settlementId,
+                settlementId: finalSettlementId,
                 matchId,
                 winnerUserId,
                 grossPool,
                 platformFee,
                 prizePool: netPrizePool,
-                payoutTxId: payoutTxId || 'none',
+                payoutTxId: finalPayoutTxId || 'none',
                 status: 'COMPLETED',
               };
-            } catch (err) {
-              await client.query('ROLLBACK');
+            } catch (err: any) {
+              await client.query('ROLLBACK').catch(() => {});
+              // If unique constraint violation occurred on match_id or idempotency_key (concurrent settlement)
+              if (
+                err.code === '23505' ||
+                err.message?.includes('match_settlements_match_id_key') ||
+                err.message?.includes('match_settlements_idemp_uniq')
+              ) {
+                Logger.info(`Match ${matchId} was settled concurrently, retrieving authoritative settlement record.`);
+                const existingSettlement = await pool.query(
+                  `SELECT * FROM match_settlements WHERE match_id = $1 OR idempotency_key = $2 LIMIT 1`,
+                  [matchId, idempotencyKey]
+                );
+                if (existingSettlement.rows.length > 0) {
+                  const row = existingSettlement.rows[0];
+                  return {
+                    settlementId: row.id,
+                    matchId,
+                    winnerUserId: row.winner_user_id,
+                    grossPool: row.gross_pool,
+                    platformFee: row.platform_fee,
+                    prizePool: row.prize_pool,
+                    payoutTxId: row.settlement_details?.payoutTxId || 'already_settled',
+                    status: 'ALREADY_SETTLED',
+                  };
+                }
+              }
               Logger.error(`Match settlement failed for ${matchId}`, err);
               throw err;
             } finally {
@@ -402,7 +443,9 @@ export class MatchSettlementService {
           status: 'COMPLETED',
         };
       },
-      8000
+      10000,
+      12,
+      150
     );
   }
 

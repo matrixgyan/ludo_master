@@ -198,7 +198,8 @@ export class LedgerService {
           const txId = `ltx_${uuidv4()}`;
           await client.query(
             `INSERT INTO ledger_transactions (id, idempotency_key, tx_type, description, metadata)
-             VALUES ($1, $2, 'DEPOSIT', $3, $4)`,
+             VALUES ($1, $2, 'DEPOSIT', $3, $4)
+             ON CONFLICT (idempotency_key) DO NOTHING`,
             [txId, idempotencyKey, `Deposit of ${amountUsdt} USDT`, JSON.stringify(metadata || {})]
           );
 
@@ -238,8 +239,18 @@ export class LedgerService {
           await client.query('COMMIT');
           Logger.info(`Ledger: Credited deposit of ${amountUsdt} USDT to user ${userId}`, { txId, idempotencyKey });
           return { transactionId: txId, newAvailableBalance: newAvail };
-        } catch (err) {
-          await client.query('ROLLBACK');
+        } catch (err: any) {
+          await client.query('ROLLBACK').catch(() => {});
+          if (err.code === '23505' || err.message?.includes('ledger_transactions_idempotency_key_key')) {
+            const existing = await pool.query(
+              `SELECT id FROM ledger_transactions WHERE idempotency_key = $1 LIMIT 1`,
+              [idempotencyKey]
+            );
+            if (existing.rows.length > 0) {
+              const w = await this.getUserWallet(userId);
+              return { transactionId: existing.rows[0].id, newAvailableBalance: w.availableBalance };
+            }
+          }
           throw err;
         } finally {
           client.release();

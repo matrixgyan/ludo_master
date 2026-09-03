@@ -524,4 +524,48 @@ export const referrals = pgTable('referrals', {
   statusIdx: index('referrals_status_idx').on(table.status),
 }));
 
+// -----------------------------------------------------------------------------
+// 23. LEAGUE TOURNAMENTS (Ludo Supreme & Snake Ludo Daily / Weekly Tournaments)
+// -----------------------------------------------------------------------------
+export const leagueTournaments = pgTable('league_tournaments', {
+  id: text('id').primaryKey(),
+  gameType: text('game_type').notNull(), // 'supreme' | 'snake'
+  cadence: text('cadence').notNull(), // 'DAILY' | 'WEEKLY'
+  title: text('title').notNull(),
+  description: text('description'),
+  entryFee: numeric('entry_fee', { precision: 28, scale: 8 }).notNull().default('25.00000000'),
+  maxMatches: integer('max_matches').notNull().default(25),
+  prizePool: numeric('prize_pool', { precision: 28, scale: 8 }).notNull().default('1000.00000000'),
+  status: text('status').notNull().default('ACTIVE'), // 'ACTIVE' | 'COMPLETED'
+  startsAt: timestamp('starts_at', { withTimezone: true }).notNull().defaultNow(),
+  endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  cadenceGameIdx: index('league_tournaments_cadence_game_idx').on(table.cadence, table.gameType, table.status),
+}));
+
+// -----------------------------------------------------------------------------
+// 24. TOURNAMENT PARTICIPANTS (25 Matches / User Quota & Real Highest Score)
+// -----------------------------------------------------------------------------
+export const tournamentParticipants = pgTable('tournament_participants', {
+  id: text('id').primaryKey(),
+  tournamentId: text('tournament_id').notNull().references(() => leagueTournaments.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  matchesPlayed: integer('matches_played').notNull().default(0),
+  maxMatches: integer('max_matches').notNull().default(25),
+  highestScore: integer('highest_score').notNull().default(0),
+  bestMatchId: text('best_match_id'),
+  scoresHistory: jsonb('scores_history').notNull().default('[]'),
+  entryFeePaid: numeric('entry_fee_paid', { precision: 28, scale: 8 }).notNull().default('25.00000000'),
+  ledgerTxId: text('ledger_tx_id'),
+  prizeWon: numeric('prize_won', { precision: 28, scale: 8 }).default('0.00000000'),
+  status: text('status').notNull().default('ACTIVE'), // 'ACTIVE' | 'COMPLETED'
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  tournUserUniq: uniqueIndex('tournament_participants_tourn_user_uniq').on(table.tournamentId, table.userId),
+  highestScoreIdx: index('tournament_participants_highest_score_idx').on(table.tournamentId, table.highestScore),
+}));
+
 

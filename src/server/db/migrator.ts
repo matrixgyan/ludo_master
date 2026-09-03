@@ -558,6 +558,44 @@ export async function ensureDatabaseTables(): Promise<void> {
       CREATE INDEX IF NOT EXISTS referrals_referrer_idx ON referrals(referrer_id);
       CREATE UNIQUE INDEX IF NOT EXISTS referrals_referee_uniq ON referrals(referee_id);
       CREATE INDEX IF NOT EXISTS referrals_status_idx ON referrals(status);
+
+      -- 27. League Tournaments (Ludo Supreme & Snake Ludo Tournaments - Daily 25-Match & Weekly)
+      CREATE TABLE IF NOT EXISTS league_tournaments (
+        id TEXT PRIMARY KEY,
+        game_type TEXT NOT NULL, -- 'supreme' | 'snake'
+        cadence TEXT NOT NULL, -- 'DAILY' | 'WEEKLY'
+        title TEXT NOT NULL,
+        description TEXT,
+        entry_fee NUMERIC(28, 8) NOT NULL DEFAULT '25.00000000',
+        max_matches INTEGER NOT NULL DEFAULT 25,
+        prize_pool NUMERIC(28, 8) NOT NULL DEFAULT '1000.00000000',
+        status TEXT NOT NULL DEFAULT 'ACTIVE', -- 'ACTIVE' | 'COMPLETED'
+        starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        ends_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS league_tournaments_cadence_game_idx ON league_tournaments(cadence, game_type, status);
+
+      -- 28. Tournament Participants (Enforces 25 matches/user & highest score tracking)
+      CREATE TABLE IF NOT EXISTS tournament_participants (
+        id TEXT PRIMARY KEY,
+        tournament_id TEXT NOT NULL REFERENCES league_tournaments(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        matches_played INTEGER NOT NULL DEFAULT 0,
+        max_matches INTEGER NOT NULL DEFAULT 25,
+        highest_score INTEGER NOT NULL DEFAULT 0,
+        best_match_id TEXT,
+        scores_history JSONB NOT NULL DEFAULT '[]',
+        entry_fee_paid NUMERIC(28, 8) NOT NULL DEFAULT '25.00000000',
+        ledger_tx_id TEXT,
+        prize_won NUMERIC(28, 8) DEFAULT '0.00000000',
+        status TEXT NOT NULL DEFAULT 'ACTIVE', -- 'ACTIVE' | 'COMPLETED'
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS tournament_participants_tourn_user_uniq ON tournament_participants(tournament_id, user_id);
+      CREATE INDEX IF NOT EXISTS tournament_participants_highest_score_idx ON tournament_participants(tournament_id, highest_score DESC);
     `);
 
     Logger.info('PostgreSQL schema migration completed successfully.');
