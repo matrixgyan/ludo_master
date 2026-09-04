@@ -282,37 +282,7 @@ export const MatchArenaListView: React.FC<MatchArenaListViewProps> = ({
           entryFee,
           prizePool,
           activeGameType,
-          variation,
-          [
-            {
-              id: 'p1',
-              name: activeUserName,
-              color: 'red',
-              avatarUrl: arabAvatarImg,
-              isHuman: true,
-            },
-            {
-              id: 'p2',
-              name: 'Player 2',
-              color: 'yellow',
-              avatarUrl: arabAvatarImg,
-              isHuman: false,
-            },
-            {
-              id: 'p3',
-              name: 'Player 3',
-              color: 'green',
-              avatarUrl: arabAvatarImg,
-              isHuman: false,
-            },
-            {
-              id: 'p4',
-              name: 'Player 4',
-              color: 'blue',
-              avatarUrl: arabAvatarImg,
-              isHuman: false,
-            },
-          ]
+          variation
         );
       }, 350);
     } catch {

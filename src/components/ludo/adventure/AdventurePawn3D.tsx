@@ -3,11 +3,12 @@ import { motion } from 'motion/react';
 import { getTileCoordinates } from './types';
 
 export interface AdventurePawn3DProps {
-  player: 'p1' | 'p2';
+  player: 'p1' | 'p2' | 'p3' | 'p4';
   position: number;
   isActiveTurn: boolean;
   isMoving: boolean;
   hasCoOccupant?: boolean;
+  coOccupantOffset?: { x: number; y: number };
 }
 
 export const AdventurePawn3D: React.FC<AdventurePawn3DProps> = ({
@@ -16,17 +17,77 @@ export const AdventurePawn3D: React.FC<AdventurePawn3DProps> = ({
   isActiveTurn,
   isMoving,
   hasCoOccupant = false,
+  coOccupantOffset,
 }) => {
   const coords = getTileCoordinates(position);
 
-  // Slight horizontal offset if both pawns occupy the same tile
-  const offsetX = hasCoOccupant ? (player === 'p1' ? -1.8 : 1.8) : 0;
-  const offsetY = hasCoOccupant ? (player === 'p1' ? -1.8 : 1.8) : 0;
+  // Slight horizontal/vertical offset if pawns occupy the same tile
+  let offsetX = 0;
+  let offsetY = 0;
+
+  if (coOccupantOffset) {
+    offsetX = coOccupantOffset.x;
+    offsetY = coOccupantOffset.y;
+  } else if (hasCoOccupant) {
+    if (player === 'p1') {
+      offsetX = -1.8;
+      offsetY = -1.8;
+    } else if (player === 'p2') {
+      offsetX = 1.8;
+      offsetY = -1.8;
+    } else if (player === 'p3') {
+      offsetX = -1.8;
+      offsetY = 1.8;
+    } else {
+      offsetX = 1.8;
+      offsetY = 1.8;
+    }
+  }
 
   const leftPercent = coords.xPercent + offsetX;
   const topPercent = coords.yPercent + offsetY;
 
-  const isP1 = player === 'p1';
+  // Pawn theme configurations
+  const pawnConfigs = {
+    p1: {
+      outerBg: 'from-[#ffd700] via-[#dc2626] to-[#450a0a]',
+      outerBorder: 'border-[#fef08a]',
+      innerRing: 'from-[#92400e] via-[#fbbf24] to-[#fef08a]',
+      innerBorder: 'border-[#fef08a]',
+      core: 'from-[#f87171] to-[#991b1b]',
+      glow: '#ef4444',
+      haloBorder: 'border-amber-300 shadow-[0_0_14px_#f59e0b]',
+    },
+    p2: {
+      outerBg: 'from-[#a7f3d0] via-[#059669] to-[#022c22]',
+      outerBorder: 'border-[#6ee7b7]',
+      innerRing: 'from-[#064e3b] via-[#34d399] to-[#d1fae5]',
+      innerBorder: 'border-[#a7f3d0]',
+      core: 'from-[#6ee7b7] to-[#047857]',
+      glow: '#10b981',
+      haloBorder: 'border-emerald-300 shadow-[0_0_14px_#10b981]',
+    },
+    p3: {
+      outerBg: 'from-[#bae6fd] via-[#2563eb] to-[#0c4a6e]',
+      outerBorder: 'border-[#93c5fd]',
+      innerRing: 'from-[#1e3a8a] via-[#60a5fa] to-[#e0f2fe]',
+      innerBorder: 'border-[#bae6fd]',
+      core: 'from-[#93c5fd] to-[#1d4ed8]',
+      glow: '#3b82f6',
+      haloBorder: 'border-blue-300 shadow-[0_0_14px_#3b82f6]',
+    },
+    p4: {
+      outerBg: 'from-[#fef08a] via-[#d97706] to-[#78350f]',
+      outerBorder: 'border-[#fde047]',
+      innerRing: 'from-[#78350f] via-[#f59e0b] to-[#fef9c3]',
+      innerBorder: 'border-[#fef08a]',
+      core: 'from-[#fde047] to-[#b45309]',
+      glow: '#eab308',
+      haloBorder: 'border-yellow-300 shadow-[0_0_14px_#eab308]',
+    },
+  };
+
+  const currentTheme = pawnConfigs[player];
 
   return (
     <motion.div
@@ -60,49 +121,29 @@ export const AdventurePawn3D: React.FC<AdventurePawn3DProps> = ({
           }`}
         />
 
-        {/* 2. PLAYER 1: GOLDEN SUN GOD & RUBY EXPLORER IDOL */}
-        {isP1 ? (
-          <div className="relative w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-gradient-to-br from-[#ffd700] via-[#dc2626] to-[#450a0a] border-2 border-[#fef08a] shadow-[0_6px_16px_rgba(0,0,0,0.9),inset_0_2px_4px_rgba(255,255,255,0.9)] flex items-center justify-center">
-            {/* Outer Sculpted Gold Filigree Ring */}
-            <div className="w-4 h-4 sm:w-4.5 sm:h-4.5 rounded-full bg-gradient-to-tr from-[#92400e] via-[#fbbf24] to-[#fef08a] border border-[#fef08a] shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)] flex items-center justify-center">
-              {/* Inner Glowing Ruby Core */}
-              <div className="w-2 h-2 rounded-full bg-gradient-to-br from-[#f87171] to-[#991b1b] shadow-[0_0_6px_#ef4444] flex items-center justify-center">
-                {/* Specular White Glint */}
-                <div className="w-0.5 h-0.5 rounded-full bg-white shadow-[0_0_2px_#fff]" />
-              </div>
+        {/* 2. 3D SCULPTED IDOL TOKEN */}
+        <div className={`relative w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-gradient-to-br ${currentTheme.outerBg} border-2 ${currentTheme.outerBorder} shadow-[0_6px_16px_rgba(0,0,0,0.9),inset_0_2px_4px_rgba(255,255,255,0.9)] flex items-center justify-center`}>
+          {/* Outer Sculpted Filigree Ring */}
+          <div className={`w-4 h-4 sm:w-4.5 sm:h-4.5 rounded-full bg-gradient-to-tr ${currentTheme.innerRing} border ${currentTheme.innerBorder} shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)] flex items-center justify-center`}>
+            {/* Inner Glowing Core */}
+            <div
+              className={`w-2 h-2 rounded-full bg-gradient-to-br ${currentTheme.core} flex items-center justify-center`}
+              style={{ boxShadow: `0 0 6px ${currentTheme.glow}` }}
+            >
+              {/* Specular White Glint */}
+              <div className="w-0.5 h-0.5 rounded-full bg-white shadow-[0_0_2px_#fff]" />
             </div>
-
-            {/* Active Turn Radiant Fire Halo */}
-            {isActiveTurn && (
-              <motion.div
-                animate={{ scale: [1, 1.55, 1], opacity: [0.9, 0, 0.9] }}
-                transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
-                className="absolute inset-0 rounded-full border-2 border-amber-300 shadow-[0_0_14px_#f59e0b] pointer-events-none"
-              />
-            )}
           </div>
-        ) : (
-          /* 3. PLAYER 2: OBSIDIAN & JADE JAGUAR TOTEM */
-          <div className="relative w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-gradient-to-br from-[#a7f3d0] via-[#059669] to-[#022c22] border-2 border-[#6ee7b7] shadow-[0_6px_16px_rgba(0,0,0,0.9),inset_0_2px_4px_rgba(255,255,255,0.9)] flex items-center justify-center">
-            {/* Outer Sculpted Emerald Filigree Ring */}
-            <div className="w-4 h-4 sm:w-4.5 sm:h-4.5 rounded-full bg-gradient-to-tr from-[#064e3b] via-[#34d399] to-[#d1fae5] border border-[#a7f3d0] shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)] flex items-center justify-center">
-              {/* Inner Glowing Jade Core */}
-              <div className="w-2 h-2 rounded-full bg-gradient-to-br from-[#6ee7b7] to-[#047857] shadow-[0_0_6px_#10b981] flex items-center justify-center">
-                {/* Specular White Glint */}
-                <div className="w-0.5 h-0.5 rounded-full bg-white shadow-[0_0_2px_#fff]" />
-              </div>
-            </div>
 
-            {/* Active Turn Radiant Emerald Halo */}
-            {isActiveTurn && (
-              <motion.div
-                animate={{ scale: [1, 1.55, 1], opacity: [0.9, 0, 0.9] }}
-                transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
-                className="absolute inset-0 rounded-full border-2 border-emerald-300 shadow-[0_0_14px_#10b981] pointer-events-none"
-              />
-            )}
-          </div>
-        )}
+          {/* Active Turn Radiant Halo */}
+          {isActiveTurn && (
+            <motion.div
+              animate={{ scale: [1, 1.55, 1], opacity: [0.9, 0, 0.9] }}
+              transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+              className={`absolute inset-0 rounded-full border-2 ${currentTheme.haloBorder} pointer-events-none`}
+            />
+          )}
+        </div>
       </div>
     </motion.div>
   );

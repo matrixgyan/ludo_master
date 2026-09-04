@@ -138,14 +138,7 @@ export const LudoModeSelectorModal: React.FC<LudoModeSelectorModalProps> = ({
       return;
     }
 
-    const defaultPlayers: PlayerConfig[] = [
-      { id: 'p1', name: 'Muonimoon', color: 'red', avatarUrl: arabAvatarImg, isHuman: true },
-      { id: 'p2', name: 'Player 2', color: 'yellow', avatarUrl: arabAvatarImg, isHuman: false },
-      { id: 'p3', name: 'Player 3', color: 'green', avatarUrl: arabAvatarImg, isHuman: false },
-      { id: 'p4', name: 'Player 4', color: 'blue', avatarUrl: arabAvatarImg, isHuman: false },
-    ];
-
-    onSelectMode(selectedMode, fee, prize, gameType, variation, defaultPlayers.slice(0, selectedMode));
+    onSelectMode(selectedMode, fee, prize, gameType, variation);
   };
 
   const poolSource = platformMode.cryptoWalletEnabled ? POOLS_BY_PLAYER_COUNT_CRYPTO : POOLS_BY_PLAYER_COUNT_INR;

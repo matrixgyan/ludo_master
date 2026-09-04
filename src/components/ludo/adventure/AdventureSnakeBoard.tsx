@@ -15,7 +15,10 @@ import { AdventurePawn3D } from './AdventurePawn3D';
 export interface AdventureSnakeBoardProps {
   player1Pos: number;
   player2Pos: number;
-  activeTurn: 'p1' | 'p2';
+  player3Pos?: number;
+  player4Pos?: number;
+  playerCount?: number;
+  activeTurn: 'p1' | 'p2' | 'p3' | 'p4';
   isMoving?: boolean;
   highlightTile?: number | null;
   highlightLadderId?: string | null;
@@ -27,6 +30,9 @@ export interface AdventureSnakeBoardProps {
 export const AdventureSnakeBoard: React.FC<AdventureSnakeBoardProps> = ({
   player1Pos,
   player2Pos,
+  player3Pos = 1,
+  player4Pos = 1,
+  playerCount = 2,
   activeTurn,
   isMoving = false,
   highlightTile = null,
@@ -71,7 +77,45 @@ export const AdventureSnakeBoard: React.FC<AdventureSnakeBoardProps> = ({
     return list;
   }, []);
 
-  const hasCoOccupant = player1Pos === player2Pos;
+  // Check tile sharing across all active players
+  const playerPositions = useMemo(() => {
+    const list: { player: 'p1' | 'p2' | 'p3' | 'p4'; pos: number }[] = [
+      { player: 'p1', pos: player1Pos },
+      { player: 'p2', pos: player2Pos },
+    ];
+    if (playerCount >= 3) list.push({ player: 'p3', pos: player3Pos });
+    if (playerCount >= 4) list.push({ player: 'p4', pos: player4Pos });
+    return list;
+  }, [player1Pos, player2Pos, player3Pos, player4Pos, playerCount]);
+
+  // Compute offsets for each player when multiple share the same tile
+  const playerOffsets = useMemo(() => {
+    const tileGroups: Record<number, ('p1' | 'p2' | 'p3' | 'p4')[]> = {};
+    for (const item of playerPositions) {
+      if (!tileGroups[item.pos]) tileGroups[item.pos] = [];
+      tileGroups[item.pos].push(item.player);
+    }
+
+    const offsets: Record<string, { x: number; y: number; hasCoOccupant: boolean }> = {};
+    const standardQuadrantOffsets = [
+      { x: -1.8, y: -1.8 },
+      { x: 1.8, y: -1.8 },
+      { x: -1.8, y: 1.8 },
+      { x: 1.8, y: 1.8 },
+    ];
+
+    for (const [_pos, players] of Object.entries(tileGroups)) {
+      if (players.length <= 1) {
+        offsets[players[0]] = { x: 0, y: 0, hasCoOccupant: false };
+      } else {
+        players.forEach((p, idx) => {
+          const quad = standardQuadrantOffsets[idx % 4];
+          offsets[p] = { x: quad.x, y: quad.y, hasCoOccupant: true };
+        });
+      }
+    }
+    return offsets;
+  }, [playerPositions]);
 
   return (
     <motion.div
@@ -133,15 +177,37 @@ export const AdventureSnakeBoard: React.FC<AdventureSnakeBoardProps> = ({
           position={player1Pos}
           isActiveTurn={activeTurn === 'p1'}
           isMoving={isMoving}
-          hasCoOccupant={hasCoOccupant}
+          hasCoOccupant={playerOffsets['p1']?.hasCoOccupant}
+          coOccupantOffset={playerOffsets['p1']}
         />
         <AdventurePawn3D
           player="p2"
           position={player2Pos}
           isActiveTurn={activeTurn === 'p2'}
           isMoving={isMoving}
-          hasCoOccupant={hasCoOccupant}
+          hasCoOccupant={playerOffsets['p2']?.hasCoOccupant}
+          coOccupantOffset={playerOffsets['p2']}
         />
+        {playerCount >= 3 && (
+          <AdventurePawn3D
+            player="p3"
+            position={player3Pos}
+            isActiveTurn={activeTurn === 'p3'}
+            isMoving={isMoving}
+            hasCoOccupant={playerOffsets['p3']?.hasCoOccupant}
+            coOccupantOffset={playerOffsets['p3']}
+          />
+        )}
+        {playerCount >= 4 && (
+          <AdventurePawn3D
+            player="p4"
+            position={player4Pos}
+            isActiveTurn={activeTurn === 'p4'}
+            isMoving={isMoving}
+            hasCoOccupant={playerOffsets['p4']?.hasCoOccupant}
+            coOccupantOffset={playerOffsets['p4']}
+          />
+        )}
       </div>
     </motion.div>
   );

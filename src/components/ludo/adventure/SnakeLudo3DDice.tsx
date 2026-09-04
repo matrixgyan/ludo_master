@@ -209,7 +209,7 @@ export const SnakeLudo3DDice: React.FC<SnakeLudo3DDiceProps> = ({
         whileTap={isInteractive ? { scale: 0.92, y: 1 } : {}}
         onClick={handleClick}
         disabled={!isInteractive}
-        className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-xl flex items-center justify-center transition-all duration-300 ${
+        className={`relative rounded-xl flex items-center justify-center transition-all duration-300 ${
           isInteractive
             ? 'cursor-pointer'
             : isActiveTurn
@@ -219,6 +219,8 @@ export const SnakeLudo3DDice: React.FC<SnakeLudo3DDiceProps> = ({
         style={{
           background: dockBg,
           perspective: '500px',
+          width: `${Math.max(40, cubeSize + 14)}px`,
+          height: `${Math.max(40, cubeSize + 14)}px`,
         }}
       >
         {/* Active Player Radial Pulsing Glow Halo */}
