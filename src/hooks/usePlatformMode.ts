@@ -7,6 +7,8 @@ export interface PlatformModeConfig {
   currencySymbol: string;
   currencyName: string;
   exchangeRateToUsdt?: number;
+  humanWinRate3P?: number;
+  humanWinRate4P?: number;
 }
 
 const STORAGE_KEY = 'ludo_platform_mode';
@@ -18,6 +20,8 @@ const DEFAULT_PLATFORM_MODE: PlatformModeConfig = {
   currencySymbol: '₹',
   currencyName: 'Indian Rupee',
   exchangeRateToUsdt: 89.5,
+  humanWinRate3P: 20,
+  humanWinRate4P: 20,
 };
 
 export function getLocalPlatformMode(): PlatformModeConfig {
@@ -33,6 +37,8 @@ export function getLocalPlatformMode(): PlatformModeConfig {
         currencySymbol: parsed.currencySymbol || '₹',
         currencyName: parsed.currencyName || 'Indian Rupee',
         exchangeRateToUsdt: parsed.exchangeRateToUsdt || 89.5,
+        humanWinRate3P: parsed.humanWinRate3P ?? 20,
+        humanWinRate4P: parsed.humanWinRate4P ?? 20,
       };
     }
   } catch {
@@ -84,6 +90,8 @@ export function usePlatformMode() {
             currencySymbol: data.settings.currencySymbol || '₹',
             currencyName: data.settings.currencyName || 'Indian Rupee',
             exchangeRateToUsdt: data.settings.exchangeRateToUsdt || 89.5,
+            humanWinRate3P: data.settings.humanWinRate3P ?? 20,
+            humanWinRate4P: data.settings.humanWinRate4P ?? 20,
           });
           setPlatformMode(updated);
         }

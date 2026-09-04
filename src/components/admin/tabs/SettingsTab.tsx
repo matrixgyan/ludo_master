@@ -14,6 +14,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ token, onAdminAliasCha
   const [entryFee2Player, setEntryFee2Player] = useState(100);
   const [entryFee4Player, setEntryFee4Player] = useState(250);
   const [prizePoolPercentage, setPrizePoolPercentage] = useState(85);
+  const [humanWinRate3P, setHumanWinRate3P] = useState(20);
+  const [humanWinRate4P, setHumanWinRate4P] = useState(20);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
@@ -33,6 +35,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ token, onAdminAliasCha
         setEntryFee2Player(data.settings.entryFee2Player || 100);
         setEntryFee4Player(data.settings.entryFee4Player || 250);
         setPrizePoolPercentage(data.settings.prizePoolPercentage || 85);
+        setHumanWinRate3P(data.settings.humanWinRate3P ?? 20);
+        setHumanWinRate4P(data.settings.humanWinRate4P ?? 20);
       }
     } catch {
       // Fallback
@@ -59,6 +63,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ token, onAdminAliasCha
           entryFee2Player,
           entryFee4Player,
           prizePoolPercentage,
+          humanWinRate3P,
+          humanWinRate4P,
         }),
       });
 
@@ -215,6 +221,59 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ token, onAdminAliasCha
                 onChange={(e) => setPrizePoolPercentage(Number(e.target.value))}
                 className="w-full bg-[#141b2d] border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 font-mono outline-none"
               />
+            </div>
+          </div>
+
+          {/* Bot Rigging & Win Rate Control (3P and 4P matches) */}
+          <div className="p-4 bg-[#141b2d] border border-slate-800 rounded-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-bold text-slate-200 text-xs flex items-center gap-2">
+                  <Flame className="w-4 h-4 text-orange-400" />
+                  Bot Win Optimization & Human Win Rate Limiters
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Controls backend bot AI difficulty & human winning probabilities in 3-player and 4-player matches.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+              <div>
+                <label className="block text-slate-400 uppercase font-bold text-[10px] tracking-wider mb-1.5">
+                  3-Player Human Win Chance (%)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={humanWinRate3P}
+                    onChange={(e) => setHumanWinRate3P(Number(e.target.value))}
+                    className="w-full bg-[#0e1322] border border-slate-700 rounded-xl px-3 py-2 text-xs text-amber-300 font-mono font-bold outline-none"
+                  />
+                  <span className="text-xs text-slate-400 font-bold">%</span>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">Default 20% (80% bot favored win chance)</p>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 uppercase font-bold text-[10px] tracking-wider mb-1.5">
+                  4-Player Human Win Chance (%)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={humanWinRate4P}
+                    onChange={(e) => setHumanWinRate4P(Number(e.target.value))}
+                    className="w-full bg-[#0e1322] border border-slate-700 rounded-xl px-3 py-2 text-xs text-amber-300 font-mono font-bold outline-none"
+                  />
+                  <span className="text-xs text-slate-400 font-bold">%</span>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">Default 20% (80% bot favored win chance)</p>
+              </div>
             </div>
           </div>
 

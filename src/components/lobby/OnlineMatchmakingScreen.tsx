@@ -123,55 +123,89 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
   // Matchmaking Sequence
   useEffect(() => {
     const opponentsNeeded = playerCount - 1;
-
-    // Pick random unique opponents from pool or custom list
-    const shuffledPool = [...ONLINE_PLAYERS_POOL].sort(() => Math.random() - 0.5);
-    const chosenOpponents = Array.from({ length: opponentsNeeded }).map((_, idx) => {
-      const custom = customOpponents?.[idx];
-      const fallback = shuffledPool[idx % shuffledPool.length];
-      return {
-        id: custom ? `p_custom_${idx}_${custom.name}` : `${fallback.id}_${idx}`,
-        name: custom?.name || fallback.name,
-        avatarUrl: custom?.avatarUrl || fallback.avatarUrl,
-        country: fallback.country || 'AE',
-        rating: fallback.rating || 1850,
-        ping: fallback.ping || 24,
-        color: custom?.color || remainingColors[idx] || 'green',
-        isReady: false,
-      };
-    });
-
+    let isCancelled = false;
     const timeouts: NodeJS.Timeout[] = [];
 
-    // Progressive Matchmaking Lock-in
-    chosenOpponents.forEach((opp, idx) => {
-      const delay = 1000 + idx * 900;
-      const t = setTimeout(() => {
-        SoundManager.play('match-found');
-        setMatchedPlayers((prev) => [
-          ...prev,
-          {
-            ...opp,
-            isReady: true,
-          },
-        ]);
-      }, delay);
-      timeouts.push(t);
-    });
+    async function startMatchmaking() {
+      let serverOpponents: any[] = [];
+      try {
+        const res = await fetch('/api/matches/find-or-create-table', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userName,
+            userAvatar,
+            userColor,
+            playerCount,
+            entryFee,
+            prizePool,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.opponents && Array.isArray(data.opponents)) {
+            serverOpponents = data.opponents;
+          }
+        }
+      } catch (err) {
+        // Fallback to local pool
+      }
 
-    // When all opponents are locked in, start countdown
-    const allFoundDelay = 1000 + (opponentsNeeded - 1) * 900 + 600;
-    const tAll = setTimeout(() => {
-      setStatusMessage('ALL PLAYERS LOCKED IN! GET READY!');
-      SoundManager.play('battle-horn');
-      setCountdown(3);
-    }, allFoundDelay);
-    timeouts.push(tAll);
+      if (isCancelled) return;
+
+      // Pick random unique opponents from server pool or local pool
+      const shuffledPool = [...ONLINE_PLAYERS_POOL].sort(() => Math.random() - 0.5);
+      const chosenOpponents = Array.from({ length: opponentsNeeded }).map((_, idx) => {
+        const custom = customOpponents?.[idx];
+        const srv = serverOpponents?.[idx];
+        const fallback = shuffledPool[idx % shuffledPool.length];
+        return {
+          id: srv?.id || (custom ? `p_custom_${idx}_${custom.name}` : `${fallback.id}_${idx}`),
+          name: srv?.name || custom?.name || fallback.name,
+          avatarUrl: srv?.avatarUrl || custom?.avatarUrl || fallback.avatarUrl,
+          country: srv?.country || fallback.country || 'AE',
+          rating: srv?.rating || fallback.rating || 1850,
+          ping: srv?.ping || fallback.ping || 24,
+          color: srv?.color || custom?.color || remainingColors[idx] || 'green',
+          isReady: false,
+        };
+      });
+
+      // Progressive Matchmaking Lock-in
+      chosenOpponents.forEach((opp, idx) => {
+        const delay = 1000 + idx * 900;
+        const t = setTimeout(() => {
+          if (isCancelled) return;
+          SoundManager.play('match-found');
+          setMatchedPlayers((prev) => [
+            ...prev,
+            {
+              ...opp,
+              isReady: true,
+            },
+          ]);
+        }, delay);
+        timeouts.push(t);
+      });
+
+      // When all opponents are locked in, start countdown
+      const allFoundDelay = 1000 + (opponentsNeeded - 1) * 900 + 600;
+      const tAll = setTimeout(() => {
+        if (isCancelled) return;
+        setStatusMessage('ALL PLAYERS LOCKED IN! GET READY!');
+        SoundManager.play('battle-horn');
+        setCountdown(3);
+      }, allFoundDelay);
+      timeouts.push(tAll);
+    }
+
+    startMatchmaking();
 
     return () => {
+      isCancelled = true;
       timeouts.forEach((t) => clearTimeout(t));
     };
-  }, [playerCount, userColor]);
+  }, [playerCount, userColor, userName, userAvatar, entryFee, prizePool]);
 
   // Countdown timer logic
   useEffect(() => {

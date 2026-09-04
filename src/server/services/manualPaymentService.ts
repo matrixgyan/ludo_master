@@ -723,13 +723,39 @@ export class ManualPaymentService {
     adminNotes?: string,
     reviewedBy?: string
   ): Promise<{ success: boolean; withdrawal: ManualWithdrawalItem }> {
-    const withdrawal = inMemoryWithdrawals.find((w) => w.id === withdrawalId);
+    const cleanId = (withdrawalId || '').trim();
+    let withdrawal = inMemoryWithdrawals.find((w) => w.id === cleanId || w.id.trim() === cleanId);
+
+    // If not found in memory, query PostgreSQL table manualWithdrawalRequests
+    if (!withdrawal && isPostgresConfigured()) {
+      try {
+        const db = getDb();
+        if (db) {
+          const rows = await db
+            .select()
+            .from(manualWithdrawalRequests)
+            .where(eq(manualWithdrawalRequests.id, cleanId))
+            .limit(1);
+
+          if (rows.length > 0) {
+            withdrawal = rows[0] as any;
+            if (withdrawal) {
+              inMemoryWithdrawals.unshift(withdrawal);
+            }
+          }
+        }
+      } catch (err) {
+        Logger.warn(`Postgres lookup in processWithdrawal failed: ${String(err)}`);
+      }
+    }
+
     if (!withdrawal) {
       throw new Error(`Withdrawal request ${withdrawalId} not found`);
     }
 
     if (withdrawal.status !== 'PENDING') {
-      throw new Error(`Withdrawal is already ${withdrawal.status}`);
+      // If already processed, return current state smoothly
+      return { success: true, withdrawal };
     }
 
     withdrawal.status = action === 'APPROVE' ? 'PROCESSED' : 'REJECTED';
@@ -740,27 +766,35 @@ export class ManualPaymentService {
 
     if (action === 'APPROVE') {
       // Settle locked funds from user wallet
-      const { LedgerService } = await import('../wallet/ledgerService');
-      const numAmount = parseFloat(withdrawal.amount);
-      if (!isNaN(numAmount) && numAmount > 0) {
-        await LedgerService.settleWithdrawal(
-          withdrawal.userId,
-          numAmount.toFixed(8),
-          withdrawal.feeAmount || '0.00000000',
-          `manual_with_settle_${withdrawalId}`
-        );
+      try {
+        const { LedgerService } = await import('../wallet/ledgerService');
+        const numAmount = parseFloat(withdrawal.amount);
+        if (!isNaN(numAmount) && numAmount > 0) {
+          await LedgerService.settleWithdrawal(
+            withdrawal.userId,
+            numAmount.toFixed(8),
+            withdrawal.feeAmount || '0.00000000',
+            `manual_with_settle_${cleanId}`
+          );
+        }
+      } catch (settleErr: any) {
+        Logger.warn(`Ledger settlement notice for withdrawal ${cleanId}: ${settleErr.message}`);
       }
     } else if (action === 'REJECT') {
       // Refund balance back to user available balance
-      const { LedgerService } = await import('../wallet/ledgerService');
-      const numAmount = parseFloat(withdrawal.amount);
-      if (!isNaN(numAmount) && numAmount > 0) {
-        await LedgerService.refundWithdrawal(
-          withdrawal.userId,
-          numAmount.toFixed(8),
-          `manual_with_refund_${withdrawalId}`,
-          withdrawal.adminNotes
-        );
+      try {
+        const { LedgerService } = await import('../wallet/ledgerService');
+        const numAmount = parseFloat(withdrawal.amount);
+        if (!isNaN(numAmount) && numAmount > 0) {
+          await LedgerService.refundWithdrawal(
+            withdrawal.userId,
+            numAmount.toFixed(8),
+            `manual_with_refund_${cleanId}`,
+            withdrawal.adminNotes
+          );
+        }
+      } catch (refundErr: any) {
+        Logger.warn(`Ledger refund notice for withdrawal ${cleanId}: ${refundErr.message}`);
       }
     }
 
@@ -779,14 +813,28 @@ export class ManualPaymentService {
               reviewedAt: new Date(),
               updatedAt: new Date(),
             })
-            .where(eq(manualWithdrawalRequests.id, withdrawalId));
+            .where(eq(manualWithdrawalRequests.id, cleanId));
         }
       } catch (err) {
         Logger.warn(`Postgres processWithdrawal error: ${String(err)}`);
       }
     }
 
-    Logger.info(`[ADMIN WITHDRAWAL VERIFY] Withdrawal ${withdrawalId} marked as ${withdrawal.status} by ${reviewedBy}`);
+    Logger.info(`[ADMIN WITHDRAWAL VERIFY] Withdrawal ${cleanId} marked as ${withdrawal.status} by ${reviewedBy}`);
+
+    // Broadcast instant update event to all connected clients & admin via WebSocket
+    try {
+      wsServerInstance.broadcastAll({
+        type: 'WITHDRAWAL_STATUS_UPDATED',
+        withdrawalId: withdrawal.id,
+        userId: withdrawal.userId,
+        status: withdrawal.status,
+        amount: withdrawal.amount,
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      // ignore
+    }
 
     // Automatic Real Notification Trigger
     if (withdrawal.status === 'PROCESSED') {

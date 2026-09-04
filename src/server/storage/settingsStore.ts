@@ -18,6 +18,8 @@ export interface PlatformSettings {
   entryFee4Player: number;
   entryFeeSnakeLudo: number;
   prizePoolPercentage: number;
+  humanWinRate3P: number;
+  humanWinRate4P: number;
   allowedOrigins: string[];
 }
 
@@ -50,6 +52,8 @@ const DEFAULT_SETTINGS: PlatformSettings = {
   entryFee4Player: 250,
   entryFeeSnakeLudo: 50,
   prizePoolPercentage: 85,
+  humanWinRate3P: 20,
+  humanWinRate4P: 20,
   allowedOrigins: ['https://ludo.omyra.org', 'http://localhost:3000'],
 };
 

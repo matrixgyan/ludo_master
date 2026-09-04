@@ -29,6 +29,8 @@ import { navigationHistory } from './services/navigationHistory';
 import { useBackHandler } from './hooks/useBackHandler';
 import { MatchExitConfirmationModal } from './components/common/MatchExitConfirmationModal';
 import { BackExitToast } from './components/common/BackExitToast';
+import { usePlatformMode } from './hooks/usePlatformMode';
+import { getSmartBotRoll, chooseBestBotPawn } from './game/botAI';
 
 type ViewMode = 'lobby' | 'ludo_game' | 'snake_ludo' | 'admin' | 'matchmaking';
 
@@ -142,6 +144,8 @@ export default function App() {
     }
     return 'lobby';
   });
+
+  const { platformMode } = usePlatformMode();
 
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
     return AuthClientService.getUser();
@@ -288,10 +292,12 @@ export default function App() {
       const activeList = activeCols.map((c) => gs.players[c]).filter(Boolean);
       const sorted = [...activeList].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
-      const activeUserId = currentUser?.id || 'user_guest_default';
-      const isWinnerHuman = winnerP?.isHuman || winnerP?.id === 'p1';
-      const winnerUserId = isWinnerHuman ? activeUserId : `bot_${winnerColor}`;
-      const winnerName = winnerP?.name || `${winnerColor.toUpperCase()} Player`;
+      const isSupremeMode = cfg?.gameType !== 'classic' && cfg?.gameType !== 'snake';
+      const actualWinnerP = isSupremeMode ? (sorted[0] || winnerP) : (winnerP || sorted[0]);
+      const actualWinnerColor = actualWinnerP?.color || winnerColor;
+      const isWinnerHuman = actualWinnerP?.isHuman || actualWinnerP?.id === 'p1';
+      const winnerUserId = isWinnerHuman ? (currentUser?.id || 'user_guest_default') : `bot_${actualWinnerColor}`;
+      const winnerName = actualWinnerP?.name || `${actualWinnerColor.toUpperCase()} Player`;
       const effectivePrize = cfg?.prizePool && cfg.prizePool > 0 ? cfg.prizePool : (cfg?.entryFee ? cfg.entryFee * 1.8 : 0);
 
       // Instant optimistic UI update for the user if human won
@@ -303,22 +309,22 @@ export default function App() {
         });
       }
 
-      const playerResults = sorted.map((p, idx) => ({
+      // Order players strictly by score ranking with winner at rank 1
+      const activeUserId = currentUser?.id || 'user_guest_default';
+      const reorderedList = isSupremeMode
+        ? sorted
+        : [actualWinnerP, ...sorted.filter((p) => p.color !== actualWinnerColor)];
+
+      const playerResults = reorderedList.map((p, idx) => ({
         userId: p.isHuman || p.id === 'p1' ? activeUserId : `bot_${p.color}`,
         username: p.name,
-        rank: p.color === winnerColor ? 1 : idx + 1,
+        rank: idx + 1,
         finalScore: p.score ?? 0,
         tokensHome: p.pawns.filter((pawn) => pawn.state === 'goal').length,
         capturesMade: 0,
         totalDistanceMoved: 50,
         isHuman: p.isHuman || p.id === 'p1',
       }));
-
-      // Make sure winner is rank 1
-      playerResults.forEach((pr) => {
-        if (pr.userId === winnerUserId) pr.rank = 1;
-        else if (pr.rank === 1) pr.rank = 2;
-      });
 
       try {
         const settleRes = await UnifiedWalletService.settleMatchOutcome({
@@ -1137,7 +1143,21 @@ export default function App() {
       if (gameState.dice.canRoll && !gameState.dice.isRolling) {
         const timer = setTimeout(() => {
           if (viewMode === 'ludo_game') {
-            handleRollDice();
+            const isSupreme = currentMatchConfig?.gameType !== 'classic' && currentMatchConfig?.gameType !== 'snake';
+            const humanWinRate =
+              playerMode === 3
+                ? (platformMode.humanWinRate3P ?? 20)
+                : playerMode === 4
+                ? (platformMode.humanWinRate4P ?? 20)
+                : 50;
+            const smartVal = getSmartBotRoll(
+              gameState,
+              gameState.currentTurn,
+              activeColors,
+              isSupreme,
+              humanWinRate
+            );
+            handleRollDice(smartVal);
           }
         }, 1100);
         return () => clearTimeout(timer);
@@ -1146,9 +1166,18 @@ export default function App() {
       if (gameState.dice.hasRolled && gameState.movablePawnIds.length > 0) {
         const timer = setTimeout(() => {
           if (viewMode === 'ludo_game') {
+            const isSupreme = currentMatchConfig?.gameType !== 'classic' && currentMatchConfig?.gameType !== 'snake';
             const movables = gameState.movablePawnIds;
-            const randomPawnId = movables[Math.floor(Math.random() * movables.length)];
-            const chosenPawn = curPlayer.pawns.find((p) => p.id === randomPawnId);
+            const bestPawnId = chooseBestBotPawn(
+              gameState,
+              gameState.currentTurn,
+              activeColors,
+              movables,
+              isSupreme
+            );
+            const chosenPawn =
+              curPlayer.pawns.find((p) => p.id === bestPawnId) ||
+              curPlayer.pawns.find((p) => p.id === movables[0]);
             if (chosenPawn) {
               handlePawnClick(chosenPawn);
             }
@@ -1169,6 +1198,10 @@ export default function App() {
     activeColors,
     playerStrikes,
     settleAndFinalizeMatch,
+    currentMatchConfig?.gameType,
+    playerMode,
+    platformMode.humanWinRate3P,
+    platformMode.humanWinRate4P,
   ]);
 
   // Chat

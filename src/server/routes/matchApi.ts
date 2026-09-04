@@ -12,6 +12,7 @@ import { LedgerMath } from '../wallet/ledgerMath';
 import { rateLimiter } from '../redis/rateLimit';
 import { getDbPool, isPostgresConfigured } from '../db/client';
 import { TournamentService } from '../services/tournamentService';
+import { SettingsStore } from '../storage/settingsStore';
 import { Logger } from '../config/env';
 
 export const matchApiRouter = Router();
@@ -197,6 +198,263 @@ matchApiRouter.post('/api/matches/lock-entry', async (req: Request, res: Respons
   }
 });
 
+// In-memory table queue tracker
+interface QueuedTable {
+  matchId: string;
+  gameMode: string;
+  playerCount: number;
+  entryFee: number;
+  prizePool: number;
+  players: any[];
+  createdAt: number;
+}
+
+const activeTableQueues = new Map<string, QueuedTable>();
+
+const BOT_ROSTER = [
+  {
+    id: 'bot_alex',
+    name: 'Alex_Viper',
+    avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+    country: 'US',
+    rating: 1840,
+    ping: 28,
+  },
+  {
+    id: 'bot_elena',
+    name: 'Elena_R',
+    avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+    country: 'GB',
+    rating: 1910,
+    ping: 34,
+  },
+  {
+    id: 'bot_rashid',
+    name: 'Rashid_DXB',
+    avatarUrl: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&auto=format&fit=crop&q=80',
+    country: 'AE',
+    rating: 2050,
+    ping: 18,
+  },
+  {
+    id: 'bot_maya',
+    name: 'Maya_LudoQueen',
+    avatarUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
+    country: 'IN',
+    rating: 1980,
+    ping: 42,
+  },
+  {
+    id: 'bot_david',
+    name: 'David_King99',
+    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    country: 'CA',
+    rating: 1790,
+    ping: 30,
+  },
+  {
+    id: 'bot_sakura',
+    name: 'Sakura_Tokyo',
+    avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
+    country: 'JP',
+    rating: 2120,
+    ping: 55,
+  },
+  {
+    id: 'bot_vikram',
+    name: 'Vikram_Ace',
+    avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+    country: 'IN',
+    rating: 2020,
+    ping: 38,
+  },
+  {
+    id: 'bot_sophia',
+    name: 'Sophia_Star',
+    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    country: 'AU',
+    rating: 1890,
+    ping: 45,
+  },
+];
+
+// POST /api/matches/find-or-create-table
+// Detects real humans in table and automatically fills remaining seats with bots!
+matchApiRouter.post('/api/matches/find-or-create-table', async (req: Request, res: Response) => {
+  try {
+    const {
+      userId,
+      userName,
+      userAvatar,
+      userColor,
+      gameMode = 'ONLINE_ARENA',
+      playerCount = 4,
+      entryFee = 0,
+      prizePool = 0,
+      matchId: requestedMatchId,
+    } = req.body;
+
+    const pCount = parseInt(String(playerCount), 10) as 2 | 3 | 4;
+    const feeNum = parseFloat(String(entryFee || 0));
+    const pPool = parseFloat(String(prizePool || 0));
+    const effectiveUserId = userId || 'user_guest_default';
+    const effectiveUserName = userName || 'Player 1';
+
+    // 1. Fetch admin win rates
+    const settings = SettingsStore.getSettings();
+    let humanCanWin = true;
+    if (pCount === 3) {
+      const winChance = settings.humanWinRate3P ?? 20;
+      humanCanWin = Math.random() * 100 < winChance;
+    } else if (pCount === 4) {
+      const winChance = settings.humanWinRate4P ?? 20;
+      humanCanWin = Math.random() * 100 < winChance;
+    } else {
+      humanCanWin = Math.random() * 100 < 50;
+    }
+
+    // Clean stale queues older than 60s
+    const now = Date.now();
+    for (const [k, q] of activeTableQueues.entries()) {
+      if (now - q.createdAt > 60000) {
+        activeTableQueues.delete(k);
+      }
+    }
+
+    const queueKey = `${gameMode}_${pCount}_${feeNum.toFixed(2)}`;
+    let table = activeTableQueues.get(queueKey);
+
+    if (!table || table.players.length >= pCount) {
+      const targetMatchId = requestedMatchId || `match_${gameMode.toLowerCase()}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      table = {
+        matchId: targetMatchId,
+        gameMode,
+        playerCount: pCount,
+        entryFee: feeNum,
+        prizePool: pPool,
+        players: [],
+        createdAt: now,
+      };
+      activeTableQueues.set(queueKey, table);
+    }
+
+    const allColorPalette = ['red', 'yellow', 'green', 'blue'];
+    const takenColors = new Set(table.players.map((p) => p.color));
+
+    let assignedColor = userColor;
+    if (!assignedColor || takenColors.has(assignedColor)) {
+      assignedColor = allColorPalette.find((c) => !takenColors.has(c)) || 'red';
+    }
+
+    // Add human player if not already in table
+    const existingHuman = table.players.find((p) => p.id === effectiveUserId);
+    if (!existingHuman) {
+      table.players.push({
+        id: effectiveUserId,
+        name: effectiveUserName,
+        avatarUrl: userAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+        color: assignedColor,
+        seatIndex: table.players.length,
+        country: 'IN',
+        rating: 1950,
+        ping: 24,
+        isHuman: true,
+        isBot: false,
+      });
+    }
+
+    // Check how many real humans are currently in this table
+    const humansCount = table.players.filter((p) => p.isHuman).length;
+    const seatsRemaining = pCount - table.players.length;
+
+    // Automatically fill the remaining seats with bots!
+    if (seatsRemaining > 0) {
+      const shuffledBots = [...BOT_ROSTER].sort(() => Math.random() - 0.5);
+      for (let i = 0; i < seatsRemaining; i++) {
+        const usedColors = new Set(table.players.map((p) => p.color));
+        const botColor = allColorPalette.find((c) => !usedColors.has(c)) || 'green';
+        const botTemplate = shuffledBots[i % shuffledBots.length];
+
+        table.players.push({
+          id: `${botTemplate.id}_${i}`,
+          name: botTemplate.name,
+          avatarUrl: botTemplate.avatarUrl,
+          color: botColor,
+          seatIndex: table.players.length,
+          country: botTemplate.country,
+          rating: botTemplate.rating,
+          ping: botTemplate.ping,
+          isHuman: false,
+          isBot: true,
+        });
+      }
+    }
+
+    // Persist to PostgreSQL if configured
+    if (isPostgresConfigured()) {
+      const pool = getDbPool();
+      if (pool) {
+        pool.query(
+          `INSERT INTO matches (
+             id, game_mode, max_players, joined_players, entry_fee, gross_prize_pool, net_prize_pool, status, started_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'STARTING', NOW())
+           ON CONFLICT (id) DO UPDATE SET
+             joined_players = EXCLUDED.joined_players,
+             status = 'STARTING'`,
+          [
+            table.matchId,
+            gameMode,
+            pCount,
+            pCount,
+            feeNum.toFixed(8),
+            pPool.toFixed(8),
+            (pPool * 0.9).toFixed(8),
+          ]
+        ).catch((err) => Logger.warn('Postgres match save notice:', err.message));
+
+        for (const player of table.players) {
+          pool.query(
+            `INSERT INTO match_players (
+               id, match_id, user_id, color, seat_index, entry_fee, status
+             ) VALUES ($1, $2, $3, $4, $5, $6, 'JOINED')
+             ON CONFLICT (id) DO NOTHING`,
+            [
+              `mp_${table.matchId}_${player.id}`,
+              table.matchId,
+              player.id,
+              player.color,
+              player.seatIndex,
+              feeNum.toFixed(8),
+            ]
+          ).catch((err) => Logger.warn('Postgres player save notice:', err.message));
+        }
+      }
+    }
+
+    // Reset this queue so subsequent players get a new table
+    activeTableQueues.delete(queueKey);
+
+    const opponents = table.players.filter((p) => p.id !== effectiveUserId);
+
+    res.json({
+      success: true,
+      matchId: table.matchId,
+      gameMode,
+      playerCount: pCount,
+      entryFee: feeNum,
+      prizePool: pPool,
+      humanCount: humansCount,
+      botCount: seatsRemaining,
+      humanCanWin,
+      players: table.players,
+      opponents,
+    });
+  } catch (err: any) {
+    Logger.error('Find or create table error:', err);
+    res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
 // POST /api/matches/settle (Authoritatively settles match, debits loser, credits winner)
 matchApiRouter.post('/api/matches/settle', async (req: Request, res: Response) => {
   try {
@@ -250,7 +508,22 @@ matchApiRouter.post('/api/matches/settle', async (req: Request, res: Response) =
     const updatedWallet = await LedgerService.getUserWallet(winnerUserId);
 
     // If tournamentId provided or active tournament exists for player, record score in tournament
-    const tId = req.body.tournamentId;
+    let tId = req.body.tournamentId;
+    if (!tId) {
+      try {
+        const activeT = await TournamentService.getActiveTournaments();
+        const mode = String(gameMode || '').toLowerCase();
+        const matching = activeT.find((t: any) =>
+          mode.includes('supreme') ? t.gameType === 'supreme' : mode.includes('snake') ? t.gameType === 'snake' : true
+        );
+        if (matching) {
+          tId = matching.id;
+        }
+      } catch (tErr) {
+        // ignore
+      }
+    }
+
     if (tId && safeResults.length > 0) {
       for (const pr of safeResults) {
         if (pr.userId && !pr.userId.startsWith('bot_')) {

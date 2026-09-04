@@ -471,9 +471,9 @@ export class TournamentService {
 
     let dateFilter = '';
     if (timeframe === 'today') {
-      dateFilter = `AND mp.joined_at >= CURRENT_DATE`;
+      dateFilter = `AND COALESCE(mp.joined_at, NOW()) >= (CURRENT_DATE - INTERVAL '1 day')`;
     } else if (timeframe === 'weekly') {
-      dateFilter = `AND mp.joined_at >= DATE_TRUNC('week', CURRENT_DATE)`;
+      dateFilter = `AND COALESCE(mp.joined_at, NOW()) >= DATE_TRUNC('week', CURRENT_DATE)`;
     }
 
     let gameTypeFilter = '';
@@ -486,14 +486,14 @@ export class TournamentService {
     const query = `
       SELECT 
         mp.user_id,
-        COALESCE(u.username, u.display_name, 'Player') AS username,
+        COALESCE(NULLIF(u.username, ''), NULLIF(u.display_name, ''), mp.user_id, 'Player') AS username,
         COALESCE(u.avatar_url, '') AS avatar_url,
         MAX(mp.final_score) AS highest_score,
         COUNT(mp.id) AS matches_played,
         SUM(CASE WHEN mp.final_rank = 1 THEN 1 ELSE 0 END) AS matches_won
       FROM match_players mp
       JOIN matches m ON m.id = mp.match_id
-      JOIN users u ON u.id = mp.user_id
+      LEFT JOIN users u ON u.id = mp.user_id
       WHERE mp.status = 'FINISHED'
         ${dateFilter}
         ${gameTypeFilter}
@@ -533,14 +533,14 @@ export class TournamentService {
       const userRes = await pool.query(
         `SELECT 
            mp.user_id,
-           COALESCE(u.username, u.display_name, 'Player') AS username,
+           COALESCE(NULLIF(u.username, ''), NULLIF(u.display_name, ''), mp.user_id, 'Player') AS username,
            COALESCE(u.avatar_url, '') AS avatar_url,
            MAX(mp.final_score) AS highest_score,
            COUNT(mp.id) AS matches_played,
            SUM(CASE WHEN mp.final_rank = 1 THEN 1 ELSE 0 END) AS matches_won
          FROM match_players mp
          JOIN matches m ON m.id = mp.match_id
-         JOIN users u ON u.id = mp.user_id
+         LEFT JOIN users u ON u.id = mp.user_id
          WHERE mp.status = 'FINISHED' AND mp.user_id = $1
            ${dateFilter}
            ${gameTypeFilter}
@@ -611,7 +611,7 @@ export class TournamentService {
          MAX(final_score) AS highest_score,
          COUNT(id) AS matches_count
        FROM match_players
-       WHERE user_id = $1 AND status = 'FINISHED' AND joined_at >= CURRENT_DATE`,
+       WHERE user_id = $1 AND status = 'FINISHED' AND COALESCE(joined_at, NOW()) >= (CURRENT_DATE - INTERVAL '1 day')`,
       [userId]
     );
 

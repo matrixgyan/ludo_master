@@ -18,6 +18,7 @@ import {
 import confetti from 'canvas-confetti';
 import { SoundManager } from '../../audio/soundManager';
 import { usePlatformMode } from '../../hooks/usePlatformMode';
+import woodBgImg from '../../assets/images/wood_plank_bg_1787143024792.jpg';
 
 interface TournamentParticipation {
   id: string;
@@ -243,8 +244,23 @@ export const SupremeLeagueModal: React.FC<SupremeLeagueModalProps> = ({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.94, y: 15 }}
           transition={{ type: 'spring', damping: 25, stiffness: 320 }}
-          className="relative w-full max-w-xl bg-gradient-to-b from-[#160a2c] via-[#0d051c] to-[#080212] border border-amber-400/40 rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.9)] text-white flex flex-col max-h-[92vh] overflow-hidden"
+          className="relative w-full max-w-xl rounded-3xl overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.95)] border-4 border-[#5c2411]/90 text-white flex flex-col max-h-[92vh]"
+          style={{
+            backgroundImage: `url(${woodBgImg})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundColor: '#8b4513',
+          }}
         >
+          {/* Warm Conical Spotlight from Top */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background:
+                'radial-gradient(ellipse 90% 70% at 50% 0%, rgba(255, 238, 187, 0.4) 0%, rgba(0, 0, 0, 0.65) 100%)',
+            }}
+          />
+
           {/* TOP CLOSE BUTTON */}
           <button
             onClick={() => {

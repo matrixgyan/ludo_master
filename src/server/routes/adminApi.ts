@@ -197,6 +197,8 @@ adminRouter.get('/api/platform/settings', (req: Request, res: Response) => {
       entryFee4Player: current.entryFee4Player,
       entryFeeSnakeLudo: current.entryFeeSnakeLudo,
       prizePoolPercentage: current.prizePoolPercentage,
+      humanWinRate3P: current.humanWinRate3P ?? 20,
+      humanWinRate4P: current.humanWinRate4P ?? 20,
       maintenanceMode: current.maintenanceMode,
     },
   });
@@ -231,6 +233,8 @@ adminRouter.post('/api/admin/settings', requireAdminAuth, async (req: Request, r
     entryFee4Player,
     entryFeeSnakeLudo,
     prizePoolPercentage,
+    humanWinRate3P,
+    humanWinRate4P,
   } = req.body;
 
   const updates: Partial<PlatformSettings> = {};
@@ -277,6 +281,8 @@ adminRouter.post('/api/admin/settings', requireAdminAuth, async (req: Request, r
   if (entryFee4Player !== undefined) updates.entryFee4Player = Number(entryFee4Player);
   if (entryFeeSnakeLudo !== undefined) updates.entryFeeSnakeLudo = Number(entryFeeSnakeLudo);
   if (prizePoolPercentage !== undefined) updates.prizePoolPercentage = Number(prizePoolPercentage);
+  if (humanWinRate3P !== undefined) updates.humanWinRate3P = Math.max(0, Math.min(100, Number(humanWinRate3P)));
+  if (humanWinRate4P !== undefined) updates.humanWinRate4P = Math.max(0, Math.min(100, Number(humanWinRate4P)));
 
   const updatedSettings = await SettingsStore.updateSettingsAsync(updates);
 
