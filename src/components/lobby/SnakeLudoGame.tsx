@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft,
@@ -23,9 +23,43 @@ import {
 import confetti from 'canvas-confetti';
 import { usePlatformMode } from '../../hooks/usePlatformMode';
 import { UnifiedWalletService } from '../../services/unifiedWalletService';
+import { MatchedOpponent } from './OnlineMatchmakingScreen';
 
 const TURN_TIME_LIMIT = 10; // 10 seconds per turn
 const MAX_STRIKES = 3; // 3 missed turns = forfeit
+
+const FALLBACK_OPPONENTS: MatchedOpponent[] = [
+  {
+    id: 'bot_aarav',
+    name: 'Aarav_King',
+    avatarUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80',
+    color: 'green',
+    country: 'IN',
+    rating: 1840,
+    ping: 28,
+    isReady: true,
+  },
+  {
+    id: 'bot_priya',
+    name: 'Priya_Patel',
+    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    color: 'blue',
+    country: 'IN',
+    rating: 1910,
+    ping: 32,
+    isReady: true,
+  },
+  {
+    id: 'bot_vikram',
+    name: 'Vikram_LudoStar',
+    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    color: 'yellow',
+    country: 'IN',
+    rating: 1780,
+    ping: 35,
+    isReady: true,
+  },
+];
 
 interface SnakeLudoGameProps {
   onBackToLobby: () => void;
@@ -39,6 +73,7 @@ interface SnakeLudoGameProps {
   playerCount?: number;
   tournamentId?: string;
   onMatchWon?: (prize: number) => void;
+  matchedOpponents?: MatchedOpponent[];
 }
 
 export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
@@ -53,6 +88,7 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
   playerCount = 2,
   tournamentId,
   onMatchWon,
+  matchedOpponents = [],
 }) => {
   const { platformMode, currencySymbol } = usePlatformMode();
 
@@ -61,24 +97,62 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
     `match_snake_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
   );
 
+  const numPlayerCount = Number(playerCount) === 4 ? 4 : Number(playerCount) === 3 ? 3 : 2;
+
+  const activePlayerIds = useMemo<('p1' | 'p2' | 'p3' | 'p4')[]>(() => {
+    if (numPlayerCount === 4) return ['p1', 'p2', 'p3', 'p4'];
+    if (numPlayerCount === 3) return ['p1', 'p2', 'p3'];
+    return ['p1', 'p2'];
+  }, [numPlayerCount]);
+
+  const playersMap = useMemo(() => {
+    const opp1 = matchedOpponents?.[0] || FALLBACK_OPPONENTS[0];
+    const opp2 = matchedOpponents?.[1] || FALLBACK_OPPONENTS[1];
+    const opp3 = matchedOpponents?.[2] || FALLBACK_OPPONENTS[2];
+
+    return {
+      p1: { id: 'p1' as const, name: userName || 'Player 1', avatar: userAvatar, isHuman: true },
+      p2: { id: 'p2' as const, name: opp1.name, avatar: opp1.avatarUrl, isHuman: false },
+      p3: { id: 'p3' as const, name: opp2.name, avatar: opp2.avatarUrl, isHuman: false },
+      p4: { id: 'p4' as const, name: opp3.name, avatar: opp3.avatarUrl, isHuman: false },
+    };
+  }, [userName, userAvatar, matchedOpponents]);
+
   // Player positions on 1-100 board
-  const [player1Pos, setPlayer1Pos] = useState<number>(1);
-  const [player2Pos, setPlayer2Pos] = useState<number>(1);
+  const [positions, setPositions] = useState<Record<'p1' | 'p2' | 'p3' | 'p4', number>>({
+    p1: 1,
+    p2: 1,
+    p3: 1,
+    p4: 1,
+  });
 
   // Turn management
-  const [currentTurn, setCurrentTurn] = useState<'p1' | 'p2'>('p1');
-  const [player1DiceVal, setPlayer1DiceVal] = useState<number>(1);
-  const [player2DiceVal, setPlayer2DiceVal] = useState<number>(1);
+  const [currentTurn, setCurrentTurn] = useState<'p1' | 'p2' | 'p3' | 'p4'>('p1');
+  const [diceVals, setDiceVals] = useState<Record<'p1' | 'p2' | 'p3' | 'p4', number>>({
+    p1: 1,
+    p2: 1,
+    p3: 1,
+    p4: 1,
+  });
   const [isRolling, setIsRolling] = useState<boolean>(false);
+  const [hasRolledThisTurn, setHasRolledThisTurn] = useState<boolean>(false);
   const [isMovingPawn, setIsMovingPawn] = useState<boolean>(false);
   const [winner, setWinner] = useState<string | null>(null);
   const [isSettling, setIsSettling] = useState<boolean>(false);
 
   // Tournament Rules State: 6s count and Missed Turn Strikes
-  const [p1ConsecutiveSixes, setP1ConsecutiveSixes] = useState<number>(0);
-  const [p2ConsecutiveSixes, setP2ConsecutiveSixes] = useState<number>(0);
-  const [p1Strikes, setP1Strikes] = useState<number>(0);
-  const [p2Strikes, setP2Strikes] = useState<number>(0);
+  const [consecutiveSixes, setConsecutiveSixes] = useState<Record<'p1' | 'p2' | 'p3' | 'p4', number>>({
+    p1: 0,
+    p2: 0,
+    p3: 0,
+    p4: 0,
+  });
+  const [strikes, setStrikes] = useState<Record<'p1' | 'p2' | 'p3' | 'p4', number>>({
+    p1: 0,
+    p2: 0,
+    p3: 0,
+    p4: 0,
+  });
 
   // Turn Timer
   const [turnTimeLeft, setTurnTimeLeft] = useState<number>(TURN_TIME_LIMIT);
@@ -172,12 +246,13 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
 
   // Handle authoritative match finalization
   const handleFinalizeSnakeMatch = useCallback(
-    async (isP1Winner: boolean) => {
+    async (winningPid: 'p1' | 'p2' | 'p3' | 'p4') => {
       if (hasFinalizedRef.current) return;
       hasFinalizedRef.current = true;
 
-      const winnerName = isP1Winner ? userName : 'Opponent';
-      setWinner(winnerName);
+      const winningPlayer = playersMap[winningPid];
+      const isP1Winner = winningPid === 'p1';
+      setWinner(winningPlayer.name);
       SoundManager.play('pawn-finish');
       triggerBlastPartyCelebration();
 
@@ -185,32 +260,31 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
 
       try {
         setIsSettling(true);
+
+        const rankedPlayers = [...activePlayerIds].sort((a, b) => {
+          if (a === winningPid) return -1;
+          if (b === winningPid) return 1;
+          return (positions[b] || 1) - (positions[a] || 1);
+        });
+
+        const playerResults = rankedPlayers.map((pid, idx) => ({
+          userId: pid === 'p1' ? userId : `opponent_bot_${pid}`,
+          username: playersMap[pid].name,
+          rank: idx + 1,
+          finalScore: pid === winningPid ? 100 : positions[pid] || 1,
+          tokensHome: pid === winningPid ? 1 : 0,
+          isHuman: pid === 'p1',
+        }));
+
         await UnifiedWalletService.settleMatchOutcome({
           matchId,
           gameMode: 'SNAKE_LUDO',
-          winnerUserId: isP1Winner ? userId : 'opponent_bot_1',
-          winnerName,
+          winnerUserId: isP1Winner ? userId : `opponent_bot_${winningPid}`,
+          winnerName: winningPlayer.name,
           entryFee,
           prizePool: effectivePrize,
-          playerCount: 2,
-          playerResults: [
-            {
-              userId: userId,
-              username: userName,
-              rank: isP1Winner ? 1 : 2,
-              finalScore: isP1Winner ? 100 : player1Pos,
-              tokensHome: isP1Winner ? 1 : 0,
-              isHuman: true,
-            },
-            {
-              userId: 'opponent_bot_1',
-              username: 'Opponent',
-              rank: isP1Winner ? 2 : 1,
-              finalScore: isP1Winner ? player2Pos : 100,
-              tokensHome: isP1Winner ? 0 : 1,
-              isHuman: false,
-            },
-          ],
+          playerCount,
+          playerResults,
           tournamentId,
         });
 
@@ -223,12 +297,12 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
         setIsSettling(false);
       }
     },
-    [matchId, userName, prizePool, entryFee, player1Pos, player2Pos, onMatchWon, triggerBlastPartyCelebration]
+    [matchId, prizePool, entryFee, positions, playersMap, activePlayerIds, playerCount, userId, tournamentId, onMatchWon, triggerBlastPartyCelebration]
   );
 
   // Step-by-step pawn motion
   const movePawnStepByStep = async (
-    player: 'p1' | 'p2',
+    player: 'p1' | 'p2' | 'p3' | 'p4',
     startPos: number,
     steps: number
   ) => {
@@ -239,8 +313,7 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
       curr += 1;
       if (curr > 100) {
         curr = startPos;
-        if (player === 'p1') setPlayer1Pos(curr);
-        else setPlayer2Pos(curr);
+        setPositions((prev) => ({ ...prev, [player]: curr }));
         setActionAlert({
           text: 'Overshot! Exact roll needed for Tile 100',
           type: 'neutral',
@@ -251,9 +324,7 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
         return curr;
       }
 
-      if (player === 'p1') setPlayer1Pos(curr);
-      else setPlayer2Pos(curr);
-
+      setPositions((prev) => ({ ...prev, [player]: curr }));
       SoundManager.play('pawn-step');
       await sleep(150);
     }
@@ -272,15 +343,13 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
       await sleep(550);
       setBoardShake(false);
       curr = ladder.dest;
-      if (player === 'p1') setPlayer1Pos(curr);
-      else setPlayer2Pos(curr);
+      setPositions((prev) => ({ ...prev, [player]: curr }));
       await sleep(300);
       setHighlightLadderId(null);
       setHighlightTile(null);
       setTimeout(() => setActionAlert(null), 2500);
-    }
-    // Check if ambushed by a snake
-    else {
+    } else {
+      // Check if ambushed by a snake
       const snake = SNAKE_MAP[curr];
       if (snake) {
         setHighlightSnakeId(snake.id);
@@ -294,8 +363,7 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
         await sleep(550);
         setBoardShake(false);
         curr = snake.dest;
-        if (player === 'p1') setPlayer1Pos(curr);
-        else setPlayer2Pos(curr);
+        setPositions((prev) => ({ ...prev, [player]: curr }));
         await sleep(300);
         setHighlightSnakeId(null);
         setHighlightTile(null);
@@ -308,68 +376,53 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
   };
 
   // Pass Turn Function
-  const passTurnToNext = useCallback((nextTurn: 'p1' | 'p2') => {
-    setCurrentTurn(nextTurn);
+  const passTurnToNext = useCallback(() => {
+    setCurrentTurn((prev) => {
+      const idx = activePlayerIds.indexOf(prev);
+      const nextIdx = (idx + 1) % activePlayerIds.length;
+      return activePlayerIds[nextIdx];
+    });
+    setHasRolledThisTurn(false);
     setTurnTimeLeft(TURN_TIME_LIMIT);
-  }, []);
+  }, [activePlayerIds]);
 
   // Handle Turn Timeout / Auto-skip rule
   const handleTurnTimeout = useCallback(() => {
     if (winner || isRolling || isMovingPawn) return;
 
-    if (currentTurn === 'p1') {
-      const nextStrikes = p1Strikes + 1;
-      setP1Strikes(nextStrikes);
-      setP1ConsecutiveSixes(0);
+    const curPid = currentTurn;
+    const curPlayer = playersMap[curPid];
+    const nextStrikes = (strikes[curPid] || 0) + 1;
 
-      if (nextStrikes >= MAX_STRIKES) {
-        setActionAlert({
-          text: `${userName} missed 3 turns and forfeited!`,
-          type: 'penalty',
-        });
-        handleFinalizeSnakeMatch(false);
-        return;
-      }
+    setStrikes((prev) => ({ ...prev, [curPid]: nextStrikes }));
+    setConsecutiveSixes((prev) => ({ ...prev, [curPid]: 0 }));
 
+    if (nextStrikes >= MAX_STRIKES) {
       setActionAlert({
-        text: `⏳ Time's up! ${userName}'s turn skipped (${nextStrikes}/${MAX_STRIKES} Strikes)`,
+        text: `${curPlayer.name} missed 3 turns and forfeited!`,
         type: 'penalty',
       });
-      SoundManager.play('turn');
-      setTimeout(() => setActionAlert(null), 2500);
-      passTurnToNext('p2');
-    } else {
-      const nextStrikes = p2Strikes + 1;
-      setP2Strikes(nextStrikes);
-      setP2ConsecutiveSixes(0);
-
-      if (nextStrikes >= MAX_STRIKES) {
-        setActionAlert({
-          text: `Opponent missed 3 turns! ${userName} Wins!`,
-          type: 'bonus',
-        });
-        handleFinalizeSnakeMatch(true);
-        return;
-      }
-
-      setActionAlert({
-        text: `⏳ Opponent timed out! (${nextStrikes}/${MAX_STRIKES} Strikes)`,
-        type: 'penalty',
-      });
-      SoundManager.play('turn');
-      setTimeout(() => setActionAlert(null), 2500);
-      passTurnToNext('p1');
+      const winningPid = curPid === 'p1' ? (activePlayerIds.find((p) => p !== 'p1') || 'p2') : 'p1';
+      handleFinalizeSnakeMatch(winningPid);
+      return;
     }
+
+    setActionAlert({
+      text: `⏳ Time's up! ${curPlayer.name}'s turn skipped (${nextStrikes}/${MAX_STRIKES} Strikes)`,
+      type: 'penalty',
+    });
+    SoundManager.play('turn');
+    setTimeout(() => setActionAlert(null), 2500);
+    passTurnToNext();
   }, [
     currentTurn,
-    p1Strikes,
-    p2Strikes,
+    strikes,
     winner,
     isRolling,
     isMovingPawn,
-    userName,
-    prizePool,
-    onMatchWon,
+    playersMap,
+    activePlayerIds,
+    handleFinalizeSnakeMatch,
     passTurnToNext,
   ]);
 
@@ -399,60 +452,47 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
   const handleRoll = async () => {
     if (isRolling || isMovingPawn || winner) return;
 
+    const activePid = currentTurn;
     SoundManager.play('dice-roll');
+    setHasRolledThisTurn(true);
     setIsRolling(true);
     setActionAlert(null);
 
     const rolled = Math.floor(Math.random() * 6) + 1;
-
-    if (currentTurn === 'p1') {
-      setPlayer1DiceVal(rolled);
-    } else {
-      setPlayer2DiceVal(rolled);
-    }
+    setDiceVals((prev) => ({ ...prev, [activePid]: rolled }));
 
     await sleep(780);
     setIsRolling(false);
 
-    const isP1 = currentTurn === 'p1';
-
-    // ----------------------------------------------------
-    // RULE OF 6 & 3 CONSECUTIVE SIXES TOURNAMENT RULE
-    // ----------------------------------------------------
-    let currentSixesCount = (isP1 ? p1ConsecutiveSixes : p2ConsecutiveSixes);
+    let currentSixesCount = consecutiveSixes[activePid] || 0;
 
     if (rolled === 6) {
       currentSixesCount += 1;
-      if (isP1) setP1ConsecutiveSixes(currentSixesCount);
-      else setP2ConsecutiveSixes(currentSixesCount);
+      setConsecutiveSixes((prev) => ({ ...prev, [activePid]: currentSixesCount }));
 
       // Penalty: 3 consecutive sixes cancels turn and passes to next player!
       if (currentSixesCount === 3) {
-        if (isP1) setP1ConsecutiveSixes(0);
-        else setP2ConsecutiveSixes(0);
-
+        setConsecutiveSixes((prev) => ({ ...prev, [activePid]: 0 }));
         setActionAlert({
           text: '🚫 3 Consecutive Sixes! Turn Cancelled.',
           type: 'penalty',
         });
         SoundManager.play('pawn-capture');
         setTimeout(() => setActionAlert(null), 2500);
-        passTurnToNext(isP1 ? 'p2' : 'p1');
+        passTurnToNext();
         return;
       }
     } else {
-      // Non-6 rolls reset the consecutive sixes counter
-      if (isP1) setP1ConsecutiveSixes(0);
-      else setP2ConsecutiveSixes(0);
+      setConsecutiveSixes((prev) => ({ ...prev, [activePid]: 0 }));
     }
 
     // Move token on board
-    const startPos = isP1 ? player1Pos : player2Pos;
-    const finalPos = await movePawnStepByStep(currentTurn, startPos, rolled);
+    const startPos = positions[activePid] || 1;
+    const finalPos = await movePawnStepByStep(activePid, startPos, rolled);
 
     // Check if reached Tile 100 (Victory)
     if (finalPos === 100) {
-      handleFinalizeSnakeMatch(isP1);
+      handleFinalizeSnakeMatch(activePid);
       return;
     }
 
@@ -463,15 +503,16 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
         type: 'bonus',
       });
       setTurnTimeLeft(TURN_TIME_LIMIT);
+      setHasRolledThisTurn(false);
       setTimeout(() => setActionAlert(null), 2200);
     } else {
-      passTurnToNext(isP1 ? 'p2' : 'p1');
+      passTurnToNext();
     }
   };
 
-  // Automatic roll for Opponent (P2) turn
+  // Automatic roll for Opponents (p2, p3, p4) like a real human player
   useEffect(() => {
-    if (currentTurn === 'p2' && !winner && !isRolling && !isMovingPawn) {
+    if (currentTurn !== 'p1' && !winner && !isRolling && !isMovingPawn) {
       const timer = setTimeout(() => {
         handleRoll();
       }, 950);
@@ -482,21 +523,19 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
   const handleReset = () => {
     SoundManager.play('click');
     setMatchId(`match_snake_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`);
-    setPlayer1Pos(1);
-    setPlayer2Pos(1);
+    setPositions({ p1: 1, p2: 1, p3: 1, p4: 1 });
     setCurrentTurn('p1');
     setWinner(null);
-    setPlayer1DiceVal(1);
-    setPlayer2DiceVal(1);
-    setP1ConsecutiveSixes(0);
-    setP2ConsecutiveSixes(0);
-    setP1Strikes(0);
-    setP2Strikes(0);
+    setDiceVals({ p1: 1, p2: 1, p3: 1, p4: 1 });
+    setHasRolledThisTurn(false);
+    setConsecutiveSixes({ p1: 0, p2: 0, p3: 0, p4: 0 });
+    setStrikes({ p1: 0, p2: 0, p3: 0, p4: 0 });
     setTurnTimeLeft(TURN_TIME_LIMIT);
     setHighlightLadderId(null);
     setHighlightSnakeId(null);
     setHighlightTile(null);
     setActionAlert(null);
+    hasFinalizedRef.current = false;
   };
 
   const isRealMatch = prizePool > 0 || entryFee > 0;
@@ -633,8 +672,11 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
       {/* ------------------------------------------------------------- */}
       <main className="relative w-full max-w-lg my-auto py-1 flex items-center justify-center">
         <AdventureSnakeBoard
-          player1Pos={player1Pos}
-          player2Pos={player2Pos}
+          player1Pos={positions.p1}
+          player2Pos={positions.p2}
+          player3Pos={numPlayerCount >= 3 ? positions.p3 : undefined}
+          player4Pos={numPlayerCount >= 4 ? positions.p4 : undefined}
+          playerCount={numPlayerCount}
           activeTurn={currentTurn}
           isMoving={isMovingPawn}
           highlightTile={highlightTile}
@@ -673,57 +715,35 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
       </div>
 
       {/* ------------------------------------------------------------- */}
-      {/* 4. BOTTOM HUD: PROFILE ON TOP, 3D DICE ON BOTTOM (NO BORDERS) */}
+      {/* 4. BOTTOM HUD: PROFILE ON TOP, SCORE, AND DICE SECTION         */}
       {/* ------------------------------------------------------------- */}
-      <footer className="w-full max-w-lg z-20 pt-1 pb-1">
-        <div className="flex items-end justify-between px-3 sm:px-6">
-          {/* Player 1 (Red / Sun) Seat: Profile Top, 3D Dice Bottom */}
-          <SnakePlayerSeat
-            playerId="p1"
-            name={userName}
-            avatar={userAvatar}
-            position={player1Pos}
-            isActiveTurn={currentTurn === 'p1'}
-            isRolling={isRolling}
-            diceValue={player1DiceVal}
-            disabled={isMovingPawn || !!winner}
-            turnTimeLeft={turnTimeLeft}
-            totalTurnTime={TURN_TIME_LIMIT}
-            strikes={p1Strikes}
-            consecutiveSixes={p1ConsecutiveSixes}
-            onRoll={handleRoll}
-            isOpponent={false}
-          />
-
-          {/* Center Round / Turn Status Indicator */}
-          <div className="flex flex-col items-center justify-center pb-2">
-            <div className="px-2.5 py-0.5 rounded-full bg-[#1c1810]/80 border border-[#a79e7b]/30 flex items-center gap-1 text-[10px] font-mono text-[#dccba7] shadow-sm">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#a79e7b] animate-pulse" />
-              <span>
-                {currentTurn === 'p1' ? `${userName}'s Turn` : "Opponent's Turn"}
-              </span>
-            </div>
-            <span className="text-[8px] font-mono text-stone-500 uppercase tracking-widest mt-0.5">
-              Turn Timer: {turnTimeLeft}s
-            </span>
-          </div>
-
-          {/* Player 2 (Green / Jade) Seat: Profile Top, 3D Dice Bottom */}
-          <SnakePlayerSeat
-            playerId="p2"
-            name="Opponent"
-            position={player2Pos}
-            isActiveTurn={currentTurn === 'p2'}
-            isRolling={isRolling}
-            diceValue={player2DiceVal}
-            disabled={isMovingPawn || !!winner}
-            turnTimeLeft={turnTimeLeft}
-            totalTurnTime={TURN_TIME_LIMIT}
-            strikes={p2Strikes}
-            consecutiveSixes={p2ConsecutiveSixes}
-            onRoll={handleRoll}
-            isOpponent={true}
-          />
+      <footer className="w-full max-w-lg z-20 pt-1.5 pb-2 px-2 sm:px-4 rounded-3xl bg-gradient-to-b from-[#081342]/95 via-[#060f38]/98 to-[#040a24]/99 border border-blue-950/60 shadow-[0_-8px_30px_rgba(4,10,36,0.85)]">
+        {/* Dynamic Player Seats (adjusts horizontally for 2, 3, or 4 players - Zero Overflow) */}
+        <div className={`w-full flex items-end justify-around sm:justify-center overflow-x-hidden ${numPlayerCount >= 4 ? 'gap-1 px-0.5' : numPlayerCount === 3 ? 'gap-2 sm:gap-6 px-1' : 'gap-6 sm:gap-12 px-4 sm:px-8'}`}>
+          {activePlayerIds.map((pid) => {
+            const p = playersMap[pid];
+            return (
+              <SnakePlayerSeat
+                key={pid}
+                playerId={pid}
+                name={p.name}
+                avatar={p.avatar}
+                position={positions[pid]}
+                isActiveTurn={currentTurn === pid}
+                isRolling={isRolling && currentTurn === pid}
+                hasRolled={currentTurn === pid ? hasRolledThisTurn : false}
+                diceValue={diceVals[pid]}
+                disabled={isMovingPawn || !!winner}
+                turnTimeLeft={turnTimeLeft}
+                totalTurnTime={TURN_TIME_LIMIT}
+                strikes={strikes[pid]}
+                consecutiveSixes={consecutiveSixes[pid]}
+                onRoll={handleRoll}
+                isOpponent={!p.isHuman}
+                compact={numPlayerCount >= 4}
+              />
+            );
+          })}
         </div>
       </footer>
 

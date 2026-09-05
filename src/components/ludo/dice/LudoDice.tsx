@@ -47,7 +47,7 @@ export const LudoDice: React.FC<LudoDiceProps> = ({
     z: 0,
   });
   const [isAnimating, setIsAnimating] = useState<boolean>(false);
-  const lastValRef = useRef<number>(dice.value || 6);
+  const wasRollingRef = useRef<boolean>(false);
 
   const isCompact = size === 'compact';
   const cubeSize = isCompact ? 34 : 56;
@@ -57,7 +57,7 @@ export const LudoDice: React.FC<LudoDiceProps> = ({
     const target = FACE_ROTATIONS[val] || FACE_ROTATIONS[1];
 
     setRotation((prev) => {
-      // Add 3 full 360-degree rolls on X and Y plus target offset
+      // Add 3-4 full 360-degree rolls on X, Y, Z plus target offset
       const nextTurnsX = Math.ceil(prev.x / 360) + 3;
       const nextTurnsY = Math.ceil(prev.y / 360) + 3;
       const nextTurnsZ = Math.ceil(prev.z / 360) + 1;
@@ -68,40 +68,34 @@ export const LudoDice: React.FC<LudoDiceProps> = ({
         z: nextTurnsZ * 360,
       };
     });
+    setIsAnimating(true);
   };
 
   const handleClick = () => {
     if (!isTurn || disabled || dice.isRolling || isAnimating || !dice.canRoll) return;
-
-    setIsAnimating(true);
-    SoundManager.play('dice-roll');
-
-    // Trigger game logic roll
+    // Trigger game logic roll - App will set dice.isRolling = true and value = targetVal
     onRoll();
-
-    // Trigger 3D tumble physics animation
-    const targetVal = dice.value || Math.floor(Math.random() * 6) + 1;
-    rollToValue(targetVal);
   };
 
-  // Reset animation state and sync last value ref when turn is not active
+  // Trigger 3D physical tumble when rolling starts (for both human clicks and bot automation)
   useEffect(() => {
-    if (!isTurn) {
-      setIsAnimating(false);
-      lastValRef.current = dice.value;
+    if (isTurn && dice.isRolling && !wasRollingRef.current) {
+      rollToValue(dice.value || 6);
     }
-  }, [isTurn, dice.value]);
+    wasRollingRef.current = Boolean(isTurn && dice.isRolling);
+  }, [dice.isRolling, isTurn, dice.value]);
 
-  // Trigger 3D tumble ONLY for active player when dice value updates during their active turn
+  // Sync resting face when not rolling or when turn switches
   useEffect(() => {
-    if (!isTurn) return;
-    if (dice.value && dice.value !== lastValRef.current) {
-      lastValRef.current = dice.value;
-      rollToValue(dice.value);
-      setIsAnimating(true);
-      SoundManager.play('dice-roll');
+    if (!dice.isRolling && !isAnimating) {
+      const target = FACE_ROTATIONS[dice.value || 6] || FACE_ROTATIONS[1];
+      setRotation((prev) => ({
+        x: Math.round(prev.x / 360) * 360 + target.x,
+        y: Math.round(prev.y / 360) * 360 + target.y,
+        z: Math.round(prev.z / 360) * 360,
+      }));
     }
-  }, [dice.value, isTurn]);
+  }, [dice.value, dice.isRolling, isAnimating, isTurn]);
 
   // Render 3D Pip Dots on each face
   const renderPips = (val: number) => {

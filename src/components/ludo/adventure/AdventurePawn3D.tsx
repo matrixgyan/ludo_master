@@ -47,25 +47,25 @@ export const AdventurePawn3D: React.FC<AdventurePawn3DProps> = ({
   const leftPercent = coords.xPercent + offsetX;
   const topPercent = coords.yPercent + offsetY;
 
-  // Pawn theme configurations
+  // Pawn theme configurations: p1 = Yellow/Gold, p2 = Red, p3 = Blue, p4 = Green
   const pawnConfigs = {
     p1: {
-      outerBg: 'from-[#ffd700] via-[#dc2626] to-[#450a0a]',
+      outerBg: 'from-[#fef08a] via-[#eab308] to-[#78350f]',
       outerBorder: 'border-[#fef08a]',
-      innerRing: 'from-[#92400e] via-[#fbbf24] to-[#fef08a]',
+      innerRing: 'from-[#78350f] via-[#f59e0b] to-[#fef9c3]',
       innerBorder: 'border-[#fef08a]',
-      core: 'from-[#f87171] to-[#991b1b]',
-      glow: '#ef4444',
-      haloBorder: 'border-amber-300 shadow-[0_0_14px_#f59e0b]',
+      core: 'from-[#fde047] to-[#b45309]',
+      glow: '#eab308',
+      haloBorder: 'border-yellow-300 shadow-[0_0_14px_#eab308]',
     },
     p2: {
-      outerBg: 'from-[#a7f3d0] via-[#059669] to-[#022c22]',
-      outerBorder: 'border-[#6ee7b7]',
-      innerRing: 'from-[#064e3b] via-[#34d399] to-[#d1fae5]',
-      innerBorder: 'border-[#a7f3d0]',
-      core: 'from-[#6ee7b7] to-[#047857]',
-      glow: '#10b981',
-      haloBorder: 'border-emerald-300 shadow-[0_0_14px_#10b981]',
+      outerBg: 'from-[#fca5a5] via-[#dc2626] to-[#450a0a]',
+      outerBorder: 'border-[#fca5a5]',
+      innerRing: 'from-[#7f1d1d] via-[#ef4444] to-[#fee2e2]',
+      innerBorder: 'border-[#fca5a5]',
+      core: 'from-[#f87171] to-[#991b1b]',
+      glow: '#ef4444',
+      haloBorder: 'border-red-400 shadow-[0_0_14px_#ef4444]',
     },
     p3: {
       outerBg: 'from-[#bae6fd] via-[#2563eb] to-[#0c4a6e]',
@@ -77,13 +77,13 @@ export const AdventurePawn3D: React.FC<AdventurePawn3DProps> = ({
       haloBorder: 'border-blue-300 shadow-[0_0_14px_#3b82f6]',
     },
     p4: {
-      outerBg: 'from-[#fef08a] via-[#d97706] to-[#78350f]',
-      outerBorder: 'border-[#fde047]',
-      innerRing: 'from-[#78350f] via-[#f59e0b] to-[#fef9c3]',
-      innerBorder: 'border-[#fef08a]',
-      core: 'from-[#fde047] to-[#b45309]',
-      glow: '#eab308',
-      haloBorder: 'border-yellow-300 shadow-[0_0_14px_#eab308]',
+      outerBg: 'from-[#a7f3d0] via-[#059669] to-[#022c22]',
+      outerBorder: 'border-[#6ee7b7]',
+      innerRing: 'from-[#064e3b] via-[#34d399] to-[#d1fae5]',
+      innerBorder: 'border-[#a7f3d0]',
+      core: 'from-[#6ee7b7] to-[#047857]',
+      glow: '#10b981',
+      haloBorder: 'border-emerald-300 shadow-[0_0_14px_#10b981]',
     },
   };
 

@@ -68,8 +68,8 @@ const DEFAULT_PLAYERS: Record<PlayerColor, Player> = {
   },
   red: {
     id: 'p2',
-    name: 'Player 2',
-    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    name: 'Aarav_King',
+    avatarUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80',
     color: 'red',
     level: 24,
     isActive: true,
@@ -86,8 +86,8 @@ const DEFAULT_PLAYERS: Record<PlayerColor, Player> = {
   },
   green: {
     id: 'p3',
-    name: 'Player 3',
-    avatarUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
+    name: 'Priya_Patel',
+    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
     color: 'green',
     level: 12,
     isActive: true,
@@ -104,8 +104,8 @@ const DEFAULT_PLAYERS: Record<PlayerColor, Player> = {
   },
   yellow: {
     id: 'p4',
-    name: 'Player 4',
-    avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+    name: 'Vikram_LudoStar',
+    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
     color: 'yellow',
     level: 30,
     isActive: true,
@@ -458,12 +458,18 @@ export default function App() {
       : ['blue', 'red', 'green', 'yellow'];
   }, [gameState.players, playerMode]);
 
+  const humanPlayer = useMemo(() => {
+    return (Object.values(gameState.players) as Player[]).find((p) => p?.isHuman);
+  }, [gameState.players]);
+
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [lastMatchedOpponents, setLastMatchedOpponents] = useState<MatchedOpponent[]>([]);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDebugGridVisible, setIsDebugGridVisible] = useState(false);
   const [steppingPawnId, setSteppingPawnId] = useState<string | null>(null);
   const [bouncingCellKey, setBouncingCellKey] = useState<string | null>(null);
   const [turnTimeLeft, setTurnTimeLeft] = useState<number>(TURN_TIME_LIMIT);
+  const [turnCycleId, setTurnCycleId] = useState<number>(1);
   const [playerStrikes, setPlayerStrikes] = useState<Record<PlayerColor, number>>({
     blue: 0,
     red: 0,
@@ -472,6 +478,17 @@ export default function App() {
   });
   const [matchTimeLeft, setMatchTimeLeft] = useState<number>(180); // 2 min 60 sec (180s)
   const [activeAngelFlight, setActiveAngelFlight] = useState<AngelFlightData | null>(null);
+
+  // Authoritative turn lock ref & animation tracking refs
+  const isRollOrMoveInProgressRef = useRef<boolean>(false);
+  const noMoveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const botRollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const botMoveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const steppingPawnIdRef = useRef<string | null>(null);
+  steppingPawnIdRef.current = steppingPawnId;
+  const activeAngelFlightRef = useRef<AngelFlightData | null>(null);
+  activeAngelFlightRef.current = activeAngelFlight;
 
   // Keep mutable refs for interval access without re-triggering timer effects
   const gameStateRef = useRef(gameState);
@@ -482,12 +499,23 @@ export default function App() {
   activeColorsRef.current = activeColors;
 
   // 10-Second Turn Countdown Timer Effect (Strictly active only during ludo_game mode - exact match to Snake Ludo)
+  // Authoritative: Freezes countdown while dice is rolling, pawn is stepping, angel is flying, or action is locked.
   useEffect(() => {
     if (viewMode !== 'ludo_game' || Boolean(gameState.winner)) return;
 
     setTurnTimeLeft(TURN_TIME_LIMIT);
 
     const timerInterval = setInterval(() => {
+      // FREEZE turn timer if dice is rolling, pawn is stepping, angel flight is active, or action in progress!
+      if (
+        gameStateRef.current.dice.isRolling ||
+        Boolean(steppingPawnIdRef.current) ||
+        Boolean(activeAngelFlightRef.current) ||
+        isRollOrMoveInProgressRef.current
+      ) {
+        return; // Paused during active animations, rolling, or pawn hopping
+      }
+
       setTurnTimeLeft((prev) => {
         if (prev <= 1) {
           return 0;
@@ -497,7 +525,7 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(timerInterval);
-  }, [viewMode, gameState.currentTurn, Boolean(gameState.winner)]);
+  }, [viewMode, turnCycleId, gameState.currentTurn, Boolean(gameState.winner)]);
 
   // 2 Minutes 60 Seconds (180s) Supreme Match Countdown Timer Effect (Continuously running)
   useEffect(() => {
@@ -627,6 +655,7 @@ export default function App() {
   const handleMatchComplete = (matchedOpponents: MatchedOpponent[]) => {
     // Record match event for anti-fraud referral qualification
     ReferralClientService.recordMatchEvent('user_guest_default');
+    setLastMatchedOpponents(matchedOpponents);
 
     if (currentMatchConfig?.gameType === 'snake') {
       setViewMode('snake_ludo');
@@ -683,7 +712,8 @@ export default function App() {
     // Determine active colors for all players
     const assignedPlayerColors: PlayerColor[] = [p1Color];
     for (let i = 1; i < playerMode; i++) {
-      let desiredColor = customPlayers?.[i]?.color as PlayerColor | undefined;
+      const opp = matchedOpponents[i - 1];
+      let desiredColor = (opp?.color as PlayerColor) || (customPlayers?.[i]?.color as PlayerColor | undefined);
       if (!desiredColor || assignedPlayerColors.includes(desiredColor)) {
         desiredColor = allColorPalette.find((c) => !assignedPlayerColors.includes(c)) || 'green';
       }
@@ -691,10 +721,13 @@ export default function App() {
     }
 
     // Configure Player 1 (Human)
+    const p1Name = customPlayers?.[0]?.name || humanPlayer?.name || currentUser?.displayName || currentUser?.username || 'Player 1';
+    const p1Avatar = customPlayers?.[0]?.avatarUrl || humanPlayer?.avatarUrl || currentUser?.avatarUrl || DEFAULT_PLAYERS[p1Color].avatarUrl;
+
     updatedPlayers[p1Color] = {
       ...DEFAULT_PLAYERS[p1Color],
-      name: customPlayers?.[0]?.name || DEFAULT_PLAYERS[p1Color].name,
-      avatarUrl: customPlayers?.[0]?.avatarUrl || DEFAULT_PLAYERS[p1Color].avatarUrl,
+      name: p1Name,
+      avatarUrl: p1Avatar,
       color: p1Color,
       isActive: true,
       isHuman: true,
@@ -702,17 +735,17 @@ export default function App() {
       pawns: createPawnsForColor(p1Color, 'p1'),
     };
 
-    // Configure Opponents
+    // Configure Opponents with exact matchmaking names, avatars, and colors
     for (let i = 1; i < playerMode; i++) {
-      const oppColor = assignedPlayerColors[i];
       const oppIndex = i - 1;
       const opp = matchedOpponents[oppIndex];
       const customP = customPlayers?.[i];
+      const oppColor = assignedPlayerColors[i];
 
       updatedPlayers[oppColor] = {
         ...DEFAULT_PLAYERS[oppColor],
-        name: customP?.name || opp?.name || `Player ${i + 1}`,
-        avatarUrl: customP?.avatarUrl || opp?.avatarUrl || DEFAULT_PLAYERS[oppColor].avatarUrl,
+        name: opp?.name || customP?.name || DEFAULT_PLAYERS[oppColor].name,
+        avatarUrl: opp?.avatarUrl || customP?.avatarUrl || DEFAULT_PLAYERS[oppColor].avatarUrl,
         color: oppColor,
         isActive: true,
         isHuman: false,
@@ -743,33 +776,94 @@ export default function App() {
     setTurnTimeLeft(TURN_TIME_LIMIT);
     setMatchTimeLeft(180);
     setChatMessages([]);
+    if (noMoveTimerRef.current) {
+      clearTimeout(noMoveTimerRef.current);
+      noMoveTimerRef.current = null;
+    }
+    if (botRollTimerRef.current) {
+      clearTimeout(botRollTimerRef.current);
+      botRollTimerRef.current = null;
+    }
+    if (botMoveTimerRef.current) {
+      clearTimeout(botMoveTimerRef.current);
+      botMoveTimerRef.current = null;
+    }
+    isRollOrMoveInProgressRef.current = false;
+    setTurnCycleId((c) => c + 1);
     setViewMode('ludo_game');
   };
 
-  // Handle Dice Roll
+  // Authoritative Dice Roll with Mutex Lock and Realistic 3D Tumble Time
   const handleRollDice = (forcedValue?: number) => {
     if (viewMode !== 'ludo_game') return;
-    const rolledVal = forcedValue ?? Math.floor(Math.random() * 6) + 1;
+    // Strict Mutex Lock: Guard against duplicate taps, bot collisions, and rolling during movements
+    if (isRollOrMoveInProgressRef.current) return;
+    if (gameState.winner || steppingPawnId || activeAngelFlight) return;
+    if (!gameState.dice.canRoll || gameState.dice.isRolling || gameState.dice.hasRolled) return;
 
-    setGameState((prev) => {
-      const activePlayerName = prev.players[prev.currentTurn].name;
-      const movables = getMovablePawns(prev.currentTurn, rolledVal);
+    // Acquire authoritative action lock
+    isRollOrMoveInProgressRef.current = true;
+
+    // Clear any pending no-move or bot timers
+    if (noMoveTimerRef.current) {
+      clearTimeout(noMoveTimerRef.current);
+      noMoveTimerRef.current = null;
+    }
+    if (botRollTimerRef.current) {
+      clearTimeout(botRollTimerRef.current);
+      botRollTimerRef.current = null;
+    }
+    if (botMoveTimerRef.current) {
+      clearTimeout(botMoveTimerRef.current);
+      botMoveTimerRef.current = null;
+    }
+
+    // Immediately trigger rolling state in UI to disable controls and freeze countdown timer
+    setGameState((prev) => ({
+      ...prev,
+      dice: {
+        ...prev.dice,
+        isRolling: true,
+        canRoll: false,
+        hasRolled: false,
+      },
+      statusText: `${prev.players[prev.currentTurn].name} IS ROLLING...`,
+    }));
+
+    SoundManager.play('dice-roll');
+
+    // Simulate 3D tumble physics duration (650ms) matching 3D dice tumble
+    setTimeout(() => {
+      // If match ended or winner decided, abort and unlock
+      if (gameStateRef.current.winner) {
+        isRollOrMoveInProgressRef.current = false;
+        return;
+      }
+
+      const rolledVal = forcedValue ?? Math.floor(Math.random() * 6) + 1;
+      const curTurn = gameStateRef.current.currentTurn;
+      const activePlayerName = gameStateRef.current.players[curTurn].name;
+      const movables = getMovablePawns(curTurn, rolledVal);
 
       // Check consecutive sixes rule
       if (rolledVal === 6) {
-        const nextSixes = prev.consecutiveSixes + 1;
+        const nextSixes = gameStateRef.current.consecutiveSixes + 1;
 
         if (nextSixes === 3) {
-          const nextTurn = getNextTurnColor(prev.currentTurn, activeColors);
+          const nextTurn = getNextTurnColor(curTurn, activeColorsRef.current);
           SoundManager.play('turn');
-          return {
+          setGameState((prev) => ({
             ...prev,
             currentTurn: nextTurn,
             consecutiveSixes: 0,
             dice: { value: 6, isRolling: false, hasRolled: false, canRoll: true },
             movablePawnIds: [],
             statusText: `${activePlayerName} ROLLED 3 SIXES IN A ROW! TURN FORFEITED.`,
-          };
+          }));
+          setTurnTimeLeft(TURN_TIME_LIMIT);
+          setTurnCycleId((c) => c + 1);
+          isRollOrMoveInProgressRef.current = false;
+          return;
         }
 
         let statusMsg = `${activePlayerName} ROLLED A 6!`;
@@ -779,7 +873,7 @@ export default function App() {
           statusMsg += ' SELECT A PAWN TO MOVE.';
         }
 
-        return {
+        setGameState((prev) => ({
           ...prev,
           consecutiveSixes: nextSixes,
           dice: {
@@ -790,9 +884,33 @@ export default function App() {
           },
           movablePawnIds: movables,
           statusText: statusMsg,
-        };
+        }));
+
+        if (movables.length > 0) {
+          // Release lock so active player/bot can pick a movable pawn
+          isRollOrMoveInProgressRef.current = false;
+        } else {
+          // Auto-grant bonus roll after brief pause
+          noMoveTimerRef.current = setTimeout(() => {
+            if (gameStateRef.current.winner) {
+              isRollOrMoveInProgressRef.current = false;
+              return;
+            }
+            SoundManager.play('turn');
+            setTurnTimeLeft(TURN_TIME_LIMIT);
+            setTurnCycleId((c) => c + 1);
+            setGameState((prev) => ({
+              ...prev,
+              dice: { value: prev.dice.value, isRolling: false, hasRolled: false, canRoll: true },
+              statusText: `${prev.players[prev.currentTurn].name} ROLLED 6 — BONUS TURN! ROLL AGAIN.`,
+            }));
+            isRollOrMoveInProgressRef.current = false;
+          }, 1200);
+        }
+        return;
       }
 
+      // Rolled 1..5
       let statusMsg = `${activePlayerName} ROLLED A ${rolledVal}!`;
       if (movables.length === 0) {
         statusMsg += ' NO LEGAL MOVES.';
@@ -800,7 +918,7 @@ export default function App() {
         statusMsg += ' SELECT A PAWN TO MOVE.';
       }
 
-      return {
+      setGameState((prev) => ({
         ...prev,
         consecutiveSixes: 0,
         dice: {
@@ -811,37 +929,33 @@ export default function App() {
         },
         movablePawnIds: movables,
         statusText: statusMsg,
-      };
-    });
+      }));
 
-    // Auto-resolve when no legal moves are available
-    setTimeout(() => {
-      setGameState((prev) => {
-        if (prev.movablePawnIds.length === 0 && prev.dice.hasRolled) {
-          if (prev.dice.value === 6 && prev.consecutiveSixes < 3) {
-            SoundManager.play('turn');
-            setTurnTimeLeft(TURN_TIME_LIMIT);
-            return {
-              ...prev,
-              dice: { value: prev.dice.value, isRolling: false, hasRolled: false, canRoll: true },
-              statusText: `${prev.players[prev.currentTurn].name} ROLLED 6 — BONUS TURN! ROLL AGAIN.`,
-            };
-          } else {
-            const nextTurn = getNextTurnColor(prev.currentTurn, activeColors);
-            SoundManager.play('turn');
-            setTurnTimeLeft(TURN_TIME_LIMIT);
-            return {
-              ...prev,
-              currentTurn: nextTurn,
-              consecutiveSixes: 0,
-              dice: { value: prev.dice.value, isRolling: false, hasRolled: false, canRoll: true },
-              statusText: `${prev.players[nextTurn].name}'S TURN — ROLL THE DICE!`,
-            };
+      if (movables.length > 0) {
+        // Release lock so active player/bot can pick a movable pawn
+        isRollOrMoveInProgressRef.current = false;
+      } else {
+        // Auto-pass turn to next player after brief display pause
+        noMoveTimerRef.current = setTimeout(() => {
+          if (gameStateRef.current.winner) {
+            isRollOrMoveInProgressRef.current = false;
+            return;
           }
-        }
-        return prev;
-      });
-    }, 1200);
+          const nextTurn = getNextTurnColor(gameStateRef.current.currentTurn, activeColorsRef.current);
+          SoundManager.play('turn');
+          setTurnTimeLeft(TURN_TIME_LIMIT);
+          setTurnCycleId((c) => c + 1);
+          setGameState((prev) => ({
+            ...prev,
+            currentTurn: nextTurn,
+            consecutiveSixes: 0,
+            dice: { value: prev.dice.value, isRolling: false, hasRolled: false, canRoll: true },
+            statusText: `${prev.players[nextTurn].name}'S TURN — ROLL THE DICE!`,
+          }));
+          isRollOrMoveInProgressRef.current = false;
+        }, 1200);
+      }
+    }, 650);
   };
 
   // Finalize Pawn Move & Turn Progression
@@ -989,17 +1103,32 @@ export default function App() {
 
     setSteppingPawnId(null);
     setTimeout(() => setBouncingCellKey(null), 300);
+    // Increment turn cycle ID to give fresh 10 seconds for bonus or next turn and release lock
+    setTurnCycleId((c) => c + 1);
+    isRollOrMoveInProgressRef.current = false;
   };
 
   // Move Pawn Action (Animated Cell-by-Cell Hop)
   const handlePawnClick = (clickedPawn: Pawn) => {
     if (viewMode !== 'ludo_game') return;
-    if (steppingPawnId) return;
+    if (steppingPawnId || isRollOrMoveInProgressRef.current) return;
     if (clickedPawn.color !== gameState.currentTurn) return;
-    if (!gameState.dice.hasRolled) return;
+    if (!gameState.dice.hasRolled || gameState.dice.isRolling) return;
     if (!gameState.movablePawnIds.includes(clickedPawn.id)) return;
 
+    // Acquire authoritative action lock immediately
+    isRollOrMoveInProgressRef.current = true;
     setSteppingPawnId(clickedPawn.id);
+
+    // Cancel any pending timers
+    if (noMoveTimerRef.current) {
+      clearTimeout(noMoveTimerRef.current);
+      noMoveTimerRef.current = null;
+    }
+    if (botMoveTimerRef.current) {
+      clearTimeout(botMoveTimerRef.current);
+      botMoveTimerRef.current = null;
+    }
 
     const diceValue = gameState.dice.value;
     const startStep = clickedPawn.pathStep;
@@ -1058,147 +1187,212 @@ export default function App() {
     doStep();
   };
 
-  // Bot Automation & Timer Expiration Effect (Strictly active only in ludo_game view)
+  // 1. Turn Expiration Effect (Handles 3 Strikes & Timeouts when turnTimeLeft hits 0)
   useEffect(() => {
-    if (viewMode !== 'ludo_game') return;
+    if (viewMode !== 'ludo_game' || turnTimeLeft > 0) return;
+
+    // Do NOT time out if game is over or animations/actions are in progress!
+    if (
+      gameState.winner ||
+      steppingPawnId ||
+      activeAngelFlight ||
+      gameState.dice.isRolling ||
+      isRollOrMoveInProgressRef.current
+    ) {
+      return;
+    }
+
+    const curPlayer = gameState.players[gameState.currentTurn];
+    if (!curPlayer || !curPlayer.isActive) return;
+
+    const curColor = gameState.currentTurn;
+    const nextStrikes = (playerStrikes[curColor] || 0) + 1;
+    const newStrikes = { ...playerStrikes, [curColor]: nextStrikes };
+    setPlayerStrikes(newStrikes);
+
+    SoundManager.play('turn');
+
+    if (nextStrikes >= MAX_STRIKES) {
+      // Player missed 3 turns -> Instant Forfeit!
+      const remainingActiveColors = activeColors.filter(
+        (c) => c !== curColor && gameState.players[c]?.isActive
+      );
+
+      if (remainingActiveColors.length <= 1) {
+        const winnerColor = remainingActiveColors[0] || getNextTurnColor(curColor, activeColors);
+        const winnerPlayer = gameState.players[winnerColor];
+
+        SoundManager.play('pawn-finish');
+        settleAndFinalizeMatch(winnerColor, winnerPlayer);
+
+        setGameState((prev) => ({
+          ...prev,
+          winner: winnerColor,
+          statusText: `❌ ${curPlayer.name.toUpperCase()} MISSED 3 TURNS AND FORFEITED! ${winnerPlayer?.name.toUpperCase() || 'OPPONENT'} WINS!`,
+        }));
+        return;
+      } else {
+        // In 3-player or 4-player match, eliminate this player and pass turn
+        const nextTurn = getNextTurnColor(curColor, remainingActiveColors);
+        setGameState((prev) => {
+          const updPlayers = { ...prev.players };
+          if (updPlayers[curColor]) {
+            updPlayers[curColor] = { ...updPlayers[curColor], isActive: false };
+          }
+          return {
+            ...prev,
+            players: updPlayers,
+            currentTurn: nextTurn,
+            consecutiveSixes: 0,
+            dice: { value: prev.dice.value, isRolling: false, hasRolled: false, canRoll: true },
+            movablePawnIds: [],
+            selectedPawnId: null,
+            statusText: `⚠️ ${curPlayer.name.toUpperCase()} MISSED 3 TURNS & WAS DISQUALIFIED!`,
+          };
+        });
+        setTurnTimeLeft(TURN_TIME_LIMIT);
+        setTurnCycleId((c) => c + 1);
+        isRollOrMoveInProgressRef.current = false;
+        return;
+      }
+    } else {
+      // Strike 1 or 2: Skip turn with strike penalty alert
+      const nextTurn = getNextTurnColor(curColor, activeColors);
+      setGameState((prev) => ({
+        ...prev,
+        currentTurn: nextTurn,
+        consecutiveSixes: 0,
+        dice: { value: prev.dice.value, isRolling: false, hasRolled: false, canRoll: true },
+        movablePawnIds: [],
+        selectedPawnId: null,
+        statusText: `⏳ TIME'S UP! ${curPlayer.name.toUpperCase()}'S TURN SKIPPED (${nextStrikes}/${MAX_STRIKES} STRIKES)`,
+      }));
+      setTurnTimeLeft(TURN_TIME_LIMIT);
+      setTurnCycleId((c) => c + 1);
+      isRollOrMoveInProgressRef.current = false;
+      return;
+    }
+  }, [
+    viewMode,
+    turnTimeLeft,
+    gameState.currentTurn,
+    gameState.players,
+    gameState.winner,
+    gameState.dice.isRolling,
+    steppingPawnId,
+    activeAngelFlight,
+    activeColors,
+    playerStrikes,
+    settleAndFinalizeMatch,
+  ]);
+
+  // 2. Human-like Bot Automation (Online Arena & Ludo Supreme Matches)
+  // Authoritative: respects action lock, active flight, pawn hopping, and cancels on turn cycle advance
+  useEffect(() => {
+    if (
+      viewMode !== 'ludo_game' ||
+      Boolean(gameState.winner) ||
+      Boolean(steppingPawnId) ||
+      Boolean(activeAngelFlight) ||
+      isRollOrMoveInProgressRef.current
+    ) {
+      return;
+    }
 
     const curPlayer = gameState.players[gameState.currentTurn];
     if (!curPlayer || !curPlayer.isActive) return;
 
     const isBot = !curPlayer.isHuman || gameState.isAutoPlay;
-    const isTimerExpired = turnTimeLeft === 0;
+    if (!isBot) return;
 
-    if (gameState.winner || steppingPawnId) return;
-
-    // Handle Timer Expiration -> Forfeit turn or Match Disqualification (Life Cycle: 3 Strikes)
-    if (isTimerExpired) {
-      const curColor = gameState.currentTurn;
-      const nextStrikes = (playerStrikes[curColor] || 0) + 1;
-      const newStrikes = { ...playerStrikes, [curColor]: nextStrikes };
-      setPlayerStrikes(newStrikes);
-
-      SoundManager.play('turn');
-
-      if (nextStrikes >= MAX_STRIKES) {
-        // Player missed 3 turns -> Instant Forfeit!
-        // Determine remaining active opponents:
-        const remainingActiveColors = activeColors.filter(
-          (c) => c !== curColor && gameState.players[c]?.isActive
-        );
-
-        if (remainingActiveColors.length <= 1) {
-          const winnerColor = remainingActiveColors[0] || getNextTurnColor(curColor, activeColors);
-          const winnerPlayer = gameState.players[winnerColor];
-
-          SoundManager.play('pawn-finish');
-          settleAndFinalizeMatch(winnerColor, winnerPlayer);
-
-          setGameState((prev) => ({
-            ...prev,
-            winner: winnerColor,
-            statusText: `❌ ${curPlayer.name.toUpperCase()} MISSED 3 TURNS AND FORFEITED! ${winnerPlayer?.name.toUpperCase() || 'OPPONENT'} WINS!`,
-          }));
-          return;
-        } else {
-          // In 3-player or 4-player match, eliminate this player and pass turn
-          const nextTurn = getNextTurnColor(curColor, remainingActiveColors);
-          setGameState((prev) => {
-            const updPlayers = { ...prev.players };
-            if (updPlayers[curColor]) {
-              updPlayers[curColor] = { ...updPlayers[curColor], isActive: false };
-            }
-            return {
-              ...prev,
-              players: updPlayers,
-              currentTurn: nextTurn,
-              consecutiveSixes: 0,
-              dice: { value: prev.dice.value, isRolling: false, hasRolled: false, canRoll: true },
-              movablePawnIds: [],
-              selectedPawnId: null,
-              statusText: `⚠️ ${curPlayer.name.toUpperCase()} MISSED 3 TURNS & WAS DISQUALIFIED!`,
-            };
-          });
-          setTurnTimeLeft(TURN_TIME_LIMIT);
-          return;
+    // Step A: Natural Dice Roll by Bot
+    if (gameState.dice.canRoll && !gameState.dice.isRolling && !gameState.dice.hasRolled) {
+      if (botRollTimerRef.current) clearTimeout(botRollTimerRef.current);
+      botRollTimerRef.current = setTimeout(() => {
+        if (
+          viewMode === 'ludo_game' &&
+          !gameStateRef.current.winner &&
+          !steppingPawnIdRef.current &&
+          !activeAngelFlightRef.current &&
+          !isRollOrMoveInProgressRef.current
+        ) {
+          const isSupreme =
+            currentMatchConfigRef.current?.gameType !== 'classic' &&
+            currentMatchConfigRef.current?.gameType !== 'snake';
+          const humanWinRate =
+            playerMode === 3
+              ? (platformMode.humanWinRate3P ?? 20)
+              : playerMode === 4
+              ? (platformMode.humanWinRate4P ?? 20)
+              : 50;
+          const smartVal = getSmartBotRoll(
+            gameStateRef.current,
+            gameStateRef.current.currentTurn,
+            activeColors,
+            isSupreme,
+            humanWinRate
+          );
+          handleRollDice(smartVal);
         }
-      } else {
-        // Strike 1 or 2: Skip turn with strike penalty alert
-        const nextTurn = getNextTurnColor(curColor, activeColors);
-        setGameState((prev) => ({
-          ...prev,
-          currentTurn: nextTurn,
-          consecutiveSixes: 0,
-          dice: { value: prev.dice.value, isRolling: false, hasRolled: false, canRoll: true },
-          movablePawnIds: [],
-          selectedPawnId: null,
-          statusText: `⏳ TIME'S UP! ${curPlayer.name.toUpperCase()}'S TURN SKIPPED (${nextStrikes}/${MAX_STRIKES} STRIKES)`,
-        }));
-        setTurnTimeLeft(TURN_TIME_LIMIT);
-        return;
-      }
+      }, 850);
+      return () => {
+        if (botRollTimerRef.current) {
+          clearTimeout(botRollTimerRef.current);
+          botRollTimerRef.current = null;
+        }
+      };
     }
 
-    // Handle Normal Bot Turns
-    if (isBot) {
-      if (gameState.dice.canRoll && !gameState.dice.isRolling) {
-        const timer = setTimeout(() => {
-          if (viewMode === 'ludo_game') {
-            const isSupreme = currentMatchConfig?.gameType !== 'classic' && currentMatchConfig?.gameType !== 'snake';
-            const humanWinRate =
-              playerMode === 3
-                ? (platformMode.humanWinRate3P ?? 20)
-                : playerMode === 4
-                ? (platformMode.humanWinRate4P ?? 20)
-                : 50;
-            const smartVal = getSmartBotRoll(
-              gameState,
-              gameState.currentTurn,
-              activeColors,
-              isSupreme,
-              humanWinRate
-            );
-            handleRollDice(smartVal);
+    // Step B: Natural Step-by-Step Pawn Selection and Movement by Bot
+    if (gameState.dice.hasRolled && !gameState.dice.isRolling && gameState.movablePawnIds.length > 0) {
+      if (botMoveTimerRef.current) clearTimeout(botMoveTimerRef.current);
+      botMoveTimerRef.current = setTimeout(() => {
+        if (
+          viewMode === 'ludo_game' &&
+          !gameStateRef.current.winner &&
+          !steppingPawnIdRef.current &&
+          !activeAngelFlightRef.current &&
+          !isRollOrMoveInProgressRef.current
+        ) {
+          const isSupreme =
+            currentMatchConfigRef.current?.gameType !== 'classic' &&
+            currentMatchConfigRef.current?.gameType !== 'snake';
+          const movables = gameStateRef.current.movablePawnIds;
+          const bestPawnId = chooseBestBotPawn(
+            gameStateRef.current,
+            gameStateRef.current.currentTurn,
+            activeColors,
+            movables,
+            isSupreme
+          );
+          const chosenPawn =
+            curPlayer.pawns.find((p) => p.id === bestPawnId) ||
+            curPlayer.pawns.find((p) => p.id === movables[0]);
+          if (chosenPawn) {
+            handlePawnClick(chosenPawn);
           }
-        }, 1100);
-        return () => clearTimeout(timer);
-      }
-
-      if (gameState.dice.hasRolled && gameState.movablePawnIds.length > 0) {
-        const timer = setTimeout(() => {
-          if (viewMode === 'ludo_game') {
-            const isSupreme = currentMatchConfig?.gameType !== 'classic' && currentMatchConfig?.gameType !== 'snake';
-            const movables = gameState.movablePawnIds;
-            const bestPawnId = chooseBestBotPawn(
-              gameState,
-              gameState.currentTurn,
-              activeColors,
-              movables,
-              isSupreme
-            );
-            const chosenPawn =
-              curPlayer.pawns.find((p) => p.id === bestPawnId) ||
-              curPlayer.pawns.find((p) => p.id === movables[0]);
-            if (chosenPawn) {
-              handlePawnClick(chosenPawn);
-            }
-          }
-        }, 1100);
-        return () => clearTimeout(timer);
-      }
+        }
+      }, 750);
+      return () => {
+        if (botMoveTimerRef.current) {
+          clearTimeout(botMoveTimerRef.current);
+          botMoveTimerRef.current = null;
+        }
+      };
     }
   }, [
     viewMode,
+    turnCycleId,
     gameState.currentTurn,
     gameState.dice.canRoll,
+    gameState.dice.isRolling,
     gameState.dice.hasRolled,
+    gameState.movablePawnIds,
     gameState.isAutoPlay,
-    steppingPawnId,
-    turnTimeLeft,
     gameState.winner,
+    steppingPawnId,
+    activeAngelFlight,
     activeColors,
-    playerStrikes,
-    settleAndFinalizeMatch,
-    currentMatchConfig?.gameType,
     playerMode,
     platformMode.humanWinRate3P,
     platformMode.humanWinRate4P,
@@ -1237,6 +1431,21 @@ export default function App() {
   };
 
   const handleResetGame = () => {
+    if (noMoveTimerRef.current) {
+      clearTimeout(noMoveTimerRef.current);
+      noMoveTimerRef.current = null;
+    }
+    if (botRollTimerRef.current) {
+      clearTimeout(botRollTimerRef.current);
+      botRollTimerRef.current = null;
+    }
+    if (botMoveTimerRef.current) {
+      clearTimeout(botMoveTimerRef.current);
+      botMoveTimerRef.current = null;
+    }
+    isRollOrMoveInProgressRef.current = false;
+    setTurnCycleId((c) => c + 1);
+
     setGameState({
       players: DEFAULT_PLAYERS,
       currentTurn: 'blue',
@@ -1527,8 +1736,6 @@ export default function App() {
   }
 
   // 3. SNAKE LUDO MINI-GAME VIEW
-  const humanPlayer = (Object.values(gameState.players) as Player[]).find((p) => p?.isHuman);
-
   if (viewMode === 'snake_ludo') {
     return (
       <>
@@ -1544,7 +1751,8 @@ export default function App() {
           userId={currentUser?.id || 'user_guest_default'}
           userName={humanPlayer?.name || currentUser?.displayName || currentUser?.username || 'Player 1'}
           userAvatar={humanPlayer?.avatarUrl || currentUser?.avatarUrl || ''}
-          playerCount={currentMatchConfig?.mode || 2}
+          playerCount={Number(currentMatchConfig?.mode || playerMode || 2)}
+          matchedOpponents={lastMatchedOpponents}
           tournamentId={currentMatchConfig?.tournamentId}
           onMatchWon={(prize) => {
             if (prize > 0) {
