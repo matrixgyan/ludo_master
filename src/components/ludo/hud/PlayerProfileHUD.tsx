@@ -106,7 +106,9 @@ export const PlayerProfileHUD: React.FC<PlayerProfileHUDProps> = ({
             className={`relative z-10 w-9 h-9 sm:w-10 sm:h-10 rounded-full p-0.5 bg-gradient-to-tr ${
               RING_COLORS[player.color]
             } shadow-lg border-2 overflow-hidden flex items-center justify-center transition-transform ${
-              isTurn ? 'scale-[1.02]' : 'opacity-85'
+              player.isHuman ? 'ring-2 ring-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.7)]' : ''
+            } ${
+              isTurn ? 'scale-[1.05]' : 'opacity-90'
             }`}
           >
             <img
@@ -119,6 +121,13 @@ export const PlayerProfileHUD: React.FC<PlayerProfileHUDProps> = ({
               }}
             />
           </div>
+
+          {/* Prominent "YOU" Badge on Avatar for Human Player */}
+          {player.isHuman && (
+            <div className="absolute -top-2 z-30 px-1.5 py-0.2 rounded-full bg-gradient-to-r from-emerald-500 to-green-400 text-slate-950 font-black text-[8px] sm:text-[9px] uppercase tracking-wider shadow-[0_0_8px_rgba(16,185,129,0.9)] border border-white flex items-center gap-0.5 animate-bounce">
+              YOU
+            </div>
+          )}
 
           {/* Mic / Voice Toggle Badge */}
           <button
@@ -145,6 +154,23 @@ export const PlayerProfileHUD: React.FC<PlayerProfileHUDProps> = ({
 
         {/* Live Score Tag Pill & Player Name */}
         <div className="flex flex-col items-center gap-0.5">
+          {/* Player Name and (YOU) badge */}
+          <div className="flex items-center gap-1 max-w-[90px] sm:max-w-[110px] justify-center">
+            {player.isHuman && (
+              <span className="px-1.5 py-0.2 rounded bg-emerald-500 text-slate-950 font-black text-[8px] uppercase tracking-wider border border-emerald-300 shadow-xs shrink-0">
+                YOU
+              </span>
+            )}
+            <span
+              className={`text-[10px] sm:text-[11px] font-black truncate ${
+                player.isHuman ? 'text-emerald-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]' : 'text-slate-300'
+              }`}
+              title={player.name}
+            >
+              {player.name}
+            </span>
+          </div>
+
           <div
             className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-black border shadow-md ${
               scoreRank === 1
@@ -163,6 +189,13 @@ export const PlayerProfileHUD: React.FC<PlayerProfileHUDProps> = ({
               </span>
             )}
           </div>
+
+          {/* Human player pawn color tag */}
+          {player.isHuman && (
+            <span className="text-[8px] font-extrabold uppercase text-amber-300 tracking-wider bg-black/60 px-1.5 py-0.2 rounded-full border border-amber-400/40">
+              Your Pawns ({player.color.toUpperCase()})
+            </span>
+          )}
 
           {/* Life Cycle (3 Strikes / Missed Turns) Feature */}
           <div

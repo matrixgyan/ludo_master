@@ -35,7 +35,7 @@ export class LedgerService {
   private static memoryAccounts: Map<string, MemoryAccount> = new Map(); // key: `${ownerId}_${accountType}`
   private static memoryTransactions: Map<string, MemoryTransaction> = new Map(); // key: idempotencyKey
   private static memoryEntries: MemoryEntry[] = [];
-  private static memoryWalletSummary: Map<string, { available: string; locked: string; total: string; status: 'ACTIVE' | 'FROZEN' | 'SUSPENDED' }> = new Map();
+  private static memoryWalletSummary: Map<string, { available: string; locked: string; total: string; depositBalance: string; winningBalance: string; status: 'ACTIVE' | 'FROZEN' | 'SUSPENDED' }> = new Map();
 
   /**
    * Helper to ensure ledger accounts exist for an owner
@@ -119,6 +119,11 @@ export class LedgerService {
             const avail = row.available_balance || '0.00000000';
             const locked = row.locked_balance || '0.00000000';
             const total = LedgerMath.add(avail, locked);
+            let depBal = row.deposit_balance || '0.00000000';
+            let winBal = row.winning_balance || '0.00000000';
+            if (parseFloat(avail) > 0 && parseFloat(depBal) === 0 && parseFloat(winBal) === 0) {
+              depBal = avail;
+            }
 
             return {
               userId,
@@ -126,8 +131,12 @@ export class LedgerService {
               availableBalance: avail,
               lockedBalance: locked,
               totalBalance: total,
+              depositBalance: depBal,
+              winningBalance: winBal,
               formattedAvailable: LedgerMath.formatDollar(avail),
               formattedTotal: LedgerMath.formatDollar(total),
+              formattedDeposit: LedgerMath.formatDollar(depBal),
+              formattedWinning: LedgerMath.formatDollar(winBal),
               status: row.status || 'ACTIVE',
               updatedAt: new Date(row.updated_at || Date.now()).toISOString(),
             };
@@ -146,19 +155,32 @@ export class LedgerService {
         available: '0.00000000',
         locked: '0.00000000',
         total: '0.00000000',
+        depositBalance: '0.00000000',
+        winningBalance: '0.00000000',
         status: 'ACTIVE',
       });
     }
 
     const mem = this.memoryWalletSummary.get(userId)!;
+    let memDep = mem.depositBalance || '0.00000000';
+    let memWin = mem.winningBalance || '0.00000000';
+    if (parseFloat(mem.available) > 0 && parseFloat(memDep) === 0 && parseFloat(memWin) === 0) {
+      memDep = mem.available;
+      mem.depositBalance = memDep;
+    }
+
     return {
       userId,
       asset: 'USDT',
       availableBalance: mem.available,
       lockedBalance: mem.locked,
       totalBalance: LedgerMath.add(mem.available, mem.locked),
+      depositBalance: memDep,
+      winningBalance: memWin,
       formattedAvailable: LedgerMath.formatDollar(mem.available),
       formattedTotal: LedgerMath.formatDollar(LedgerMath.add(mem.available, mem.locked)),
+      formattedDeposit: LedgerMath.formatDollar(memDep),
+      formattedWinning: LedgerMath.formatDollar(memWin),
       status: mem.status,
       updatedAt: new Date().toISOString(),
     };
@@ -210,15 +232,30 @@ export class LedgerService {
           );
 
           // 2. Ensure wallet_accounts row exists with UPSERT
-          await client.query(
-            `INSERT INTO wallet_accounts (id, user_id, asset, available_balance, locked_balance, total_balance, status)
-             VALUES ($1, $2, 'USDT', $3, '0.00000000', $3, 'ACTIVE')
-             ON CONFLICT (user_id) DO UPDATE
-             SET available_balance = wallet_accounts.available_balance + EXCLUDED.available_balance,
-                 total_balance = wallet_accounts.total_balance + EXCLUDED.total_balance,
-                 updated_at = NOW()`,
-            [`w_${uuidv4()}`, userId, amountUsdt]
-          );
+          const isMatchWin = (metadata as any)?.type === 'MATCH_WIN_PAYOUT';
+          if (isMatchWin) {
+            await client.query(
+              `INSERT INTO wallet_accounts (id, user_id, asset, available_balance, locked_balance, total_balance, deposit_balance, winning_balance, status)
+               VALUES ($1, $2, 'USDT', $3, '0.00000000', $3, '0.00000000', $3, 'ACTIVE')
+               ON CONFLICT (user_id) DO UPDATE
+               SET available_balance = wallet_accounts.available_balance + EXCLUDED.available_balance,
+                   total_balance = wallet_accounts.total_balance + EXCLUDED.total_balance,
+                   winning_balance = COALESCE(wallet_accounts.winning_balance, 0) + EXCLUDED.winning_balance,
+                   updated_at = NOW()`,
+              [`w_${uuidv4()}`, userId, amountUsdt]
+            );
+          } else {
+            await client.query(
+              `INSERT INTO wallet_accounts (id, user_id, asset, available_balance, locked_balance, total_balance, deposit_balance, winning_balance, status)
+               VALUES ($1, $2, 'USDT', $3, '0.00000000', $3, $3, '0.00000000', 'ACTIVE')
+               ON CONFLICT (user_id) DO UPDATE
+               SET available_balance = wallet_accounts.available_balance + EXCLUDED.available_balance,
+                   total_balance = wallet_accounts.total_balance + EXCLUDED.total_balance,
+                   deposit_balance = COALESCE(wallet_accounts.deposit_balance, 0) + EXCLUDED.deposit_balance,
+                   updated_at = NOW()`,
+              [`w_${uuidv4()}`, userId, amountUsdt]
+            );
+          }
 
           // Fetch updated balance for entry audit
           const updatedW = await client.query(
@@ -275,20 +312,31 @@ export class LedgerService {
       createdAt: new Date(),
     });
 
+    const isMatchWin = (metadata as any)?.type === 'MATCH_WIN_PAYOUT';
     const w = await this.getUserWallet(userId);
     const newAvail = LedgerMath.add(w.availableBalance, amountUsdt);
+    const currentMem = this.memoryWalletSummary.get(userId)!;
+    const newDep = isMatchWin
+      ? (currentMem.depositBalance || '0.00000000')
+      : LedgerMath.add(currentMem.depositBalance || '0.00000000', amountUsdt);
+    const newWin = isMatchWin
+      ? LedgerMath.add(currentMem.winningBalance || '0.00000000', amountUsdt)
+      : (currentMem.winningBalance || '0.00000000');
+
     this.memoryWalletSummary.set(userId, {
-      ...this.memoryWalletSummary.get(userId)!,
+      ...currentMem,
       available: newAvail,
       total: LedgerMath.add(newAvail, w.lockedBalance),
+      depositBalance: newDep,
+      winningBalance: newWin,
     });
 
-    Logger.info(`[Memory Ledger] Credited deposit of ${amountUsdt} USDT to user ${userId}`);
+    Logger.info(`[Memory Ledger] Credited ${isMatchWin ? 'winnings' : 'deposit'} of ${amountUsdt} USDT to user ${userId}`);
     return { transactionId: txId, newAvailableBalance: newAvail };
   }
 
   /**
-   * Locks funds for a pending withdrawal
+   * Locks funds for entry fees or generic operations (deducts from deposit first, then winning)
    */
   public static async lockFundsForWithdrawal(
     userId: string,
@@ -316,11 +364,19 @@ export class LedgerService {
             return { transactionId: existing.rows[0].id };
           }
 
-          // Atomic check and lock
+          // Atomic check and lock: deduct from deposit_balance first, then winning_balance
           const updateRes = await client.query(
             `UPDATE wallet_accounts
              SET available_balance = available_balance - $1,
                  locked_balance = locked_balance + $1,
+                 deposit_balance = CASE
+                   WHEN COALESCE(deposit_balance, 0) >= $1 THEN deposit_balance - $1
+                   ELSE 0.00000000
+                 END,
+                 winning_balance = CASE
+                   WHEN COALESCE(deposit_balance, 0) >= $1 THEN winning_balance
+                   ELSE GREATEST(0.00000000, winning_balance - ($1 - COALESCE(deposit_balance, 0)))
+                 END,
                  updated_at = NOW()
              WHERE user_id = $2 AND available_balance >= $1
              RETURNING available_balance, locked_balance`,
@@ -335,7 +391,7 @@ export class LedgerService {
           await client.query(
             `INSERT INTO ledger_transactions (id, idempotency_key, tx_type, description)
              VALUES ($1, $2, 'WITHDRAWAL_LOCK', $3)`,
-            [txId, idempotencyKey, `Locked ${amountUsdt} USDT for withdrawal`]
+            [txId, idempotencyKey, `Locked ${amountUsdt} USDT for match/withdrawal`]
           );
 
           await client.query('COMMIT');
@@ -349,17 +405,139 @@ export class LedgerService {
       }
     }
 
-    // Memory Lock
+    // Memory Lock: deduct from deposit first, then winning
     const txId = `ltx_${uuidv4()}`;
     const newAvail = LedgerMath.subtract(w.availableBalance, amountUsdt);
     const newLocked = LedgerMath.add(w.lockedBalance, amountUsdt);
+    const currentMem = this.memoryWalletSummary.get(userId)!;
+    const currentDepNum = parseFloat(currentMem.depositBalance || '0');
+    const reqNum = parseFloat(amountUsdt);
+    let newDepStr = currentMem.depositBalance || '0.00000000';
+    let newWinStr = currentMem.winningBalance || '0.00000000';
+    if (currentDepNum >= reqNum) {
+      newDepStr = (currentDepNum - reqNum).toFixed(8);
+    } else {
+      newDepStr = '0.00000000';
+      const remaining = reqNum - currentDepNum;
+      const currentWinNum = parseFloat(currentMem.winningBalance || '0');
+      newWinStr = Math.max(0, currentWinNum - remaining).toFixed(8);
+    }
+
     this.memoryWalletSummary.set(userId, {
-      ...this.memoryWalletSummary.get(userId)!,
+      ...currentMem,
       available: newAvail,
       locked: newLocked,
+      depositBalance: newDepStr,
+      winningBalance: newWinStr,
     });
 
     return { transactionId: txId };
+  }
+
+  /**
+   * Specifically locks WINNING funds for a pending withdrawal
+   * Strict Real-Money Gaming Directives:
+   * 1. Minimum withdrawal is ₹100
+   * 2. Deposited balance is BLOCKED from withdrawal (ONLY winning amount can be withdrawn)
+   * 3. 5% platform withdrawal fee is calculated and locked in real time
+   */
+  public static async lockWinningFundsForWithdrawal(
+    userId: string,
+    amountUsdt: string,
+    idempotencyKey: string
+  ): Promise<{ transactionId: string; feeAmount: string; netAmount: string }> {
+    const numAmount = parseFloat(amountUsdt);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      throw new Error('Invalid withdrawal amount');
+    }
+    if (numAmount < 100) {
+      throw new Error('Minimum withdrawal amount is ₹100.00 of winnings balance.');
+    }
+
+    const w = await this.getUserWallet(userId);
+    const winningBal = parseFloat(w.winningBalance || '0.00000000');
+    const depositBal = parseFloat(w.depositBalance || '0.00000000');
+
+    if (winningBal < numAmount) {
+      throw new Error(
+        `Cannot withdraw deposited balance. Only winning amount is eligible for withdrawal. Your Winning Balance is ₹${winningBal.toFixed(2)}, Deposited Balance is ₹${depositBal.toFixed(2)}. Play matches to win withdrawable cash!`
+      );
+    }
+
+    const feeNum = parseFloat((numAmount * 0.05).toFixed(2));
+    const netNum = parseFloat((numAmount - feeNum).toFixed(2));
+    const feeAmount = feeNum.toFixed(2);
+    const netAmount = netNum.toFixed(2);
+
+    if (isPostgresConfigured()) {
+      const pool = getDbPool();
+      if (pool) {
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+
+          const existing = await client.query(
+            `SELECT id FROM ledger_transactions WHERE idempotency_key = $1 LIMIT 1`,
+            [idempotencyKey]
+          );
+          if (existing.rows.length > 0) {
+            await client.query('COMMIT');
+            return { transactionId: existing.rows[0].id, feeAmount, netAmount };
+          }
+
+          const updateRes = await client.query(
+            `UPDATE wallet_accounts
+             SET available_balance = available_balance - $1,
+                 winning_balance = winning_balance - $1,
+                 locked_balance = locked_balance + $1,
+                 updated_at = NOW()
+             WHERE user_id = $2 AND winning_balance >= $1 AND available_balance >= $1
+             RETURNING available_balance, winning_balance, locked_balance`,
+            [amountUsdt, userId]
+          );
+
+          if (updateRes.rows.length === 0) {
+            throw new Error(`Insufficient winning balance for withdrawal. Requested: ₹${numAmount.toFixed(2)}`);
+          }
+
+          const txId = `ltx_${uuidv4()}`;
+          await client.query(
+            `INSERT INTO ledger_transactions (id, idempotency_key, tx_type, description, metadata)
+             VALUES ($1, $2, 'WITHDRAWAL_LOCK', $3, $4)`,
+            [
+              txId,
+              idempotencyKey,
+              `Locked ₹${amountUsdt} winning funds for withdrawal (5% fee: ₹${feeAmount}, net: ₹${netAmount})`,
+              JSON.stringify({ feeAmount, netAmount, grossAmount: amountUsdt, feePercent: 5 }),
+            ]
+          );
+
+          await client.query('COMMIT');
+          return { transactionId: txId, feeAmount, netAmount };
+        } catch (err) {
+          await client.query('ROLLBACK');
+          throw err;
+        } finally {
+          client.release();
+        }
+      }
+    }
+
+    // Memory lock
+    const txId = `ltx_${uuidv4()}`;
+    const newAvail = LedgerMath.subtract(w.availableBalance, amountUsdt);
+    const newWin = LedgerMath.subtract(w.winningBalance || '0.00000000', amountUsdt);
+    const newLocked = LedgerMath.add(w.lockedBalance, amountUsdt);
+    const currentMem = this.memoryWalletSummary.get(userId)!;
+    this.memoryWalletSummary.set(userId, {
+      ...currentMem,
+      available: newAvail,
+      winningBalance: newWin,
+      locked: newLocked,
+      total: LedgerMath.add(newAvail, newLocked),
+    });
+
+    return { transactionId: txId, feeAmount, netAmount };
   }
 
   /**

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ShieldCheck, Zap, X, Trophy, Wifi, Radio, Swords } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
@@ -125,6 +125,7 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
 }) => {
   const { platformMode } = usePlatformMode();
   const [matchedPlayers, setMatchedPlayers] = useState<MatchedOpponent[]>([]);
+  const finalOpponentsRef = useRef<MatchedOpponent[]>([]);
   const [statusMessage, setStatusMessage] = useState('SEARCHING MATCHING QUEUE...');
   const [countdown, setCountdown] = useState<number | null>(null);
   const [searchTime, setSearchTime] = useState(0);
@@ -203,6 +204,8 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
         };
       });
 
+      finalOpponentsRef.current = chosenOpponents;
+
       // Progressive Matchmaking Lock-in
       chosenOpponents.forEach((opp, idx) => {
         const delay = 1000 + idx * 900;
@@ -252,11 +255,18 @@ export const OnlineMatchmakingScreen: React.FC<OnlineMatchmakingScreenProps> = (
     } else if (countdown === 0) {
       SoundManager.play('battle-horn');
       const t = setTimeout(() => {
-        onMatchComplete(matchedPlayers);
+        const opponentsNeeded = playerCount - 1;
+        const finalOpps =
+          finalOpponentsRef.current.length >= opponentsNeeded
+            ? finalOpponentsRef.current
+            : matchedPlayers.length > 0
+            ? matchedPlayers
+            : finalOpponentsRef.current;
+        onMatchComplete(finalOpps);
       }, 600);
       return () => clearTimeout(t);
     }
-  }, [countdown, matchedPlayers, onMatchComplete]);
+  }, [countdown, matchedPlayers, onMatchComplete, playerCount]);
 
   const opponentSlots = Array.from({ length: playerCount - 1 });
 

@@ -171,6 +171,7 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const hasFinalizedRef = useRef<boolean>(false);
+  const isActionInProgressRef = useRef<boolean>(false);
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -384,11 +385,12 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
     });
     setHasRolledThisTurn(false);
     setTurnTimeLeft(TURN_TIME_LIMIT);
+    isActionInProgressRef.current = false;
   }, [activePlayerIds]);
 
   // Handle Turn Timeout / Auto-skip rule
   const handleTurnTimeout = useCallback(() => {
-    if (winner || isRolling || isMovingPawn) return;
+    if (winner || isRolling || isMovingPawn || isActionInProgressRef.current) return;
 
     const curPid = currentTurn;
     const curPlayer = playersMap[curPid];
@@ -426,18 +428,21 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
     passTurnToNext,
   ]);
 
-  // Turn Timer Effect (Decrements every second)
+  // Turn Timer Effect (Decrements every second - strictly paused during active rolls, moves & animations)
   useEffect(() => {
-    if (winner || isRolling || isMovingPawn) {
+    if (winner) {
       if (timerRef.current) clearInterval(timerRef.current);
       return;
     }
 
     timerRef.current = setInterval(() => {
+      if (isActionInProgressRef.current || isRolling || isMovingPawn) {
+        return; // Paused during active animations and board movement
+      }
+
       setTurnTimeLeft((prev) => {
         if (prev <= 1) {
-          handleTurnTimeout();
-          return TURN_TIME_LIMIT;
+          return 0;
         }
         return prev - 1;
       });
@@ -446,22 +451,36 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [currentTurn, winner, isRolling, isMovingPawn, handleTurnTimeout]);
+  }, [currentTurn, winner, isRolling, isMovingPawn]);
+
+  // Trigger timeout callback safely outside the interval updater
+  useEffect(() => {
+    if (
+      turnTimeLeft === 0 &&
+      !isActionInProgressRef.current &&
+      !isRolling &&
+      !isMovingPawn &&
+      !winner
+    ) {
+      handleTurnTimeout();
+    }
+  }, [turnTimeLeft, isRolling, isMovingPawn, winner, handleTurnTimeout]);
 
   // Roll Interactive Dice
   const handleRoll = async () => {
-    if (isRolling || isMovingPawn || winner) return;
+    if (isRolling || isMovingPawn || winner || isActionInProgressRef.current) return;
+    isActionInProgressRef.current = true;
 
     const activePid = currentTurn;
-    SoundManager.play('dice-roll');
+    const rolled = Math.floor(Math.random() * 6) + 1;
+    setDiceVals((prev) => ({ ...prev, [activePid]: rolled }));
     setHasRolledThisTurn(true);
     setIsRolling(true);
     setActionAlert(null);
+    SoundManager.play('dice-roll');
 
-    const rolled = Math.floor(Math.random() * 6) + 1;
-    setDiceVals((prev) => ({ ...prev, [activePid]: rolled }));
-
-    await sleep(780);
+    await sleep(750);
+    SoundManager.play('dice-land');
     setIsRolling(false);
 
     let currentSixesCount = consecutiveSixes[activePid] || 0;
@@ -493,6 +512,7 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
     // Check if reached Tile 100 (Victory)
     if (finalPos === 100) {
       handleFinalizeSnakeMatch(activePid);
+      isActionInProgressRef.current = false;
       return;
     }
 
@@ -504,21 +524,38 @@ export const SnakeLudoGame: React.FC<SnakeLudoGameProps> = ({
       });
       setTurnTimeLeft(TURN_TIME_LIMIT);
       setHasRolledThisTurn(false);
+      isActionInProgressRef.current = false;
       setTimeout(() => setActionAlert(null), 2200);
     } else {
       passTurnToNext();
     }
   };
 
-  // Automatic roll for Opponents (p2, p3, p4) like a real human player
+  // Automatic roll for Opponents (p2, p3, p4) with proper waiting and turn lock
   useEffect(() => {
-    if (currentTurn !== 'p1' && !winner && !isRolling && !isMovingPawn) {
+    if (
+      currentTurn !== 'p1' &&
+      !winner &&
+      !isRolling &&
+      !isMovingPawn &&
+      !isActionInProgressRef.current &&
+      !hasRolledThisTurn
+    ) {
+      const activeBot = currentTurn;
       const timer = setTimeout(() => {
-        handleRoll();
+        if (
+          currentTurn === activeBot &&
+          !winner &&
+          !isRolling &&
+          !isMovingPawn &&
+          !isActionInProgressRef.current
+        ) {
+          handleRoll();
+        }
       }, 950);
       return () => clearTimeout(timer);
     }
-  }, [currentTurn, winner, isRolling, isMovingPawn]);
+  }, [currentTurn, winner, isRolling, isMovingPawn, hasRolledThisTurn]);
 
   const handleReset = () => {
     SoundManager.play('click');

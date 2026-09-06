@@ -77,7 +77,7 @@ export const LudoDice: React.FC<LudoDiceProps> = ({
     onRoll();
   };
 
-  // Trigger 3D physical tumble when rolling starts (for both human clicks and bot automation)
+  // Trigger 3D physical tumble ONLY when active player starts rolling
   useEffect(() => {
     if (isTurn && dice.isRolling && !wasRollingRef.current) {
       rollToValue(dice.value || 6);
@@ -85,9 +85,9 @@ export const LudoDice: React.FC<LudoDiceProps> = ({
     wasRollingRef.current = Boolean(isTurn && dice.isRolling);
   }, [dice.isRolling, isTurn, dice.value]);
 
-  // Sync resting face when not rolling or when turn switches
+  // Sync resting face ONLY for active player or on mount - never trigger tumble when inactive
   useEffect(() => {
-    if (!dice.isRolling && !isAnimating) {
+    if (isTurn && !dice.isRolling && !isAnimating) {
       const target = FACE_ROTATIONS[dice.value || 6] || FACE_ROTATIONS[1];
       setRotation((prev) => ({
         x: Math.round(prev.x / 360) * 360 + target.x,
@@ -254,17 +254,18 @@ export const LudoDice: React.FC<LudoDiceProps> = ({
         </div>
       )}
 
-      {/* 3D Dice Button Plate */}
-      <motion.button
+      {/* 3D Dice Button Plate - Using div to prevent browser button 3D flattening */}
+      <motion.div
+        role="button"
+        tabIndex={0}
         whileHover={dice.canRoll && !disabled && isTurn ? { scale: 1.08, y: -2 } : {}}
         whileTap={dice.canRoll && !disabled && isTurn ? { scale: 0.92, y: 2 } : {}}
         onClick={handleClick}
-        disabled={disabled || dice.isRolling || isAnimating || !dice.canRoll || !isTurn}
         className={`relative ${
           isCompact
             ? 'w-12 h-12 sm:w-13 sm:h-13 rounded-xl p-1'
             : 'w-22 h-22 sm:w-24 sm:h-24 rounded-2xl p-2'
-        } flex items-center justify-center transition-all duration-200 ${
+        } flex items-center justify-center transition-all duration-200 select-none ${
           isTurn
             ? dice.canRoll && !disabled
               ? 'cursor-pointer opacity-100 filter-none shadow-xl ring-2 ring-amber-300 active:scale-95'
@@ -281,7 +282,7 @@ export const LudoDice: React.FC<LudoDiceProps> = ({
           border: isTurn
             ? '2px solid #ffffff'
             : '2px solid rgba(255, 255, 255, 0.1)',
-          perspective: isCompact ? '350px' : '500px',
+          transformStyle: 'preserve-3d',
         }}
       >
         {/* Dynamic Floor Shadow beneath 3D Cube */}
@@ -306,14 +307,14 @@ export const LudoDice: React.FC<LudoDiceProps> = ({
             y: isAnimating ? (isCompact ? [0, -18, 2, -5, 0] : [0, -30, 4, -8, 0]) : 0,
             scale: isAnimating ? [1, 1.12, 0.92, 1.05, 1] : 1,
           }}
-          transition={{
-            duration: 0.75,
-            ease: [0.22, 1, 0.36, 1],
-          }}
+          transition={
+            isAnimating
+              ? { duration: 0.75, ease: [0.22, 1, 0.36, 1] }
+              : { duration: 0 }
+          }
           onAnimationComplete={() => {
             if (isAnimating) {
               setIsAnimating(false);
-              SoundManager.play('dice-land');
             }
           }}
           style={{
@@ -353,7 +354,7 @@ export const LudoDice: React.FC<LudoDiceProps> = ({
             {renderPips(6)}
           </div>
         </motion.div>
-      </motion.button>
+      </motion.div>
     </div>
   );
 };

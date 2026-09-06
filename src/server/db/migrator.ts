@@ -51,12 +51,16 @@ export async function ensureDatabaseTables(): Promise<void> {
         available_balance NUMERIC(28, 8) NOT NULL DEFAULT '0.00000000',
         locked_balance NUMERIC(28, 8) NOT NULL DEFAULT '0.00000000',
         total_balance NUMERIC(28, 8) NOT NULL DEFAULT '0.00000000',
+        deposit_balance NUMERIC(28, 8) NOT NULL DEFAULT '0.00000000',
+        winning_balance NUMERIC(28, 8) NOT NULL DEFAULT '0.00000000',
         status TEXT NOT NULL DEFAULT 'ACTIVE',
         version INTEGER NOT NULL DEFAULT 1,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS wallet_accounts_user_idx ON wallet_accounts(user_id);
+      ALTER TABLE wallet_accounts ADD COLUMN IF NOT EXISTS deposit_balance NUMERIC(28, 8) NOT NULL DEFAULT '0.00000000';
+      ALTER TABLE wallet_accounts ADD COLUMN IF NOT EXISTS winning_balance NUMERIC(28, 8) NOT NULL DEFAULT '0.00000000';
 
       -- 3. Ledger Accounts
       CREATE TABLE IF NOT EXISTS ledger_accounts (

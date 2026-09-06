@@ -30,6 +30,8 @@ export const walletAccounts = pgTable('wallet_accounts', {
   availableBalance: numeric('available_balance', { precision: 28, scale: 8 }).notNull().default('0.00000000'),
   lockedBalance: numeric('locked_balance', { precision: 28, scale: 8 }).notNull().default('0.00000000'),
   totalBalance: numeric('total_balance', { precision: 28, scale: 8 }).notNull().default('0.00000000'),
+  depositBalance: numeric('deposit_balance', { precision: 28, scale: 8 }).notNull().default('0.00000000'),
+  winningBalance: numeric('winning_balance', { precision: 28, scale: 8 }).notNull().default('0.00000000'),
   status: text('status').notNull().default('ACTIVE'), // 'ACTIVE' | 'FROZEN' | 'SUSPENDED'
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

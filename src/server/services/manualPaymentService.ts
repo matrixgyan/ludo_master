@@ -343,6 +343,15 @@ export class ManualPaymentService {
       Logger.warn(`Received ephemeral blob URL in deposit submission for user ${data.userId}`);
     }
 
+    const cleanUtr = data.utrNumber?.trim() || '';
+    if (!cleanUtr || cleanUtr.length !== 12 || !/^[0-9A-Za-z]{12}$/.test(cleanUtr)) {
+      throw new Error('A valid 12-digit Indian banking UTR / REF / RRN number is strictly required (e.g., 4248XXXXXXXX).');
+    }
+
+    if (!finalScreenshotUrl) {
+      throw new Error('Transaction payment screenshot is strictly required. Please upload your payment proof.');
+    }
+
     const deposit: ManualDepositItem = {
       id,
       userId: data.userId,
@@ -350,7 +359,7 @@ export class ManualPaymentService {
       gatewayTitle: gateway?.title || 'Direct Deposit',
       amount: parseFloat(data.amount).toFixed(2),
       currency: data.currency || 'INR',
-      utrNumber: data.utrNumber.trim(),
+      utrNumber: cleanUtr,
       senderName: data.senderName?.trim() || '',
       senderUpiOrAccount: data.senderUpiOrAccount?.trim() || '',
       screenshotUrl: finalScreenshotUrl,
@@ -595,22 +604,33 @@ export class ManualPaymentService {
     if (isNaN(numAmount) || numAmount <= 0) {
       throw new Error('Invalid withdrawal amount');
     }
+    if (numAmount < 100) {
+      throw new Error('Minimum withdrawal amount is ₹100.00 of winnings balance.');
+    }
 
-    // Lock user balance upfront to prevent double-spending
+    // Lock user WINNING balance upfront to prevent double-spending and block deposited balance
     const { LedgerService } = await import('../wallet/ledgerService');
     const userWallet = await LedgerService.getUserWallet(data.userId);
-    const available = parseFloat(userWallet.availableBalance);
+    const winningBal = parseFloat(userWallet.winningBalance || '0');
+    const depositBal = parseFloat(userWallet.depositBalance || '0');
 
-    if (available < numAmount) {
-      throw new Error(`Insufficient balance. Available: ₹${available.toFixed(2)}, Requested: ₹${numAmount.toFixed(2)}`);
+    if (winningBal < numAmount) {
+      throw new Error(
+        `Cannot withdraw deposited balance. Only winning amount is eligible for withdrawal. Your Winning Balance: ₹${winningBal.toFixed(2)}, Deposited Balance: ₹${depositBal.toFixed(2)}. Play matches to win withdrawable cash!`
+      );
     }
 
     const id = `mwith_${uuidv4().replace(/-/g, '').slice(0, 16)}`;
-    const feeAmount = '0.00';
-    const netAmount = numAmount.toFixed(2);
 
-    // Lock funds in ledger
-    await LedgerService.lockFundsForWithdrawal(data.userId, numAmount.toFixed(8), `manual_with_lock_${id}`);
+    // Lock winning funds and calculate 5% platform fee atomically
+    const lockRes = await LedgerService.lockWinningFundsForWithdrawal(
+      data.userId,
+      numAmount.toFixed(8),
+      `manual_with_lock_${id}`
+    );
+
+    const feeAmount = lockRes.feeAmount;
+    const netAmount = lockRes.netAmount;
 
     const withdrawal: ManualWithdrawalItem = {
       id,

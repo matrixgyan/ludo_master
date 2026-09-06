@@ -45,10 +45,13 @@ manualPaymentRouter.get('/api/manual-payments/gateways', async (req: Request, re
 const SubmitDepositSchema = z.object({
   gatewayId: z.string(),
   amount: z.string(),
-  utrNumber: z.string().min(4, 'UTR / Reference Number must be valid'),
+  utrNumber: z
+    .string()
+    .trim()
+    .regex(/^[0-9A-Za-z]{12}$/, 'A valid 12-digit Indian banking UTR / REF / RRN number is strictly required (e.g. 4248XXXXXXXX)'),
   senderName: z.string().optional(),
   senderUpiOrAccount: z.string().optional(),
-  screenshotUrl: z.string().optional(),
+  screenshotUrl: z.string().min(5, 'Payment screenshot upload is strictly required'),
 });
 
 // Support both /deposits/submit and /deposit /deposits endpoints
@@ -98,7 +101,11 @@ manualPaymentRouter.get(['/api/manual-payments/deposits', '/api/manual-payments/
  * User requests manual withdrawal (UPI / Bank)
  */
 const SubmitWithdrawalSchema = z.object({
-  amount: z.string(),
+  amount: z
+    .string()
+    .refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) >= 100, {
+      message: 'Minimum withdrawal amount is ₹100.00 of winnings balance.',
+    }),
   payoutMethod: z.enum(['UPI', 'BANK_TRANSFER']),
   payoutUpiId: z.string().optional(),
   payoutAccountNumber: z.string().optional(),

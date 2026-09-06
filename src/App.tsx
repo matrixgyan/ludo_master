@@ -447,15 +447,16 @@ export default function App() {
   });
 
   const activeColors: PlayerColor[] = useMemo(() => {
-    const active = (Object.keys(gameState.players) as PlayerColor[]).filter(
+    const CLOCKWISE_ORDER: PlayerColor[] = ['red', 'green', 'yellow', 'blue'];
+    const active = CLOCKWISE_ORDER.filter(
       (c) => gameState.players[c]?.isActive
     );
     if (active.length > 0) return active;
     return playerMode === 2
-      ? ['blue', 'green']
+      ? ['red', 'green']
       : playerMode === 3
-      ? ['blue', 'red', 'green']
-      : ['blue', 'red', 'green', 'yellow'];
+      ? ['red', 'green', 'yellow']
+      : ['red', 'green', 'yellow', 'blue'];
   }, [gameState.players, playerMode]);
 
   const humanPlayer = useMemo(() => {
@@ -475,6 +476,12 @@ export default function App() {
     red: 0,
     green: 0,
     yellow: 0,
+  });
+  const [playerDiceValues, setPlayerDiceValues] = useState<Record<PlayerColor, number>>({
+    blue: 6,
+    red: 6,
+    green: 6,
+    yellow: 6,
   });
   const [matchTimeLeft, setMatchTimeLeft] = useState<number>(180); // 2 min 60 sec (180s)
   const [activeAngelFlight, setActiveAngelFlight] = useState<AngelFlightData | null>(null);
@@ -706,12 +713,20 @@ export default function App() {
 
     const allColorPalette: PlayerColor[] = ['red', 'green', 'yellow', 'blue'];
     
+    // Authoritative target player count: checks match config mode, matched opponents count, or playerMode
+    const effectivePlayerCount =
+      Number(currentMatchConfig?.mode) ||
+      (matchedOpponents && matchedOpponents.length > 0 ? matchedOpponents.length + 1 : 0) ||
+      Number(playerMode) ||
+      4;
+    setPlayerMode(effectivePlayerCount as PlayerModeOption);
+
     // Player 1 (Human) chosen color
     const p1Color = (customPlayers?.[0]?.color || 'red') as PlayerColor;
     
     // Determine active colors for all players
     const assignedPlayerColors: PlayerColor[] = [p1Color];
-    for (let i = 1; i < playerMode; i++) {
+    for (let i = 1; i < effectivePlayerCount; i++) {
       const opp = matchedOpponents[i - 1];
       let desiredColor = (opp?.color as PlayerColor) || (customPlayers?.[i]?.color as PlayerColor | undefined);
       if (!desiredColor || assignedPlayerColors.includes(desiredColor)) {
@@ -736,7 +751,7 @@ export default function App() {
     };
 
     // Configure Opponents with exact matchmaking names, avatars, and colors
-    for (let i = 1; i < playerMode; i++) {
+    for (let i = 1; i < effectivePlayerCount; i++) {
       const oppIndex = i - 1;
       const opp = matchedOpponents[oppIndex];
       const customP = customPlayers?.[i];
@@ -753,6 +768,13 @@ export default function App() {
         pawns: createPawnsForColor(oppColor, `p${i + 1}`),
       };
     }
+
+    setPlayerDiceValues({
+      blue: 6,
+      red: 6,
+      green: 6,
+      yellow: 6,
+    });
 
     setGameState({
       players: updatedPlayers,
@@ -818,11 +840,15 @@ export default function App() {
       botMoveTimerRef.current = null;
     }
 
-    // Immediately trigger rolling state in UI to disable controls and freeze countdown timer
+    const rolledVal = forcedValue ?? Math.floor(Math.random() * 6) + 1;
+    const curPlayerTurn = gameState.currentTurn;
+    setPlayerDiceValues((prev) => ({ ...prev, [curPlayerTurn]: rolledVal }));
+
+    // Immediately trigger rolling state in UI with target value so 3D dice physically tumbles to this face
     setGameState((prev) => ({
       ...prev,
       dice: {
-        ...prev.dice,
+        value: rolledVal,
         isRolling: true,
         canRoll: false,
         hasRolled: false,
@@ -832,7 +858,7 @@ export default function App() {
 
     SoundManager.play('dice-roll');
 
-    // Simulate 3D tumble physics duration (650ms) matching 3D dice tumble
+    // Simulate 3D tumble physics duration (750ms) matching 3D dice tumble
     setTimeout(() => {
       // If match ended or winner decided, abort and unlock
       if (gameStateRef.current.winner) {
@@ -840,12 +866,13 @@ export default function App() {
         return;
       }
 
-      const rolledVal = forcedValue ?? Math.floor(Math.random() * 6) + 1;
+      SoundManager.play('dice-land');
+
       const curTurn = gameStateRef.current.currentTurn;
       const activePlayerName = gameStateRef.current.players[curTurn].name;
       const movables = getMovablePawns(curTurn, rolledVal);
 
-      // Check consecutive sixes rule
+      // Check authentic consecutive sixes rule (3 consecutive sixes forfeits turn immediately)
       if (rolledVal === 6) {
         const nextSixes = gameStateRef.current.consecutiveSixes + 1;
 
@@ -858,59 +885,15 @@ export default function App() {
             consecutiveSixes: 0,
             dice: { value: 6, isRolling: false, hasRolled: false, canRoll: true },
             movablePawnIds: [],
-            statusText: `${activePlayerName} ROLLED 3 SIXES IN A ROW! TURN FORFEITED.`,
+            statusText: `⚠️ ${activePlayerName} ROLLED 3 SIXES IN A ROW! TURN FORFEITED.`,
           }));
           setTurnTimeLeft(TURN_TIME_LIMIT);
           setTurnCycleId((c) => c + 1);
           isRollOrMoveInProgressRef.current = false;
           return;
         }
-
-        let statusMsg = `${activePlayerName} ROLLED A 6!`;
-        if (movables.length === 0) {
-          statusMsg += ' NO LEGAL MOVES. BONUS TURN GRANTED!';
-        } else {
-          statusMsg += ' SELECT A PAWN TO MOVE.';
-        }
-
-        setGameState((prev) => ({
-          ...prev,
-          consecutiveSixes: nextSixes,
-          dice: {
-            value: rolledVal,
-            isRolling: false,
-            hasRolled: true,
-            canRoll: false,
-          },
-          movablePawnIds: movables,
-          statusText: statusMsg,
-        }));
-
-        if (movables.length > 0) {
-          // Release lock so active player/bot can pick a movable pawn
-          isRollOrMoveInProgressRef.current = false;
-        } else {
-          // Auto-grant bonus roll after brief pause
-          noMoveTimerRef.current = setTimeout(() => {
-            if (gameStateRef.current.winner) {
-              isRollOrMoveInProgressRef.current = false;
-              return;
-            }
-            SoundManager.play('turn');
-            setTurnTimeLeft(TURN_TIME_LIMIT);
-            setTurnCycleId((c) => c + 1);
-            setGameState((prev) => ({
-              ...prev,
-              dice: { value: prev.dice.value, isRolling: false, hasRolled: false, canRoll: true },
-              statusText: `${prev.players[prev.currentTurn].name} ROLLED 6 — BONUS TURN! ROLL AGAIN.`,
-            }));
-            isRollOrMoveInProgressRef.current = false;
-          }, 1200);
-        }
-        return;
       }
 
-      // Rolled 1..5
       let statusMsg = `${activePlayerName} ROLLED A ${rolledVal}!`;
       if (movables.length === 0) {
         statusMsg += ' NO LEGAL MOVES.';
@@ -920,7 +903,7 @@ export default function App() {
 
       setGameState((prev) => ({
         ...prev,
-        consecutiveSixes: 0,
+        consecutiveSixes: rolledVal === 6 ? prev.consecutiveSixes + 1 : 0,
         dice: {
           value: rolledVal,
           isRolling: false,
@@ -932,10 +915,11 @@ export default function App() {
       }));
 
       if (movables.length > 0) {
-        // Release lock so active player/bot can pick a movable pawn
+        // Active player has legal moves: give full waiting time for pawn selection
+        setTurnTimeLeft(TURN_TIME_LIMIT);
         isRollOrMoveInProgressRef.current = false;
       } else {
-        // Auto-pass turn to next player after brief display pause
+        // No legal moves: pass turn cleanly to next player after brief display pause
         noMoveTimerRef.current = setTimeout(() => {
           if (gameStateRef.current.winner) {
             isRollOrMoveInProgressRef.current = false;
@@ -950,12 +934,14 @@ export default function App() {
             currentTurn: nextTurn,
             consecutiveSixes: 0,
             dice: { value: prev.dice.value, isRolling: false, hasRolled: false, canRoll: true },
+            movablePawnIds: [],
+            selectedPawnId: null,
             statusText: `${prev.players[nextTurn].name}'S TURN — ROLL THE DICE!`,
           }));
           isRollOrMoveInProgressRef.current = false;
         }, 1200);
       }
-    }, 650);
+    }, 750);
   };
 
   // Finalize Pawn Move & Turn Progression
@@ -1067,8 +1053,14 @@ export default function App() {
         };
       }
 
-      // Extra Turn logic
-      const getsExtraTurn = diceValue === 6 || didCapture || isGoalArrival;
+      // Real Ludo Extra Turn rules:
+      // 1. Rolling a 6 (when under 3 consecutive sixes) grants an extra roll!
+      // 2. Capturing an opponent pawn grants an extra roll!
+      // 3. Landing in the home goal grants an extra roll!
+      // The active player takes their extra turn while all other players wait!
+      const getsExtraTurn =
+        (diceValue === 6 && prev.consecutiveSixes < 3) || didCapture || isGoalArrival;
+
       const nextTurnColor = getsExtraTurn
         ? prev.currentTurn
         : getNextTurnColor(prev.currentTurn, activeColors);
@@ -1078,7 +1070,7 @@ export default function App() {
       }
 
       const statusMsg = getsExtraTurn
-        ? `${curPlayer.name} ${diceValue === 6 ? 'ROLLED 6' : didCapture ? 'CAPTURED PAWN' : 'REACHED HOME'}${scoreDoubleMsg}${captureMsg} — BONUS TURN!`
+        ? `${curPlayer.name} ${didCapture ? 'CAPTURED PAWN' : isGoalArrival ? 'REACHED HOME' : 'ROLLED 6'}${scoreDoubleMsg}${captureMsg} — BONUS TURN!`
         : `${updatedPlayers[nextTurnColor].name}'S TURN${scoreDoubleMsg}${captureMsg} — ROLL THE DICE!`;
 
       setTurnTimeLeft(TURN_TIME_LIMIT);
@@ -1714,7 +1706,7 @@ export default function App() {
     return (
       <>
         <OnlineMatchmakingScreen
-          playerCount={playerMode}
+          playerCount={Number(currentMatchConfig?.mode || playerMode || 4)}
           entryFee={currentMatchConfig?.entryFee || 0}
           prizePool={currentMatchConfig?.prizePool || 0}
           userName={userName}
@@ -1793,7 +1785,12 @@ export default function App() {
             isTurn={gameState.currentTurn === 'blue' && !steppingPawnId}
             position="top-left"
             onToggleMic={handleToggleMic}
-            dice={gameState.dice}
+            dice={{
+              value: playerDiceValues.blue,
+              isRolling: gameState.currentTurn === 'blue' && gameState.dice.isRolling,
+              hasRolled: gameState.currentTurn === 'blue' && gameState.dice.hasRolled,
+              canRoll: gameState.currentTurn === 'blue' && gameState.dice.canRoll,
+            }}
             onRollDice={() => handleRollDice()}
             turnTimeLeft={turnTimeLeft}
             totalTurnTime={TURN_TIME_LIMIT}
@@ -1810,7 +1807,12 @@ export default function App() {
             isTurn={gameState.currentTurn === 'red' && !steppingPawnId}
             position="top-right"
             onToggleMic={handleToggleMic}
-            dice={gameState.dice}
+            dice={{
+              value: playerDiceValues.red,
+              isRolling: gameState.currentTurn === 'red' && gameState.dice.isRolling,
+              hasRolled: gameState.currentTurn === 'red' && gameState.dice.hasRolled,
+              canRoll: gameState.currentTurn === 'red' && gameState.dice.canRoll,
+            }}
             onRollDice={() => handleRollDice()}
             turnTimeLeft={turnTimeLeft}
             totalTurnTime={TURN_TIME_LIMIT}
@@ -1840,6 +1842,7 @@ export default function App() {
           onAngelFlightComplete={handleAngelFlightComplete}
           onPawnClick={handlePawnClick}
           activeColors={activeColors}
+          humanColor={humanPlayer?.color}
         />
 
         {/* Optional 15x15 Coordinate Overlay for Debugging */}
@@ -1867,7 +1870,12 @@ export default function App() {
             isTurn={gameState.currentTurn === 'yellow' && !steppingPawnId}
             position="bottom-left"
             onToggleMic={handleToggleMic}
-            dice={gameState.dice}
+            dice={{
+              value: playerDiceValues.yellow,
+              isRolling: gameState.currentTurn === 'yellow' && gameState.dice.isRolling,
+              hasRolled: gameState.currentTurn === 'yellow' && gameState.dice.hasRolled,
+              canRoll: gameState.currentTurn === 'yellow' && gameState.dice.canRoll,
+            }}
             onRollDice={() => handleRollDice()}
             turnTimeLeft={turnTimeLeft}
             totalTurnTime={TURN_TIME_LIMIT}
@@ -1886,7 +1894,12 @@ export default function App() {
             isTurn={gameState.currentTurn === 'green' && !steppingPawnId}
             position="bottom-right"
             onToggleMic={handleToggleMic}
-            dice={gameState.dice}
+            dice={{
+              value: playerDiceValues.green,
+              isRolling: gameState.currentTurn === 'green' && gameState.dice.isRolling,
+              hasRolled: gameState.currentTurn === 'green' && gameState.dice.hasRolled,
+              canRoll: gameState.currentTurn === 'green' && gameState.dice.canRoll,
+            }}
             onRollDice={() => handleRollDice()}
             turnTimeLeft={turnTimeLeft}
             totalTurnTime={TURN_TIME_LIMIT}

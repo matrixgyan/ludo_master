@@ -83,8 +83,12 @@ export interface UserWalletSummary {
   availableBalance: string; // String-encoded fixed decimal (e.g. "80.000000")
   lockedBalance: string;
   totalBalance: string;
+  depositBalance?: string;
+  winningBalance?: string;
   formattedAvailable: string; // e.g. "$80.00"
   formattedTotal: string;
+  formattedDeposit?: string;
+  formattedWinning?: string;
   status: 'ACTIVE' | 'FROZEN' | 'SUSPENDED';
   updatedAt: string;
 }

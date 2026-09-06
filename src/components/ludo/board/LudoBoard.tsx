@@ -16,6 +16,7 @@ interface LudoBoardProps {
   onAngelFlightComplete?: (flightId: string) => void;
   onPawnClick: (pawn: Pawn) => void;
   activeColors?: PlayerColor[];
+  humanColor?: PlayerColor;
 }
 
 export const LudoBoard: React.FC<LudoBoardProps> = ({
@@ -28,6 +29,7 @@ export const LudoBoard: React.FC<LudoBoardProps> = ({
   onAngelFlightComplete,
   onPawnClick,
   activeColors = ['blue', 'red', 'green', 'yellow'],
+  humanColor,
 }) => {
   // Render individual grid cell
   const renderCell = (x: number, y: number) => {
@@ -233,6 +235,13 @@ export const LudoBoard: React.FC<LudoBoardProps> = ({
                 ? 'bg-[#0284c7]/90 border-[#0369a1]'
                 : 'bg-slate-800/60 border-slate-600/40 grayscale opacity-40'
             }`}>
+              {/* Human Indicator Badge */}
+              {humanColor === 'blue' && (
+                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-30 px-2.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black text-[8px] sm:text-[9px] uppercase tracking-wider border-2 border-white shadow-lg flex items-center gap-1 whitespace-nowrap animate-bounce">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
+                  YOU
+                </div>
+              )}
               {activeColors.includes('blue') ? (
                 <div className="w-full h-full bg-[#f0f9ff] rounded-xl p-2 border border-[#7dd3fc] grid grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
                   {[0, 1, 2, 3].map((slot) => (
@@ -289,6 +298,13 @@ export const LudoBoard: React.FC<LudoBoardProps> = ({
                 ? 'bg-[#e11d48]/90 border-[#be123c]'
                 : 'bg-slate-800/60 border-slate-600/40 grayscale opacity-40'
             }`}>
+              {/* Human Indicator Badge */}
+              {humanColor === 'red' && (
+                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-30 px-2.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black text-[8px] sm:text-[9px] uppercase tracking-wider border-2 border-white shadow-lg flex items-center gap-1 whitespace-nowrap animate-bounce">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
+                  YOU
+                </div>
+              )}
               {activeColors.includes('red') ? (
                 <div className="w-full h-full bg-[#fff1f2] rounded-xl p-2 border border-[#fecdd3] grid grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
                   {[0, 1, 2, 3].map((slot) => (
@@ -343,6 +359,13 @@ export const LudoBoard: React.FC<LudoBoardProps> = ({
                 ? 'bg-[#15803d]/90 border-[#166534]'
                 : 'bg-slate-800/60 border-slate-600/40 grayscale opacity-40'
             }`}>
+              {/* Human Indicator Badge */}
+              {humanColor === 'green' && (
+                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-30 px-2.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black text-[8px] sm:text-[9px] uppercase tracking-wider border-2 border-white shadow-lg flex items-center gap-1 whitespace-nowrap animate-bounce">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
+                  YOU
+                </div>
+              )}
               {activeColors.includes('green') ? (
                 <div className="w-full h-full bg-[#f0fdf4] rounded-xl p-2 border border-[#bbf7d0] grid grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
                   {[0, 1, 2, 3].map((slot) => (
@@ -396,6 +419,13 @@ export const LudoBoard: React.FC<LudoBoardProps> = ({
                 ? 'bg-[#ea580c]/90 border-[#c2410c]'
                 : 'bg-slate-800/60 border-slate-600/40 grayscale opacity-40'
             }`}>
+              {/* Human Indicator Badge */}
+              {humanColor === 'yellow' && (
+                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-30 px-2.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black text-[8px] sm:text-[9px] uppercase tracking-wider border-2 border-white shadow-lg flex items-center gap-1 whitespace-nowrap animate-bounce">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
+                  YOU
+                </div>
+              )}
               {activeColors.includes('yellow') ? (
                 <div className="w-full h-full bg-[#fff7ed] rounded-xl p-2 border border-[#fed7aa] grid grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
                   {[0, 1, 2, 3].map((slot) => (

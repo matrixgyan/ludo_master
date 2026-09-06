@@ -141,6 +141,13 @@ export const SnakePlayerSeat: React.FC<SnakePlayerSeatProps> = ({
               <User className="w-6 h-6 text-blue-200/70" />
             )}
           </div>
+
+          {/* Prominent "YOU" Badge on Avatar for Human Player */}
+          {isP1 && (
+            <div className="absolute -top-2 z-30 px-1.5 py-0.2 rounded-full bg-gradient-to-r from-emerald-500 to-green-400 text-slate-950 font-black text-[8px] sm:text-[9px] uppercase tracking-wider shadow-[0_0_8px_rgba(16,185,129,0.9)] border border-white flex items-center gap-0.5 animate-bounce">
+              YOU
+            </div>
+          )}
         </div>
       </div>
 
