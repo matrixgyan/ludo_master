@@ -1,0 +1,19 @@
+[
+  {
+    "id": "ref_b83ae06b-eba",
+    "referrerId": "user_guest_default",
+    "refereeId": "player_test_referee",
+    "referralCode": "USER_GUEST_DEFAULT",
+    "refereeName": "User player",
+    "refereeAvatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80",
+    "status": "PENDING",
+    "depositCompleted": false,
+    "depositAmount": "0.00",
+    "firstMatchPlayed": false,
+    "rewardAmount": "20.00",
+    "rewardCredited": false,
+    "ipAddress": "127.0.0.1",
+    "createdAt": "2026-09-07T09:17:50.248Z",
+    "updatedAt": "2026-09-07T09:17:50.248Z"
+  }
+]

@@ -20,6 +20,7 @@ import { AssetsView } from '../wallet/AssetsView';
 import { useLiveTheme } from '../../hooks/useLiveTheme';
 import { useBackHandler } from '../../hooks/useBackHandler';
 import { Sparkles, Shield, Crown } from 'lucide-react';
+import woodBgImg from '../../assets/images/wood_plank_bg_1787143024792.jpg';
 
 interface GameLobbyProps {
   balance: number;
@@ -216,20 +217,39 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
 
   return (
     <div
-      className={`relative min-h-screen w-full ${lobbyTheme.bodyBgClass} flex flex-col items-center justify-start text-slate-900 pb-24 select-none transition-colors duration-500 overflow-x-hidden`}
+      className={`relative min-h-screen w-full ${activeTab === 'assets' ? 'bg-[#5c2411]' : lobbyTheme.bodyBgClass} flex flex-col items-center justify-start text-slate-900 pb-24 select-none transition-colors duration-500 overflow-x-hidden`}
+      style={activeTab === 'assets' ? {
+        backgroundImage: `url(${woodBgImg})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed',
+        backgroundColor: '#8b4513',
+      } : undefined}
     >
-      {/* ATMOSPHERIC BACKGROUND EFFECTS BASED ON ACTIVE LOBBY THEME */}
-      {lobbyTheme.atmosphere === 'grid' && (
-        <div className="absolute inset-0 pointer-events-none opacity-25 z-0 bg-[linear-gradient(to_right,#06b6d415_1px,transparent_1px),linear-gradient(to_bottom,#06b6d415_1px,transparent_1px)] bg-[size:24px_24px]" />
-      )}
-      {lobbyTheme.atmosphere === 'aurora' && (
-        <div className="absolute inset-0 pointer-events-none opacity-30 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-500/20 via-teal-900/10 to-transparent" />
-      )}
-      {lobbyTheme.atmosphere === 'bokeh' && (
-        <div className="absolute inset-0 pointer-events-none opacity-30 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-rose-600/20 via-amber-700/10 to-transparent" />
-      )}
-      {lobbyTheme.atmosphere === 'stars' && (
-        <div className="absolute inset-0 pointer-events-none opacity-30 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-purple-500/20 via-pink-700/10 to-transparent" />
+      {/* ATMOSPHERIC BACKGROUND EFFECTS */}
+      {activeTab === 'assets' ? (
+        <div
+          className="fixed inset-0 pointer-events-none z-0"
+          style={{
+            background:
+              'radial-gradient(ellipse 90% 70% at 50% 0%, rgba(255, 238, 187, 0.45) 0%, rgba(0, 0, 0, 0.6) 100%)',
+          }}
+        />
+      ) : (
+        <>
+          {lobbyTheme.atmosphere === 'grid' && (
+            <div className="absolute inset-0 pointer-events-none opacity-25 z-0 bg-[linear-gradient(to_right,#06b6d415_1px,transparent_1px),linear-gradient(to_bottom,#06b6d415_1px,transparent_1px)] bg-[size:24px_24px]" />
+          )}
+          {lobbyTheme.atmosphere === 'aurora' && (
+            <div className="absolute inset-0 pointer-events-none opacity-30 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-500/20 via-teal-900/10 to-transparent" />
+          )}
+          {lobbyTheme.atmosphere === 'bokeh' && (
+            <div className="absolute inset-0 pointer-events-none opacity-30 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-rose-600/20 via-amber-700/10 to-transparent" />
+          )}
+          {lobbyTheme.atmosphere === 'stars' && (
+            <div className="absolute inset-0 pointer-events-none opacity-30 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-purple-500/20 via-pink-700/10 to-transparent" />
+          )}
+        </>
       )}
 
       {/* DEDICATED ASSETS / WALLET VIEW OR HOME LOBBY CARDS */}

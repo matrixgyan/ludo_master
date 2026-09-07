@@ -113,4 +113,25 @@ export class ReferralClientService {
       // silent fallback
     }
   }
+
+  /**
+   * Fetch top referrers from real database
+   */
+  public static async getTopReferrers(): Promise<Array<{
+    rank: number;
+    userId: string;
+    username: string;
+    avatar: string;
+    totalEarned: number;
+    totalInvited: number;
+  }>> {
+    try {
+      const res = await fetch(`/api/referrals/top?_t=${Date.now()}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.success && Array.isArray(data.referrers) ? data.referrers : [];
+    } catch {
+      return [];
+    }
+  }
 }

@@ -489,8 +489,8 @@ export class TournamentService {
    * Retrieves clean global highest score leaderboard (Daily, Weekly, All-time).
    */
   static async getHighestScoreLeaderboard(
-    timeframe: 'today' | 'weekly' | 'all-time' = 'today',
-    gameType: 'all' | 'supreme' | 'snake' = 'all',
+    timeframe: 'today' | 'weekly' | 'all-time' = 'all-time',
+    gameType: 'all' | 'supreme' | 'snake' | 'arena' | 'classic' = 'all',
     currentUserId?: string
   ): Promise<{
     timeframe: string;
@@ -510,12 +510,14 @@ export class TournamentService {
 
     let gameTypeFilter = '';
     if (gameType === 'supreme') {
-      gameTypeFilter = `AND (m.game_mode = 'ludo_supreme' OR m.game_mode = 'LUDO_SUPREME')`;
+      gameTypeFilter = `AND (m.game_mode ILIKE '%supreme%')`;
     } else if (gameType === 'snake') {
-      gameTypeFilter = `AND (m.game_mode = 'snake_ludo' OR m.game_mode = 'SNAKE_LUDO')`;
+      gameTypeFilter = `AND (m.game_mode ILIKE '%snake%')`;
+    } else if (gameType === 'arena' || gameType === 'classic') {
+      gameTypeFilter = `AND (m.game_mode ILIKE '%arena%' OR m.game_mode ILIKE '%classic%')`;
     }
 
-    const query = `
+    const buildQuery = (withDate: boolean) => `
       SELECT 
         mp.user_id,
         COALESCE(NULLIF(u.username, ''), NULLIF(u.display_name, ''), mp.user_id, 'Player') AS username,
@@ -527,14 +529,18 @@ export class TournamentService {
       JOIN matches m ON m.id = mp.match_id
       LEFT JOIN users u ON u.id = mp.user_id
       WHERE mp.status = 'FINISHED'
-        ${dateFilter}
+        ${withDate ? dateFilter : ''}
         ${gameTypeFilter}
       GROUP BY mp.user_id, u.username, u.display_name, u.avatar_url
       ORDER BY highest_score DESC, matches_won DESC
       LIMIT 50;
     `;
 
-    const res = await pool.query(query);
+    let res = await pool.query(buildQuery(Boolean(dateFilter)));
+    // If dateFilter returns empty but real finished matches exist, query real all-time matches for that mode
+    if (res.rows.length === 0 && dateFilter) {
+      res = await pool.query(buildQuery(false));
+    }
 
     let myStanding: any = null;
     let leaderboard = res.rows.map((row, idx) => {
@@ -563,45 +569,6 @@ export class TournamentService {
       return item;
     });
 
-    // If database has minimal records (e.g. cold start), guarantee actual players playing matches
-    if (leaderboard.length < 10) {
-      const existingUserIds = new Set(leaderboard.map(item => item.userId));
-      const filteredActive = ACTIVE_MATCH_PLATFORM_PLAYERS.filter(p => !existingUserIds.has(p.id));
-      
-      const seeded = filteredActive.map((p) => {
-        const tierInfo = calculateScoreTier(p.score);
-        return {
-          rank: 0,
-          userId: p.id,
-          idNumber: formatPlayerId(p.id),
-          username: p.username,
-          avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${p.id}`,
-          highestScore: p.score,
-          matchesPlayed: p.games,
-          matchesWon: p.wins,
-          playingMatch: p.mode,
-          isPlaying: true,
-          tier: tierInfo.tier,
-          tierBadge: tierInfo.badge,
-          tierColor: tierInfo.color,
-        };
-      });
-
-      // Merge and sort by highest score
-      const merged = [...leaderboard, ...seeded].sort((a, b) => b.highestScore - a.highestScore);
-      leaderboard = merged.slice(0, 50).map((item, idx) => ({
-        ...item,
-        rank: idx + 1,
-      }));
-
-      if (currentUserId) {
-        const found = leaderboard.find(item => item.userId === currentUserId);
-        if (found) {
-          myStanding = found;
-        }
-      }
-    }
-
     // Check user standing if not in top 50
     if (currentUserId && !myStanding) {
       const userRes = await pool.query(
@@ -616,7 +583,6 @@ export class TournamentService {
          JOIN matches m ON m.id = mp.match_id
          LEFT JOIN users u ON u.id = mp.user_id
          WHERE mp.status = 'FINISHED' AND mp.user_id = $1
-           ${dateFilter}
            ${gameTypeFilter}
          GROUP BY mp.user_id, u.username, u.display_name, u.avatar_url;`,
         [currentUserId]

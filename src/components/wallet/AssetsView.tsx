@@ -293,12 +293,11 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
   });
 
   return (
-    <div className="w-full max-w-lg px-3.5 pt-2 pb-24 space-y-4 flex flex-col items-center select-none animate-fadeIn z-10">
-      
+    <div className="relative w-full max-w-[440px] sm:max-w-[460px] px-2 sm:px-3 pt-2 pb-36 flex flex-col items-center select-none animate-fadeIn z-10 overflow-x-hidden box-border">
       {/* ========================================================================= */}
       {/* 1. TOP HEADER NAVIGATION BAR */}
       {/* ========================================================================= */}
-      <div className="w-full flex items-center justify-between py-1 px-1">
+      <div className="relative z-20 w-full flex items-center justify-between py-1.5 px-1 mb-2 box-border">
         <motion.button
           whileHover={{ scale: 1.05, x: -2 }}
           whileTap={{ scale: 0.95 }}
@@ -306,38 +305,38 @@ export const AssetsView: React.FC<AssetsViewProps> = ({
             SoundManager.play('click');
             onBack();
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#120426]/90 border border-amber-400/40 text-amber-300 font-bold text-xs shadow-md shadow-black/40 hover:bg-[#1f0b3d] hover:border-amber-400 cursor-pointer transition-all"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-b from-[#fde047] via-[#eab308] to-[#ca8a04] border-2 border-[#fef08a] text-[#451a03] font-black text-xs shadow-[0_3px_8px_rgba(202,138,4,0.5),inset_0_2px_3px_rgba(255,255,255,0.7)] cursor-pointer transition-all shrink-0"
         >
-          <ArrowLeft className="w-4 h-4 stroke-[2.5]" />
+          <ArrowLeft className="w-4 h-4 stroke-[3]" />
           <span>Lobby</span>
         </motion.button>
 
         <div className="flex items-center gap-2">
           {platformMode.cryptoWalletEnabled ? (
-            <div className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500/20 to-teal-500/10 border border-emerald-400/40 px-2.5 py-1 rounded-full text-[11px] font-black text-emerald-300 uppercase tracking-wider shadow-sm">
+            <div className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500/20 to-teal-500/10 border border-emerald-400/40 px-2.5 py-1 rounded-full text-[11px] font-black text-emerald-300 uppercase tracking-wider shadow-sm shrink-0">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
               <span>7 EVM Networks Live</span>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 bg-gradient-to-r from-amber-500/20 to-orange-500/10 border border-amber-400/40 px-2.5 py-1 rounded-full text-[11px] font-black text-amber-300 uppercase tracking-wider shadow-sm">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shadow-[0_0_8px_#fbbf24]" />
-              <span>UPI / Bank Gateway Active</span>
+            <div className="flex items-center gap-1.5 bg-gradient-to-b from-[#fde79b] to-[#f8d47b] border border-[#dfb35e] px-3 py-1 rounded-full text-[11px] font-black text-[#5c2411] uppercase tracking-wider shadow-xs shrink-0">
+              <span className="w-2 h-2 rounded-full bg-emerald-600 animate-ping" />
+              <span>Real UPI Vault</span>
             </div>
           )}
 
           <motion.button
-            whileHover={{ scale: 1.1, rotate: 180 }}
-            whileTap={{ scale: 0.9 }}
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.92 }}
             onClick={() => {
               SoundManager.play('click');
               refreshPlatformMode();
               refreshData();
             }}
             disabled={isLoading}
-            className="p-1.5 rounded-xl bg-[#120426]/90 border border-amber-400/40 text-amber-300 shadow-md shadow-black/40 hover:bg-[#1f0b3d] hover:border-amber-400 cursor-pointer transition-all"
+            className="p-1.5 rounded-xl bg-gradient-to-b from-[#38bdf8] via-[#0284c7] to-[#0369a1] border-2 border-[#7dd3fc] text-white shadow-[0_3px_8px_rgba(2,132,199,0.5),inset_0_2px_3px_rgba(255,255,255,0.7)] cursor-pointer transition-all shrink-0"
             title="Refresh Ledger Balance"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
           </motion.button>
         </div>
       </div>

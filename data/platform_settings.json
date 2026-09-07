@@ -1,5 +1,5 @@
 {
-  "adminUrlAlias": "admin",
+  "adminUrlAlias": "md1620",
   "maintenanceMode": false,
   "cryptoWalletEnabled": false,
   "paymentMode": "MANUAL",
@@ -12,7 +12,9 @@
   "entryFee2Player": 100,
   "entryFee4Player": 250,
   "entryFeeSnakeLudo": 50,
-  "prizePoolPercentage": 85,
+  "prizePoolPercentage": 75,
+  "humanWinRate3P": 20,
+  "humanWinRate4P": 20,
   "allowedOrigins": [
     "https://ludo.omyra.org",
     "http://localhost:3000"

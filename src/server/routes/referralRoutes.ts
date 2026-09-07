@@ -4,6 +4,20 @@ import { Logger } from '../config/env';
 
 export const referralRouter = Router();
 
+// GET /api/referrals/top - Get top referrers from real database
+referralRouter.get('/api/referrals/top', async (req: Request, res: Response) => {
+  try {
+    const referrers = await ReferralService.getTopReferrers();
+    res.json({
+      success: true,
+      referrers,
+    });
+  } catch (err: any) {
+    Logger.error('API Error in GET /api/referrals/top', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // GET /api/referrals/user/:userId - Fetch user's referral code, statistics, and referee status
 referralRouter.get('/api/referrals/user/:userId', async (req: Request, res: Response) => {
   try {

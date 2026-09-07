@@ -25,7 +25,11 @@ import {
   QrCode as QrCodeIcon,
   Eye,
   Trash2,
-  Zap
+  Zap,
+  Trophy,
+  Lock,
+  Flame,
+  CheckCheck
 } from 'lucide-react';
 import { SoundManager } from '../../audio/soundManager';
 
@@ -90,6 +94,9 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw' | 'activity'>('deposit');
   const [balance, setBalance] = useState<number>(0);
+  const [depositBalance, setDepositBalance] = useState<number>(0);
+  const [winningBalance, setWinningBalance] = useState<number>(0);
+  const [lockedBalance, setLockedBalance] = useState<number>(0);
   const [gateways, setGateways] = useState<PaymentGateway[]>([]);
   const [selectedGateway, setSelectedGateway] = useState<PaymentGateway | null>(null);
   const [depositHistory, setDepositHistory] = useState<DepositRecord[]>([]);
@@ -126,6 +133,11 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
   const [withdrawSuccessMsg, setWithdrawSuccessMsg] = useState<string | null>(null);
   const [withdrawErrorMsg, setWithdrawErrorMsg] = useState<string | null>(null);
 
+  // Real-time 5% Fee Calculation for Withdrawal
+  const numWithdraw = parseFloat(withdrawAmount) || 0;
+  const withdrawFee = numWithdraw > 0 ? parseFloat((numWithdraw * 0.05).toFixed(2)) : 0;
+  const netWithdraw = numWithdraw > 0 ? parseFloat((numWithdraw - withdrawFee).toFixed(2)) : 0;
+
   const fetchFiatData = async () => {
     setIsLoading(true);
     try {
@@ -156,7 +168,13 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
 
       if (bData.success && bData.wallet) {
         const bal = parseFloat(bData.wallet.availableBalance || '0');
+        const depBal = parseFloat(bData.wallet.depositBalance || '0');
+        const winBal = parseFloat(bData.wallet.winningBalance || '0');
+        const lockBal = parseFloat(bData.wallet.lockedBalance || '0');
         setBalance(bal);
+        setDepositBalance(depBal);
+        setWinningBalance(winBal);
+        setLockedBalance(lockBal);
         if (onBalanceUpdate) onBalanceUpdate(bal.toFixed(2));
       }
 
@@ -320,8 +338,14 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
       return;
     }
 
-    if (!utrNumber.trim() || utrNumber.trim().length < 6) {
-      setDepositErrorMsg('Please enter a valid 12-digit UTR or Reference Number from your payment app.');
+    const cleanUtr = utrNumber.trim();
+    if (!cleanUtr || cleanUtr.length !== 12 || !/^[0-9A-Za-z]{12}$/.test(cleanUtr)) {
+      setDepositErrorMsg('A valid 12-digit Indian banking UTR / REF / RRN number is strictly required (e.g. 4248XXXXXXXX).');
+      return;
+    }
+
+    if (!uploadedScreenshotUrl && !screenshotPreview) {
+      setDepositErrorMsg('Transaction payment screenshot receipt is strictly required. Please upload your proof.');
       return;
     }
 
@@ -362,17 +386,17 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
           gatewayId: selectedGateway.id,
           amount: depositAmount,
           currency: currencyCode,
-          utrNumber: utrNumber.trim(),
+          utrNumber: cleanUtr,
           senderName: senderName.trim() || undefined,
           senderUpiOrAccount: senderAccount.trim() || undefined,
-          screenshotUrl: finalScreenshotUrl || undefined,
+          screenshotUrl: finalScreenshotUrl || screenshotPreview || undefined,
         }),
       });
 
       const data = await res.json();
       if (data.success) {
         setDepositSuccessMsg(
-          `Deposit submission successful! UTR #${utrNumber.trim()} with payment proof has been submitted to the Admin Verification Queue. Balance will credit automatically upon approval.`
+          `Deposit submission successful! 12-digit UTR #${cleanUtr} with payment screenshot has been sent to the Priority Verification Queue. Balance will credit automatically upon approval.`
         );
         setUtrNumber('');
         setSenderName('');
@@ -389,7 +413,7 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
     }
   };
 
-  // Submit manual withdrawal form
+  // Submit manual withdrawal form with Winning Balance check & 5% Platform Fee
   const handleWithdrawSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setWithdrawSuccessMsg(null);
@@ -401,8 +425,15 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
       return;
     }
 
-    if (amt > balance) {
-      setWithdrawErrorMsg(`Insufficient balance. Your available balance is ${currencySymbol}${balance.toFixed(2)}.`);
+    if (amt < 100) {
+      setWithdrawErrorMsg(`Minimum withdrawal amount is ${currencySymbol}100.00 of Winning Balance.`);
+      return;
+    }
+
+    if (amt > winningBalance) {
+      setWithdrawErrorMsg(
+        `Cannot withdraw deposited balance. Only winning amount is eligible for withdrawal. Your Winning Balance: ${currencySymbol}${winningBalance.toFixed(2)}, Deposited Balance: ${currencySymbol}${depositBalance.toFixed(2)}. Play matches to win withdrawable cash!`
+      );
       return;
     }
 
@@ -438,7 +469,7 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
       const data = await res.json();
       if (data.success) {
         setWithdrawSuccessMsg(
-          `Withdrawal request submitted! Payout of ${currencySymbol}${withdrawAmount} is in process. Balance has been locked securely.`
+          `Withdrawal request submitted! Payout of ${currencySymbol}${withdrawAmount} (Net ${currencySymbol}${netWithdraw.toFixed(2)} after 5% fee) is in process. Winning balance locked securely.`
         );
         setWithdrawAmount('');
         fetchFiatData();
@@ -453,727 +484,842 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
   };
 
   return (
-    <div className="w-full space-y-4">
-      {/* 1. Hero Balance Card (Fiat Mode) */}
-      <motion.div
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative w-full rounded-3xl overflow-hidden shadow-[0_16px_40px_rgba(20,4,45,0.75)] border-2 border-amber-400/80 bg-[#120426] select-none flex flex-col justify-between p-4 sm:p-5"
-      >
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-500/20 via-purple-950/40 to-[#0b0319] pointer-events-none" />
-        
-        <div className="relative z-10 flex items-center justify-between w-full mb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-[0_4px_12px_rgba(245,158,11,0.5)] border border-amber-200">
-              <Wallet className="w-4 h-4 text-slate-950 stroke-[2.5]" />
-            </div>
-            <div>
-              <h2 className="text-sm sm:text-base font-black text-amber-200 uppercase tracking-wider">
-                Direct Deposit Account
-              </h2>
-              <p className="text-[10.5px] font-semibold text-slate-400">
-                Dynamic UPI QR & Direct Settlement
-              </p>
-            </div>
+    <div className="relative z-10 w-full max-w-[440px] sm:max-w-[460px] flex flex-col items-center select-none box-border">
+      {/* ========================================================================= */}
+      {/* 2. THE TORN PARCHMENT SCROLL BOARD */}
+      {/* ========================================================================= */}
+      <div className="relative w-full filter drop-shadow-[0_15px_25px_rgba(0,0,0,0.7)] my-1 box-border">
+        {/* TOP PUSHPINS (Deep Glossy Violet 3D Spheres with specularity and cast shadow) */}
+        {/* Left Pushpin */}
+        <div className="absolute -top-2 left-4 z-30 pointer-events-none">
+          <div className="relative w-5 h-5 rounded-full bg-gradient-to-tr from-[#3b0764] via-[#581c87] to-[#7e22ce] shadow-[0_3px_6px_rgba(0,0,0,0.8),inset_0_2px_4px_rgba(255,255,255,0.6)] border border-[#a855f7]/60 flex items-center justify-center">
+            <div className="w-1.5 h-1.5 rounded-full bg-white/90 absolute top-1 left-1 blur-[0.3px]" />
           </div>
+          <div className="w-4 h-2 bg-black/40 rounded-full blur-[1px] absolute -bottom-0.5 left-0.5" />
         </div>
 
-        {/* Balance Display */}
-        <div className="relative z-10 bg-black/40 backdrop-blur-md rounded-2xl border border-amber-400/30 p-3.5 sm:p-4 my-1">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-amber-400/90 uppercase tracking-widest flex items-center gap-1">
-              <Wallet className="w-3.5 h-3.5 text-amber-400" />
-              Available Playing Balance
-            </span>
-            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 border border-emerald-500/30 px-2 py-0.5 rounded-md font-bold">
-              100% SECURE ESCROW
-            </span>
+        {/* Right Pushpin */}
+        <div className="absolute -top-2 right-4 z-30 pointer-events-none">
+          <div className="relative w-5 h-5 rounded-full bg-gradient-to-tr from-[#3b0764] via-[#581c87] to-[#7e22ce] shadow-[0_3px_6px_rgba(0,0,0,0.8),inset_0_2px_4px_rgba(255,255,255,0.6)] border border-[#a855f7]/60 flex items-center justify-center">
+            <div className="w-1.5 h-1.5 rounded-full bg-white/90 absolute top-1 left-1 blur-[0.3px]" />
           </div>
-
-          <div className="flex items-baseline gap-1.5 mt-1.5">
-            <span className="text-3xl sm:text-4xl font-black text-white tracking-tight drop-shadow-[0_2px_10px_rgba(255,255,255,0.3)]">
-              {currencySymbol}{balance.toFixed(2)}
-            </span>
-            <span className="text-sm sm:text-base font-black text-amber-400 uppercase tracking-wider">
-              {currencyCode}
-            </span>
-          </div>
+          <div className="w-4 h-2 bg-black/40 rounded-full blur-[1px] absolute -bottom-0.5 left-0.5" />
         </div>
-      </motion.div>
 
-      {/* 2. Navigation Tabs */}
-      <div className="w-full flex items-center gap-2 p-1 bg-[#120426]/90 backdrop-blur-md rounded-2xl border border-amber-400/40 shadow-[0_8px_20px_rgba(0,0,0,0.6)]">
-        <button
-          onClick={() => {
-            SoundManager.play('click');
-            setActiveTab('deposit');
+        {/* Parchment Body */}
+        <div
+          className="relative w-full bg-gradient-to-b from-[#fde79b] via-[#fde492] to-[#f8d47b] text-[#5c2411] px-4 sm:px-6 pt-5 pb-12 shadow-inner overflow-hidden border border-[#dfb35e]/70"
+          style={{
+            clipPath: `polygon(
+              0% 0%, 
+              100% 0%, 
+              100% 32%, 
+              98% 34%, 
+              100% 36%, 
+              100% 68%, 
+              97.5% 70%, 
+              100% 72%, 
+              100% 97%, 
+              97.5% 98.5%, 
+              95% 97%, 
+              85% 98.5%, 
+              75% 97%, 
+              65% 99%, 
+              50% 96.5%, 
+              35% 99%, 
+              25% 97%, 
+              15% 98.5%, 
+              5% 97%, 
+              0% 99%, 
+              0% 75%, 
+              2.5% 73%, 
+              0% 71%, 
+              0% 40%, 
+              2% 38%, 
+              0% 36%
+            )`,
           }}
-          className={`flex-1 py-2 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-            activeTab === 'deposit'
-              ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 shadow-[0_4px_12px_rgba(245,158,11,0.5)] border border-yellow-200'
-              : 'text-slate-400 hover:text-amber-200 hover:bg-white/5'
-          }`}
         >
-          <ArrowDownLeft className="w-4 h-4 stroke-[2.8]" />
-          <span>Add Money (UPI QR)</span>
-        </button>
+          {/* Vintage Corner Flourishes / Filigree SVG */}
+          <svg className="absolute top-2 left-2 w-8 h-8 text-[#caa050]/40 pointer-events-none" viewBox="0 0 100 100" fill="currentColor">
+            <path d="M10,10 Q40,15 50,40 Q25,35 15,60 Q10,35 10,10 Z M20,10 Q60,10 70,50 Q40,30 20,10 Z" />
+          </svg>
+          <svg className="absolute top-2 right-2 w-8 h-8 text-[#caa050]/40 pointer-events-none rotate-90" viewBox="0 0 100 100" fill="currentColor">
+            <path d="M10,10 Q40,15 50,40 Q25,35 15,60 Q10,35 10,10 Z M20,10 Q60,10 70,50 Q40,30 20,10 Z" />
+          </svg>
+          <svg className="absolute bottom-5 left-2 w-8 h-8 text-[#caa050]/40 pointer-events-none -rotate-90" viewBox="0 0 100 100" fill="currentColor">
+            <path d="M10,10 Q40,15 50,40 Q25,35 15,60 Q10,35 10,10 Z M20,10 Q60,10 70,50 Q40,30 20,10 Z" />
+          </svg>
+          <svg className="absolute bottom-5 right-2 w-8 h-8 text-[#caa050]/40 pointer-events-none rotate-180" viewBox="0 0 100 100" fill="currentColor">
+            <path d="M10,10 Q40,15 50,40 Q25,35 15,60 Q10,35 10,10 Z M20,10 Q60,10 70,50 Q40,30 20,10 Z" />
+          </svg>
 
-        <button
-          onClick={() => {
-            SoundManager.play('click');
-            setActiveTab('withdraw');
-          }}
-          className={`flex-1 py-2 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-            activeTab === 'withdraw'
-              ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 shadow-[0_4px_12px_rgba(245,158,11,0.5)] border border-yellow-200'
-              : 'text-slate-400 hover:text-amber-200 hover:bg-white/5'
-          }`}
-        >
-          <ArrowUpRight className="w-4 h-4 stroke-[2.8]" />
-          <span>Withdraw</span>
-        </button>
+          {/* Header Title on Parchment */}
+          <div className="relative flex flex-col items-center mb-3 text-center px-4">
+            <h2 className="text-xl sm:text-2xl font-black uppercase tracking-wider text-[#5c2411] drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)] truncate max-w-full">
+              Ludo Royale Vault
+            </h2>
+            <div className="flex items-center justify-center flex-wrap gap-1.5 mt-0.5 max-w-full">
+              <span className="w-2 h-2 rounded-full bg-emerald-600 animate-ping shrink-0" />
+              <span className="text-[10.5px] sm:text-[11px] font-extrabold uppercase tracking-wide text-[#78350f]">
+                Official Real Escrow • Instant Settlements
+              </span>
+            </div>
+          </div>
 
-        <button
-          onClick={() => {
-            SoundManager.play('click');
-            setActiveTab('activity');
-          }}
-          className={`flex-1 py-2 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-            activeTab === 'activity'
-              ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 shadow-[0_4px_12px_rgba(245,158,11,0.5)] border border-yellow-200'
-              : 'text-slate-400 hover:text-amber-200 hover:bg-white/5'
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          <span>History</span>
-        </button>
-      </div>
+          {/* ========================================================================= */}
+          {/* BALANCE OVERVIEW (TOTAL, WINNINGS & DEPOSITED) */}
+          {/* ========================================================================= */}
+          <div className="relative bg-[#fff7d6] border-2 border-[#caa050] rounded-2xl p-3 sm:p-4 mb-3.5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.06),0_4px_12px_rgba(92,36,17,0.12)] w-full box-border">
+            <div className="flex items-baseline justify-between flex-wrap gap-1 mb-2">
+              <span className="text-xs font-black uppercase tracking-wider text-[#78350f] flex items-center gap-1 shrink-0">
+                <Wallet className="w-3.5 h-3.5 text-[#b45309]" />
+                Total Playing Balance
+              </span>
+              <span className="text-2xl sm:text-3xl font-black text-[#5c2411] font-mono shrink-0">
+                {currencySymbol}{balance.toFixed(2)}
+              </span>
+            </div>
 
-      {/* 3. Dynamic Tab Content */}
-      <AnimatePresence mode="wait">
-        {/* ===================== TAB 1: DEPOSIT / ADD MONEY ===================== */}
-        {activeTab === 'deposit' && (
-          <motion.div
-            key="fiat-deposit"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="space-y-4"
-          >
-            {/* Step 1: Select Amount & Scan Dynamic QR */}
-            <div className="bg-[#120426]/90 border border-amber-400/40 rounded-3xl p-4 sm:p-5 shadow-xl space-y-4">
-              <div className="flex items-center justify-between pb-2 border-b border-white/10">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full bg-amber-500 text-slate-950 font-black text-xs flex items-center justify-center">
-                    1
-                  </div>
-                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                    Select Channel & Deposit Amount
-                  </h3>
+            {/* Split Breakdown: WINNING vs DEPOSIT */}
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#dfb35e]/60 w-full box-border">
+              {/* Winning Balance (Withdrawable) */}
+              <div className="bg-gradient-to-br from-[#fef08a]/60 to-[#fde047]/40 border border-[#ca8a04]/50 rounded-xl p-2 text-left shadow-sm min-w-0 box-border">
+                <div className="flex items-center justify-between flex-wrap gap-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#713f12] flex items-center gap-1 shrink-0">
+                    <Trophy className="w-3 h-3 text-[#ca8a04]" />
+                    Winning
+                  </span>
+                  <span className="text-[9px] font-extrabold bg-emerald-700 text-white px-1.5 py-0.2 rounded-full shadow-xs shrink-0">
+                    Withdrawable
+                  </span>
                 </div>
-                <span className="text-[10.5px] font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                  Live Verification
+                <div className="text-base sm:text-lg font-black text-[#451a03] font-mono mt-0.5 truncate">
+                  {currencySymbol}{winningBalance.toFixed(2)}
+                </div>
+                <span className="text-[9px] text-[#854d0e] font-semibold block leading-tight truncate">
+                  Instant cashout
                 </span>
               </div>
 
-              {/* Payment Gateway Channel Selector (if multiple gateways configured) */}
-              {gateways.length > 1 && (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-300">Choose Payment Channel</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {gateways.map((gw) => (
+              {/* Deposit Balance (In-Play Only) */}
+              <div className="bg-gradient-to-br from-[#fef3c7]/60 to-[#fed7aa]/30 border border-[#d97706]/40 rounded-xl p-2 text-left shadow-sm min-w-0 box-border">
+                <div className="flex items-center justify-between flex-wrap gap-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#7c2d12] flex items-center gap-1 shrink-0">
+                    <Lock className="w-3 h-3 text-[#d97706]" />
+                    Deposit
+                  </span>
+                  <span className="text-[9px] font-extrabold bg-[#b45309] text-white px-1.5 py-0.2 rounded-full shadow-xs shrink-0">
+                    In-Play
+                  </span>
+                </div>
+                <div className="text-base sm:text-lg font-black text-[#451a03] font-mono mt-0.5 truncate">
+                  {currencySymbol}{depositBalance.toFixed(2)}
+                </div>
+                <span className="text-[9px] text-[#9a3412] font-semibold block leading-tight truncate">
+                  Play matches to win
+                </span>
+              </div>
+            </div>
+
+            {/* Locked in Match notice if applicable */}
+            {lockedBalance > 0 && (
+              <div className="mt-2 text-[10px] font-bold text-[#b45309] flex items-center justify-between flex-wrap gap-1 bg-amber-100/80 px-2 py-1 rounded-lg border border-amber-300 w-full box-border">
+                <span className="shrink-0">In Active Match / Locked Escrow:</span>
+                <span className="font-mono font-black shrink-0">{currencySymbol}{lockedBalance.toFixed(2)}</span>
+              </div>
+            )}
+          </div>
+
+          {/* ========================================================================= */}
+          {/* 3. 3D PILL NAVIGATION TABS (MATCHING LOBBY 3D BUTTONS) */}
+          {/* ========================================================================= */}
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2 mb-3.5">
+            {/* Add Money Tab */}
+            <button
+              type="button"
+              onClick={() => {
+                SoundManager.play('click');
+                setActiveTab('deposit');
+              }}
+              className={`py-2 px-1 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                activeTab === 'deposit'
+                  ? 'bg-gradient-to-b from-[#fde047] via-[#eab308] to-[#ca8a04] border-2 border-[#fef08a] shadow-[0_3px_8px_rgba(202,138,4,0.5),inset_0_2px_3px_rgba(255,255,255,0.7)] text-[#451a03] scale-[1.02]'
+                  : 'bg-[#e5be6b]/60 border border-[#b45309]/30 text-[#78350f] hover:bg-[#e5be6b]'
+              }`}
+            >
+              <ArrowDownLeft className="w-3.5 h-3.5 stroke-[3]" />
+              <span className="truncate">Add Cash</span>
+            </button>
+
+            {/* Withdraw Tab */}
+            <button
+              type="button"
+              onClick={() => {
+                SoundManager.play('click');
+                setActiveTab('withdraw');
+              }}
+              className={`py-2 px-1 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                activeTab === 'withdraw'
+                  ? 'bg-gradient-to-b from-[#fde047] via-[#eab308] to-[#ca8a04] border-2 border-[#fef08a] shadow-[0_3px_8px_rgba(202,138,4,0.5),inset_0_2px_3px_rgba(255,255,255,0.7)] text-[#451a03] scale-[1.02]'
+                  : 'bg-[#e5be6b]/60 border border-[#b45309]/30 text-[#78350f] hover:bg-[#e5be6b]'
+              }`}
+            >
+              <ArrowUpRight className="w-3.5 h-3.5 stroke-[3]" />
+              <span className="truncate">Withdraw</span>
+            </button>
+
+            {/* History Tab */}
+            <button
+              type="button"
+              onClick={() => {
+                SoundManager.play('click');
+                setActiveTab('activity');
+              }}
+              className={`py-2 px-1 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                activeTab === 'activity'
+                  ? 'bg-gradient-to-b from-[#fde047] via-[#eab308] to-[#ca8a04] border-2 border-[#fef08a] shadow-[0_3px_8px_rgba(202,138,4,0.5),inset_0_2px_3px_rgba(255,255,255,0.7)] text-[#451a03] scale-[1.02]'
+                  : 'bg-[#e5be6b]/60 border border-[#b45309]/30 text-[#78350f] hover:bg-[#e5be6b]'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span className="truncate">Passbook</span>
+            </button>
+          </div>
+
+          {/* ========================================================================= */}
+          {/* TAB CONTENTS */}
+          {/* ========================================================================= */}
+          <AnimatePresence mode="wait">
+            {/* ----------------- TAB 1: ADD CASH (DEPOSIT) ----------------- */}
+            {activeTab === 'deposit' && (
+              <motion.div
+                key="tab-deposit"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="space-y-3"
+              >
+                {/* Step 1 Box: Amount & Dynamic UPI QR */}
+                <div className="bg-[#fff9e6] border-2 border-[#caa050] rounded-2xl p-3 sm:p-4 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-[#caa050]/40">
+                    <span className="text-xs font-black uppercase text-[#5c2411] flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-[#ca8a04] text-white flex items-center justify-center font-black text-[11px]">
+                        1
+                      </span>
+                      Scan & Pay with Any UPI App
+                    </span>
+                    <span className="text-[9.5px] font-bold bg-emerald-600 text-white px-2 py-0.5 rounded-full">
+                      Zero Fees
+                    </span>
+                  </div>
+
+                  {/* Quick Chips */}
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {['100', '500', '1000', '2000'].map((amt) => (
                       <button
-                        key={gw.id}
+                        key={amt}
                         type="button"
                         onClick={() => {
                           SoundManager.play('click');
-                          setSelectedGateway(gw);
+                          setDepositAmount(amt);
                         }}
-                        className={`p-2.5 rounded-xl border text-left transition flex items-center gap-2.5 cursor-pointer ${
-                          selectedGateway?.id === gw.id
-                            ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-md shadow-amber-500/10'
-                            : 'bg-black/40 border-white/10 text-slate-400 hover:border-amber-400/40'
+                        className={`py-1.5 rounded-xl text-xs font-black transition cursor-pointer border ${
+                          depositAmount === amt
+                            ? 'bg-gradient-to-b from-[#fde047] via-[#eab308] to-[#ca8a04] border-[#fef08a] text-[#451a03] shadow-[0_2px_6px_rgba(202,138,4,0.4)] scale-[1.02]'
+                            : 'bg-[#fff7d6] text-[#78350f] border-[#caa050] hover:bg-[#fde79b]'
                         }`}
                       >
-                        {gw.type === 'UPI' && <Smartphone className="w-4 h-4 text-amber-400 shrink-0" />}
-                        {gw.type === 'BANK_TRANSFER' && <Building className="w-4 h-4 text-emerald-400 shrink-0" />}
-                        {gw.type === 'QR_CODE' && <QrCodeIcon className="w-4 h-4 text-yellow-400 shrink-0" />}
-                        <div className="overflow-hidden">
-                          <div className="text-xs font-bold truncate text-white">{gw.title}</div>
-                          <div className="text-[10px] text-slate-400 truncate">
-                            {gw.upiId || gw.accountNumber || (gw.type === 'QR_CODE' ? 'Scan & Pay' : 'Direct Transfer')}
-                          </div>
-                        </div>
+                        {currencySymbol}{amt}
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
 
-              {/* Quick Amount Chips */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-300">Choose Deposit Amount ({currencySymbol})</label>
-                <div className="grid grid-cols-4 gap-2">
-                  {['100', '500', '1000', '2000'].map((amt) => (
-                    <button
-                      key={amt}
-                      type="button"
-                      onClick={() => {
-                        SoundManager.play('click');
-                        setDepositAmount(amt);
-                      }}
-                      className={`py-2 rounded-xl text-xs font-black transition cursor-pointer border ${
-                        depositAmount === amt
-                          ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 border-amber-300 shadow-md shadow-amber-500/30 scale-[1.02]'
-                          : 'bg-black/40 text-slate-300 border-white/10 hover:border-amber-400/40'
-                      }`}
-                    >
-                      {currencySymbol}{amt}
-                    </button>
-                  ))}
-                </div>
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-amber-400 font-black text-sm">
-                    {currencySymbol}
-                  </span>
-                  <input
-                    type="number"
-                    min="10"
-                    placeholder="Enter custom deposit amount"
-                    value={depositAmount}
-                    onChange={(e) => setDepositAmount(e.target.value)}
-                    className="w-full bg-black/50 border border-amber-400/40 rounded-xl pl-8 pr-3.5 py-2.5 text-sm text-white font-mono font-bold focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Dynamic QR Code Scanner Display or Bank Details */}
-              <div className="bg-black/60 border border-amber-400/40 rounded-2xl p-4 sm:p-5 flex flex-col items-center justify-center text-center space-y-3">
-                {selectedGateway?.type === 'BANK_TRANSFER' ? (
-                  <div className="w-full space-y-3">
-                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-left space-y-2">
-                      <div className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                        <Building className="w-4 h-4" />
-                        <span>Direct Bank Transfer Details</span>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <span className="text-slate-400 block text-[10px]">Account Holder</span>
-                          <span className="font-bold text-white">{selectedGateway.accountHolderName || 'Platform Treasury'}</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-400 block text-[10px]">Bank Name</span>
-                          <span className="font-bold text-white">{selectedGateway.bankName || 'Direct IMPS'}</span>
-                        </div>
-                        <div className="flex items-center justify-between sm:col-span-2 bg-black/40 p-2 rounded-lg border border-white/5">
-                          <div>
-                            <span className="text-slate-400 block text-[10px]">Account Number</span>
-                            <span className="font-mono font-black text-amber-300 select-all text-sm">{selectedGateway.accountNumber}</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleCopy(selectedGateway.accountNumber || '')}
-                            className="px-2.5 py-1 bg-amber-500 text-slate-950 rounded text-xs font-bold hover:bg-amber-400"
-                          >
-                            Copy A/C
-                          </button>
-                        </div>
-                        <div className="flex items-center justify-between sm:col-span-2 bg-black/40 p-2 rounded-lg border border-white/5">
-                          <div>
-                            <span className="text-slate-400 block text-[10px]">IFSC Code</span>
-                            <span className="font-mono font-black text-emerald-300 select-all text-sm">{selectedGateway.ifscCode}</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleCopy(selectedGateway.ifscCode || '')}
-                            className="px-2.5 py-1 bg-amber-500 text-slate-950 rounded text-xs font-bold hover:bg-amber-400"
-                          >
-                            Copy IFSC
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+                  {/* Custom Amount Input */}
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#78350f] font-black text-sm">
+                      {currencySymbol}
+                    </span>
+                    <input
+                      type="number"
+                      min="10"
+                      placeholder="Enter custom deposit amount"
+                      value={depositAmount}
+                      onChange={(e) => setDepositAmount(e.target.value)}
+                      className="w-full bg-[#fffdf5] border-2 border-[#caa050] rounded-xl pl-7 pr-3 py-2 text-sm text-[#451a03] font-mono font-black focus:border-[#b45309] focus:outline-none"
+                    />
                   </div>
-                ) : (
-                  <>
-                    <div className="relative p-2.5 bg-white rounded-2xl shadow-[0_0_25px_rgba(245,158,11,0.25)] border-2 border-amber-400">
+
+                  {/* QR Code Container */}
+                  <div className="bg-[#fffdf5] border border-[#caa050] rounded-xl p-3 flex flex-col items-center justify-center text-center space-y-2">
+                    <div className="relative p-2 bg-white rounded-xl shadow-md border-2 border-[#ca8a04]">
                       {dynamicQrUrl ? (
                         <img
                           src={dynamicQrUrl}
                           alt="Dynamic UPI QR Code"
-                          className="w-48 h-48 sm:w-56 sm:h-56 object-contain rounded-lg"
+                          className="w-40 h-40 sm:w-44 sm:h-44 object-contain rounded-md"
                         />
                       ) : (
-                        <div className="w-48 h-48 sm:w-56 sm:h-56 flex flex-col items-center justify-center text-slate-950 font-bold text-xs p-4">
-                          <QrCodeIcon className="w-10 h-10 mb-2 opacity-50 animate-pulse" />
-                          <span>{selectedGateway?.upiId ? 'Generating QR Code...' : 'Configure UPI ID in Admin Panel'}</span>
+                        <div className="w-40 h-40 flex flex-col items-center justify-center text-[#78350f] font-bold text-xs p-2">
+                          <QrCodeIcon className="w-8 h-8 mb-1 opacity-60 animate-pulse" />
+                          <span>Generating Dynamic QR...</span>
                         </div>
                       )}
                     </div>
 
-                    <div className="space-y-1">
-                      <div className="text-sm font-black text-amber-300 uppercase tracking-wide flex items-center justify-center gap-1.5">
-                        <Smartphone className="w-4 h-4 text-amber-400" />
-                        <span>Scan with Any UPI App</span>
-                      </div>
-                      <p className="text-[11px] text-slate-300 max-w-sm font-medium">
-                        Amount of <span className="text-amber-400 font-bold">{currencySymbol}{depositAmount || '0'}</span> is automatically pre-filled. Open PhonePe, Google Pay, Paytm or BHIM to pay instantly.
-                      </p>
-                    </div>
+                    <p className="text-[11px] font-bold text-[#5c2411]">
+                      Amount of <span className="text-[#b45309] font-black">{currencySymbol}{depositAmount || '0'}</span> is auto-filled.
+                    </p>
 
+                    {/* Official UPI ID with Copy */}
                     {(selectedGateway?.upiId || gateways.find((g) => g.upiId)?.upiId) && (
-                      <div className="w-full max-w-md flex items-center justify-between bg-[#120426] border border-amber-500/30 p-2.5 rounded-xl">
-                        <div className="text-left pl-1">
-                          <div className="text-[9.5px] text-slate-400 uppercase font-semibold">Official Payment UPI ID</div>
-                          <div className="text-xs font-mono font-black text-amber-400 select-all">
+                      <div className="w-full flex items-center justify-between gap-2 bg-[#fff7d6] border border-[#caa050] p-2 rounded-lg text-left box-border">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[9px] text-[#78350f] uppercase font-bold">Official UPI ID</div>
+                          <div className="text-xs font-mono font-black text-[#5c2411] truncate select-all">
                             {selectedGateway?.upiId || gateways.find((g) => g.upiId)?.upiId}
                           </div>
                         </div>
                         <button
                           type="button"
                           onClick={() => handleCopy(selectedGateway?.upiId || gateways.find((g) => g.upiId)?.upiId || '')}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition cursor-pointer shadow"
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gradient-to-b from-[#38bdf8] via-[#0284c7] to-[#0369a1] text-white text-xs font-black shadow-xs cursor-pointer border border-[#7dd3fc] shrink-0"
                         >
-                          {copiedUpi ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                          {copiedUpi ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                           <span>{copiedUpi ? 'Copied' : 'Copy'}</span>
                         </button>
                       </div>
                     )}
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Step 2: Upload Screenshot & Submit 12-Digit UTR */}
-            <form
-              onSubmit={handleDepositSubmit}
-              className="bg-[#120426]/90 border border-amber-400/40 rounded-3xl p-4 sm:p-5 shadow-xl space-y-4"
-            >
-              <div className="flex items-center gap-2 pb-2 border-b border-white/10">
-                <div className="w-6 h-6 rounded-full bg-amber-500 text-slate-950 font-black text-xs flex items-center justify-center">
-                  2
-                </div>
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                  Upload Payment Screenshot & Enter UTR
-                </h3>
-              </div>
-
-              {/* 12-Digit UTR Field */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-                  <span>12-Digit UTR / Transaction Ref No</span>
-                  <span className="text-[10px] text-amber-400 font-mono font-bold">Mandatory</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. 423984719283 (from PhonePe/GPay receipt)"
-                  value={utrNumber}
-                  onChange={(e) => setUtrNumber(e.target.value)}
-                  className="w-full bg-black/40 border border-amber-400/40 rounded-xl px-3.5 py-2.5 text-sm text-amber-300 font-mono font-black focus:border-amber-400 focus:outline-none"
-                />
-              </div>
-
-              {/* Payment Screenshot File Upload */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-                  <span>Upload Payment Screenshot (Receipt)</span>
-                  <span className="text-[10px] text-emerald-400 font-bold">Verified Encrypted Storage</span>
-                </label>
-
-                {!screenshotPreview ? (
-                  <label className="border-2 border-dashed border-amber-400/50 hover:border-amber-400 rounded-2xl p-4 sm:p-5 flex flex-col items-center justify-center cursor-pointer bg-black/30 hover:bg-black/50 transition-all text-center group">
-                    <input
-                      type="file"
-                      accept="image/png, image/jpeg, image/jpg, image/webp"
-                      onChange={handleScreenshotChange}
-                      className="hidden"
-                    />
-                    <div className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-2 group-hover:scale-110 transition-transform">
-                      <UploadCloud className="w-5 h-5" />
-                    </div>
-                    <span className="text-xs font-bold text-white group-hover:text-amber-300">
-                      Click to Browse or Drag & Drop Screenshot
-                    </span>
-                    <span className="text-[10px] text-slate-400 mt-0.5">
-                      Supports JPG, PNG, WEBP (Max 10MB)
-                    </span>
-                  </label>
-                ) : (
-                  <div className="relative bg-black/60 border border-amber-400/50 rounded-2xl p-3 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 overflow-hidden">
-                      <img
-                        src={screenshotPreview}
-                        alt="Uploaded Payment Receipt"
-                        className="w-14 h-14 object-cover rounded-xl border border-amber-400/60 shrink-0"
-                      />
-                      <div className="truncate">
-                        <div className="text-xs font-bold text-white truncate">
-                          {screenshotFile?.name || 'Payment_Receipt.jpg'}
-                        </div>
-                        <div className="text-[10px] text-emerald-400 flex items-center gap-1 font-semibold mt-0.5">
-                          {isUploadingScreenshot ? (
-                            <>
-                              <RefreshCw className="w-3 h-3 animate-spin" />
-                              <span>Uploading screenshot...</span>
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span>Ready for Admin Verification</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={removeScreenshot}
-                      className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition cursor-pointer"
-                      title="Remove Screenshot"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
                   </div>
-                )}
-              </div>
-
-              {depositSuccessMsg && (
-                <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs font-bold text-emerald-400 flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span className="leading-relaxed">{depositSuccessMsg}</span>
                 </div>
-              )}
 
-              {depositErrorMsg && (
-                <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs font-bold text-rose-400 flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{depositErrorMsg}</span>
-                </div>
-              )}
-
-              {/* REDESIGNED HIGH-IMPACT INSTANT APPROVAL SUBMIT BUTTON */}
-              <div className="relative group pt-1">
-                {/* Ambient Golden Under-glow */}
-                <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-amber-500/40 via-yellow-400/50 to-orange-500/40 blur-md opacity-75 group-hover:opacity-100 transition-opacity pointer-events-none" />
-
-                <motion.button
-                  type="submit"
-                  disabled={isSubmittingDeposit || isUploadingScreenshot}
-                  whileHover={{ scale: 1.02, y: -2 }}
-                  whileTap={{ scale: 0.98 }}
-                  id="submit-deposit-instant-approval-btn"
-                  className="relative w-full py-4 px-6 bg-gradient-to-r from-[#f59e0b] via-[#fbbf24] to-[#f59e0b] hover:from-[#fbbf24] hover:via-[#fde047] hover:to-[#f59e0b] text-slate-950 rounded-2xl border-2 border-yellow-200 shadow-[0_10px_28px_rgba(245,158,11,0.5),0_4px_12px_rgba(0,0,0,0.6)] border-b-4 border-amber-800 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center overflow-hidden"
+                {/* Step 2 Box: Mandatory 12-Digit UTR and Mandatory Screenshot */}
+                <form
+                  onSubmit={handleDepositSubmit}
+                  className="bg-[#fff9e6] border-2 border-[#caa050] rounded-2xl p-3 sm:p-4 shadow-sm space-y-3 w-full box-border"
                 >
-                  {/* Top Specular Sheen */}
-                  <div className="absolute top-0 inset-x-4 h-3 bg-gradient-to-b from-white/70 to-transparent rounded-t-xl pointer-events-none" />
+                  <div className="flex items-center justify-between flex-wrap gap-1 pb-1.5 border-b border-[#caa050]/40">
+                    <span className="text-xs font-black uppercase text-[#5c2411] flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-[#ca8a04] text-white flex items-center justify-center font-black text-[11px] shrink-0">
+                        2
+                      </span>
+                      Mandatory Payment Verification
+                    </span>
+                    <span className="text-[9.5px] font-black bg-rose-600 text-white px-2 py-0.5 rounded-full uppercase shrink-0">
+                      Both Required
+                    </span>
+                  </div>
 
-                  {/* Shimmer Light Bar */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full animate-[shimmer_2.5s_infinite] pointer-events-none" />
-
-                  <div className="relative z-10 flex items-center justify-center gap-2.5">
-                    {isSubmittingDeposit ? (
-                      <>
-                        <RefreshCw className="w-5 h-5 animate-spin text-slate-950" />
-                        <span className="font-black text-sm uppercase tracking-wider text-slate-950">
-                          Routing to Verification Queue...
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <div className="w-6 h-6 rounded-full bg-slate-950 text-amber-400 flex items-center justify-center shadow-inner">
-                          <Zap className="w-4 h-4 fill-amber-400 stroke-[2.5]" />
+                  {/* 12-Digit UTR Field */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-black text-[#5c2411] flex items-center justify-between flex-wrap gap-1">
+                      <span>12-Digit UTR / REF / RRN Number <span className="text-rose-600">*</span></span>
+                      <span className="text-[10px] font-mono font-bold text-[#b45309]">12 Digits Strict</span>
+                    </label>
+                    <div className="relative w-full">
+                      <input
+                        type="text"
+                        required
+                        maxLength={12}
+                        placeholder="e.g. 4248XXXXXXXX"
+                        value={utrNumber}
+                        onChange={(e) => setUtrNumber(e.target.value.toUpperCase())}
+                        className={`w-full bg-[#fffdf5] border-2 rounded-xl pl-3 pr-20 py-2 text-sm font-mono font-black focus:outline-none box-border ${
+                          utrNumber.trim().length === 12
+                            ? 'border-emerald-600 text-emerald-900 bg-emerald-50/40'
+                            : 'border-[#caa050] text-[#451a03] focus:border-[#b45309]'
+                        }`}
+                      />
+                      {utrNumber.trim().length === 12 && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 flex items-center gap-1 text-[11px] font-bold shrink-0 pointer-events-none">
+                          <CheckCheck className="w-4 h-4 stroke-[3]" />
+                          <span>Valid</span>
                         </div>
-                        <span className="font-black text-sm sm:text-base uppercase tracking-wider text-slate-950 drop-shadow-[0_1px_1px_rgba(255,255,255,0.6)]">
-                          Submit Deposit for Instant Approval
-                        </span>
-                        <CheckCircle2 className="w-5 h-5 text-slate-950 stroke-[2.8]" />
-                      </>
+                      )}
+                    </div>
+                    {utrNumber.trim().length > 0 && utrNumber.trim().length !== 12 && (
+                      <p className="text-[10px] font-bold text-rose-700">
+                        UTR must be exactly 12 characters ({utrNumber.trim().length}/12 entered)
+                      </p>
                     )}
                   </div>
 
-                  {/* Sub-label guarantee badge */}
-                  <div className="relative z-10 flex items-center gap-1.5 mt-1 text-[10.5px] font-bold text-amber-950/80">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-800" />
-                    <span>24x7 Priority Review • Average Credited in 30 Seconds</span>
+                  {/* Mandatory Payment Screenshot Upload */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-black text-[#5c2411] flex items-center justify-between flex-wrap gap-1">
+                      <span>Transaction Screenshot Receipt <span className="text-rose-600">*</span></span>
+                      <span className="text-[10px] font-bold text-emerald-700">Encrypted Cloud Storage</span>
+                    </label>
+
+                    {!screenshotPreview ? (
+                      <label className="border-2 border-dashed border-[#ca8a04] hover:border-[#b45309] rounded-xl p-3 sm:p-4 flex flex-col items-center justify-center cursor-pointer bg-[#fffdf5] hover:bg-[#fff7d6] transition-all text-center group">
+                        <input
+                          type="file"
+                          accept="image/png, image/jpeg, image/jpg, image/webp"
+                          onChange={handleScreenshotChange}
+                          className="hidden"
+                        />
+                        <div className="w-9 h-9 rounded-full bg-[#ca8a04]/20 border border-[#ca8a04] flex items-center justify-center text-[#78350f] mb-1.5 group-hover:scale-105 transition-transform">
+                          <UploadCloud className="w-5 h-5" />
+                        </div>
+                        <span className="text-xs font-black text-[#5c2411]">
+                          Click to Upload Payment Screenshot Receipt
+                        </span>
+                        <span className="text-[10px] text-[#78350f]">
+                          JPG, PNG, WEBP (Max 10MB) • Mandatory for approval
+                        </span>
+                      </label>
+                    ) : (
+                      <div className="relative bg-[#fffdf5] border-2 border-emerald-600/70 rounded-xl p-2.5 flex items-center justify-between gap-2.5 shadow-xs">
+                        <div className="flex items-center gap-2.5 overflow-hidden">
+                          <img
+                            src={screenshotPreview}
+                            alt="Receipt Preview"
+                            className="w-12 h-12 object-cover rounded-lg border border-[#caa050] shrink-0"
+                          />
+                          <div className="truncate">
+                            <div className="text-xs font-black text-[#5c2411] truncate">
+                              {screenshotFile?.name || 'Payment_Proof.jpg'}
+                            </div>
+                            <div className="text-[10px] text-emerald-700 flex items-center gap-1 font-bold">
+                              {isUploadingScreenshot ? (
+                                <>
+                                  <RefreshCw className="w-3 h-3 animate-spin" />
+                                  <span>Securing upload...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  <span>Proof Verified & Attached</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={removeScreenshot}
+                          className="p-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 border border-rose-300 transition cursor-pointer"
+                          title="Remove Screenshot"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
-                </motion.button>
-              </div>
-            </form>
-          </motion.div>
-        )}
 
-        {/* ===================== TAB 2: WITHDRAW ===================== */}
-        {activeTab === 'withdraw' && (
-          <motion.div
-            key="fiat-withdraw"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="space-y-4"
-          >
-            <form
-              onSubmit={handleWithdrawSubmit}
-              className="bg-[#120426]/90 border border-amber-400/40 rounded-3xl p-4 sm:p-5 shadow-xl space-y-4"
-            >
-              <div className="flex items-center justify-between pb-2 border-b border-white/10">
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <ArrowUpRight className="w-4 h-4 text-amber-400" />
-                  <span>Request Outgoing Payout</span>
-                </h3>
-                <span className="text-xs font-mono text-amber-400 font-bold">
-                  Max: {currencySymbol}{balance.toFixed(2)}
-                </span>
-              </div>
+                  {depositSuccessMsg && (
+                    <div className="p-2.5 bg-emerald-100 border border-emerald-400 rounded-xl text-xs font-bold text-emerald-900 flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-700" />
+                      <span>{depositSuccessMsg}</span>
+                    </div>
+                  )}
 
-              {/* Method Switcher */}
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPayoutMethod('UPI')}
-                  className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 border transition cursor-pointer ${
-                    payoutMethod === 'UPI'
-                      ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md'
-                      : 'bg-black/40 text-slate-400 border-white/10'
-                  }`}
-                >
-                  <Smartphone className="w-4 h-4" />
-                  <span>Direct UPI</span>
-                </button>
+                  {depositErrorMsg && (
+                    <div className="p-2.5 bg-rose-100 border border-rose-400 rounded-xl text-xs font-bold text-rose-900 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-700" />
+                      <span>{depositErrorMsg}</span>
+                    </div>
+                  )}
 
-                <button
-                  type="button"
-                  onClick={() => setPayoutMethod('BANK_TRANSFER')}
-                  className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 border transition cursor-pointer ${
-                    payoutMethod === 'BANK_TRANSFER'
-                      ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md'
-                      : 'bg-black/40 text-slate-400 border-white/10'
-                  }`}
-                >
-                  <Building className="w-4 h-4" />
-                  <span>Bank Account</span>
-                </button>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-300">Amount ({currencySymbol})</label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    required
-                    placeholder="Enter withdrawal amount"
-                    value={withdrawAmount}
-                    onChange={(e) => setWithdrawAmount(e.target.value)}
-                    className="w-full bg-black/40 border border-amber-400/40 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono font-bold focus:border-amber-400 focus:outline-none"
-                  />
+                  {/* 3D Gold Submit Button */}
                   <button
-                    type="button"
-                    onClick={() => setWithdrawAmount(balance.toString())}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 px-2 py-1 rounded-lg bg-amber-500 text-slate-950 text-[10px] font-black uppercase"
+                    type="submit"
+                    disabled={
+                      isSubmittingDeposit ||
+                      isUploadingScreenshot ||
+                      utrNumber.trim().length !== 12 ||
+                      (!screenshotPreview && !uploadedScreenshotUrl)
+                    }
+                    className="w-full py-3 mb-2 bg-gradient-to-b from-[#fde047] via-[#eab308] to-[#ca8a04] hover:from-[#fef08a] hover:via-[#fde047] hover:to-[#eab308] text-[#451a03] font-black text-sm uppercase tracking-wider rounded-xl shadow-[0_4px_12px_rgba(202,138,4,0.6),inset_0_2px_4px_rgba(255,255,255,0.8)] border-2 border-[#fef08a] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    MAX
+                    {isSubmittingDeposit ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Sending to Priority Queue...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-4 h-4 fill-[#451a03]" />
+                        <span>Submit for verification</span>
+                      </>
+                    )}
                   </button>
-                </div>
-              </div>
+                </form>
+              </motion.div>
+            )}
 
-              {payoutMethod === 'UPI' && (
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-300">Your UPI ID (GPay / PhonePe / Paytm)</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. yourname@oksbi"
-                    value={payoutUpiId}
-                    onChange={(e) => setPayoutUpiId(e.target.value)}
-                    className="w-full bg-black/40 border border-amber-400/40 rounded-xl px-3.5 py-2 text-sm text-amber-400 font-mono font-bold focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
-              )}
-
-              {payoutMethod === 'BANK_TRANSFER' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-400">Account Holder Name</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Amit Kumar"
-                      value={payoutHolderName}
-                      onChange={(e) => setPayoutHolderName(e.target.value)}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-400">Account Number</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. 109283746501"
-                      value={payoutAccNo}
-                      onChange={(e) => setPayoutAccNo(e.target.value)}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono focus:border-amber-400 focus:outline-none"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-400">IFSC Code</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. SBIN0001234"
-                      value={payoutIfsc}
-                      onChange={(e) => setPayoutIfsc(e.target.value)}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono focus:border-amber-400 focus:outline-none uppercase"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-400">Bank Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. State Bank of India"
-                      value={payoutBankName}
-                      onChange={(e) => setPayoutBankName(e.target.value)}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {withdrawSuccessMsg && (
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs font-bold text-emerald-400 flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span className="leading-relaxed">{withdrawSuccessMsg}</span>
-                </div>
-              )}
-
-              {withdrawErrorMsg && (
-                <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs font-bold text-rose-400 flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{withdrawErrorMsg}</span>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={isSubmittingWithdraw}
-                className="w-full py-3 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-sm uppercase tracking-wider rounded-2xl shadow-lg shadow-amber-500/20 transition cursor-pointer disabled:opacity-50"
+            {/* ----------------- TAB 2: WITHDRAW (WINNINGS ONLY & 5% FEE) ----------------- */}
+            {activeTab === 'withdraw' && (
+              <motion.div
+                key="tab-withdraw"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="space-y-3"
               >
-                {isSubmittingWithdraw ? 'Processing Payout Request...' : 'Confirm Withdrawal Request'}
-              </button>
-            </form>
-          </motion.div>
-        )}
+                <form
+                  onSubmit={handleWithdrawSubmit}
+                  className="bg-[#fff9e6] border-2 border-[#caa050] rounded-2xl p-3 sm:p-4 shadow-sm space-y-3"
+                >
+                  <div className="flex items-center justify-between pb-1.5 border-b border-[#caa050]/40">
+                    <span className="text-xs font-black uppercase text-[#5c2411] flex items-center gap-1.5">
+                      <Trophy className="w-4 h-4 text-[#ca8a04]" />
+                      Withdraw Winning Amount
+                    </span>
+                    <span className="text-[10px] font-black font-mono text-[#451a03] bg-[#fde047] px-2 py-0.5 rounded-md border border-[#ca8a04]">
+                      Max Winnings: {currencySymbol}{winningBalance.toFixed(2)}
+                    </span>
+                  </div>
 
-        {/* ===================== TAB 3: HISTORY ===================== */}
-        {activeTab === 'activity' && (
-          <motion.div
-            key="fiat-history"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="space-y-3"
-          >
-            <div className="space-y-2.5">
-              {depositHistory.length === 0 && withdrawalHistory.length === 0 ? (
-                <div className="bg-[#120426]/90 border border-amber-400/40 rounded-3xl p-8 text-center space-y-2">
-                  <FileText className="w-8 h-8 text-amber-400/60 mx-auto" />
-                  <p className="text-xs font-bold text-slate-300">No payment transactions yet.</p>
-                  <p className="text-[11px] text-slate-500">Deposit money or request payout to see history.</p>
-                </div>
-              ) : (
-                <>
-                  {depositHistory.map((d) => (
-                    <div
-                      key={`dep-${d.id}`}
-                      className="bg-[#120426]/95 border border-amber-400/40 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-md"
+                  {/* Notice about Winning vs Deposited balance */}
+                  <div className="p-2.5 bg-amber-100/90 border border-amber-300 rounded-xl text-[11px] text-[#78350f] space-y-1">
+                    <div className="font-extrabold text-[#5c2411] flex items-center gap-1">
+                      <Info className="w-3.5 h-3.5 text-[#ca8a04]" />
+                      Withdrawal Policy:
+                    </div>
+                    <ul className="list-disc pl-4 space-y-0.5 font-bold text-[10.5px]">
+                      <li>Deposited balance is for playing matches only and cannot be withdrawn.</li>
+                      <li>Only Winning Balance is eligible for payout.</li>
+                      <li>Minimum withdrawal is <span className="text-rose-800 font-extrabold">{currencySymbol}100.00</span>.</li>
+                      <li>Platform fee: <span className="text-[#b45309] font-extrabold">5%</span> (deducted from gross request).</li>
+                    </ul>
+                  </div>
+
+                  {/* Payout Channel Selector (UPI vs Bank) */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        SoundManager.play('click');
+                        setPayoutMethod('UPI');
+                      }}
+                      className={`py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 border transition cursor-pointer ${
+                        payoutMethod === 'UPI'
+                          ? 'bg-gradient-to-b from-[#fde047] via-[#eab308] to-[#ca8a04] border-[#fef08a] text-[#451a03] shadow-[0_2px_6px_rgba(202,138,4,0.4)]'
+                          : 'bg-[#fff7d6] text-[#78350f] border-[#caa050]'
+                      }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center font-black">
-                          <ArrowDownLeft className="w-5 h-5" />
+                      <Smartphone className="w-3.5 h-3.5" />
+                      <span>Direct UPI</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        SoundManager.play('click');
+                        setPayoutMethod('BANK_TRANSFER');
+                      }}
+                      className={`py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 border transition cursor-pointer ${
+                        payoutMethod === 'BANK_TRANSFER'
+                          ? 'bg-gradient-to-b from-[#fde047] via-[#eab308] to-[#ca8a04] border-[#fef08a] text-[#451a03] shadow-[0_2px_6px_rgba(202,138,4,0.4)]'
+                          : 'bg-[#fff7d6] text-[#78350f] border-[#caa050]'
+                      }`}
+                    >
+                      <Building className="w-3.5 h-3.5" />
+                      <span>Bank Account</span>
+                    </button>
+                  </div>
+
+                  {/* Withdrawal Amount Input with MAX button */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-black text-[#5c2411]">Withdraw Amount ({currencySymbol})</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#78350f] font-black text-sm">
+                        {currencySymbol}
+                      </span>
+                      <input
+                        type="number"
+                        min="100"
+                        step="1"
+                        required
+                        placeholder="Enter amount (min ₹100)"
+                        value={withdrawAmount}
+                        onChange={(e) => setWithdrawAmount(e.target.value)}
+                        className="w-full bg-[#fffdf5] border-2 border-[#caa050] rounded-xl pl-7 pr-28 py-2 text-sm text-[#451a03] font-mono font-black focus:border-[#b45309] focus:outline-none box-border"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          SoundManager.play('click');
+                          setWithdrawAmount(winningBalance > 0 ? winningBalance.toString() : '0');
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-gradient-to-b from-[#f87171] via-[#ef4444] to-[#b91c1c] text-white text-[10px] font-black uppercase shadow-xs border border-[#fca5a5] active:scale-95 transition-transform shrink-0"
+                      >
+                        Max Winnings
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* REAL-TIME 5% PLATFORM FEE CALCULATION BREAKDOWN BOX */}
+                  {numWithdraw > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="bg-gradient-to-br from-[#fff7d6] to-[#fef08a]/50 border-2 border-[#caa050] rounded-xl p-3 space-y-1.5 shadow-xs w-full box-border"
+                    >
+                      <div className="flex items-center justify-between flex-wrap gap-1 text-xs font-bold text-[#5c2411]">
+                        <span>Gross Withdrawal Request:</span>
+                        <span className="font-mono font-black shrink-0">{currencySymbol}{numWithdraw.toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center justify-between flex-wrap gap-1 text-xs font-bold text-[#7c2d12]">
+                        <span className="flex items-center gap-1">
+                          <span>Platform Service Fee:</span>
+                          <span className="text-[10px] bg-rose-600 text-white px-1.5 py-0.2 rounded-full font-mono font-black">
+                            5%
+                          </span>
+                        </span>
+                        <span className="font-mono font-black text-rose-700 shrink-0">
+                          -{currencySymbol}{withdrawFee.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="pt-1.5 border-t border-[#caa050]/60 flex items-center justify-between flex-wrap gap-1 text-sm font-black text-[#451a03]">
+                        <span>Total Amount You Receive:</span>
+                        <span className="text-base font-black font-mono text-emerald-800 shrink-0">
+                          {currencySymbol}{netWithdraw.toFixed(2)}
+                        </span>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Live Validation Warnings */}
+                  {numWithdraw > 0 && numWithdraw < 100 && (
+                    <div className="p-2 bg-amber-100 border border-amber-300 rounded-xl text-[11px] font-bold text-amber-900 flex items-center gap-1.5 w-full box-border">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                      <span>Minimum withdrawal amount is {currencySymbol}100.00 of winning balance.</span>
+                    </div>
+                  )}
+
+                  {numWithdraw > winningBalance && (
+                    <div className="p-2 bg-rose-100 border border-rose-300 rounded-xl text-[11px] font-bold text-rose-900 flex items-center gap-1.5 w-full box-border">
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-700 shrink-0" />
+                      <span>
+                        Cannot withdraw deposited balance. Only winning balance ({currencySymbol}{winningBalance.toFixed(2)}) is withdrawable.
+                      </span>
+                    </div>
+                  )}
+
+                  {/* UPI Inputs */}
+                  {payoutMethod === 'UPI' && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-black text-[#5c2411]">Your UPI ID (GPay / PhonePe / Paytm / BHIM)</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. yourname@oksbi"
+                        value={payoutUpiId}
+                        onChange={(e) => setPayoutUpiId(e.target.value)}
+                        className="w-full bg-[#fffdf5] border-2 border-[#caa050] rounded-xl px-3 py-2 text-sm text-[#451a03] font-mono font-bold focus:border-[#b45309] focus:outline-none"
+                      />
+                    </div>
+                  )}
+
+                  {/* Bank Account Inputs */}
+                  {payoutMethod === 'BANK_TRANSFER' && (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-[#5c2411]">Account Holder Name</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Ramesh Kumar"
+                            value={payoutHolderName}
+                            onChange={(e) => setPayoutHolderName(e.target.value)}
+                            className="w-full bg-[#fffdf5] border-2 border-[#caa050] rounded-xl px-2.5 py-1.5 text-xs text-[#451a03] font-bold focus:border-[#b45309] focus:outline-none"
+                          />
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-black text-white">Deposit</span>
-                            <span
-                              className={`text-[9.5px] font-bold px-2 py-0.5 rounded-md ${
-                                d.status === 'APPROVED'
-                                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
-                                  : d.status === 'REJECTED'
-                                  ? 'bg-rose-950 text-rose-300 border border-rose-500/40'
-                                  : 'bg-amber-950 text-amber-300 border border-amber-500/40'
-                              }`}
-                            >
-                              {d.status}
-                            </span>
-                            {d.screenshotUrl && (
-                              <a
-                                href={d.screenshotUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-[9.5px] font-mono text-cyan-400 hover:underline flex items-center gap-0.5"
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-[#5c2411]">Account Number</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. 109283746501"
+                            value={payoutAccNo}
+                            onChange={(e) => setPayoutAccNo(e.target.value)}
+                            className="w-full bg-[#fffdf5] border-2 border-[#caa050] rounded-xl px-2.5 py-1.5 text-xs text-[#451a03] font-mono font-bold focus:border-[#b45309] focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-[#5c2411]">IFSC Code</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. SBIN0001234"
+                            value={payoutIfsc}
+                            onChange={(e) => setPayoutIfsc(e.target.value.toUpperCase())}
+                            className="w-full bg-[#fffdf5] border-2 border-[#caa050] rounded-xl px-2.5 py-1.5 text-xs text-[#451a03] font-mono font-bold focus:border-[#b45309] focus:outline-none uppercase"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-[#5c2411]">Bank Name</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. State Bank of India"
+                            value={payoutBankName}
+                            onChange={(e) => setPayoutBankName(e.target.value)}
+                            className="w-full bg-[#fffdf5] border-2 border-[#caa050] rounded-xl px-2.5 py-1.5 text-xs text-[#451a03] font-bold focus:border-[#b45309] focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {withdrawSuccessMsg && (
+                    <div className="p-2.5 bg-emerald-100 border border-emerald-400 rounded-xl text-xs font-bold text-emerald-900 flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-700" />
+                      <span>{withdrawSuccessMsg}</span>
+                    </div>
+                  )}
+
+                  {withdrawErrorMsg && (
+                    <div className="p-2.5 bg-rose-100 border border-rose-400 rounded-xl text-xs font-bold text-rose-900 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-700" />
+                      <span>{withdrawErrorMsg}</span>
+                    </div>
+                  )}
+
+                  {/* 3D Emerald Green Submit Button */}
+                  <button
+                    type="submit"
+                    disabled={isSubmittingWithdraw || numWithdraw < 100 || numWithdraw > winningBalance}
+                    className="w-full py-3 mb-2 bg-gradient-to-b from-[#4ade80] via-[#22c55e] to-[#15803d] hover:from-[#86efac] hover:via-[#4ade80] hover:to-[#22c55e] text-white font-black text-sm uppercase tracking-wider rounded-xl shadow-[0_4px_12px_rgba(22,101,52,0.6),inset_0_2px_4px_rgba(255,255,255,0.8)] border-2 border-[#86efac] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isSubmittingWithdraw ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Locking Funds & Requesting Payout...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4 stroke-[3]" />
+                        <span>Confirm Withdrawal ({currencySymbol}{netWithdraw.toFixed(2)} Net)</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+              </motion.div>
+            )}
+
+            {/* ----------------- TAB 3: PASSBOOK / HISTORY ----------------- */}
+            {activeTab === 'activity' && (
+              <motion.div
+                key="tab-activity"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="space-y-2.5"
+              >
+                {depositHistory.length === 0 && withdrawalHistory.length === 0 ? (
+                  <div className="bg-[#fff9e6] border-2 border-[#caa050] rounded-2xl p-6 text-center space-y-1.5">
+                    <FileText className="w-8 h-8 text-[#ca8a04] mx-auto" />
+                    <p className="text-xs font-black text-[#5c2411]">No transactions recorded yet.</p>
+                    <p className="text-[11px] text-[#78350f]">Add cash or withdraw winnings to view your ledger history.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                    {depositHistory.map((d) => (
+                      <div
+                        key={`dep-${d.id}`}
+                        className="bg-[#fffdf5] border-2 border-[#caa050] rounded-xl p-2.5 flex items-center justify-between gap-2 shadow-xs min-w-0 box-border"
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-black shrink-0">
+                            <ArrowDownLeft className="w-4 h-4 stroke-[3]" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-black text-[#5c2411]">Deposit</span>
+                              <span
+                                className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-md shrink-0 ${
+                                  d.status === 'APPROVED'
+                                    ? 'bg-emerald-700 text-white'
+                                    : d.status === 'REJECTED'
+                                    ? 'bg-rose-700 text-white'
+                                    : 'bg-amber-600 text-white'
+                                }`}
                               >
-                                <ImageIcon className="w-3 h-3" />
-                                <span>Receipt</span>
-                              </a>
-                            )}
-                          </div>
-                          <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                            UTR: {d.utrNumber} • {new Date(d.createdAt).toLocaleTimeString()}
+                                {d.status}
+                              </span>
+                              {d.screenshotUrl && (
+                                <a
+                                  href={d.screenshotUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[9px] font-bold text-[#0284c7] hover:underline flex items-center gap-0.5 shrink-0"
+                                >
+                                  <ImageIcon className="w-3 h-3" />
+                                  <span>Receipt</span>
+                                </a>
+                              )}
+                            </div>
+                            <div className="text-[9.5px] text-[#78350f] font-mono truncate max-w-full">
+                              UTR: {d.utrNumber} • {new Date(d.createdAt).toLocaleDateString()}
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      <div className="text-right">
-                        <div className="text-sm font-black font-mono text-emerald-400">
-                          +{currencySymbol}{parseFloat(d.amount).toFixed(2)}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {withdrawalHistory.map((w) => (
-                    <div
-                      key={`wth-${w.id}`}
-                      className="bg-[#120426]/95 border border-amber-400/40 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-md"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center font-black">
-                          <ArrowUpRight className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-black text-white">Withdrawal ({w.payoutMethod})</span>
-                            <span
-                              className={`text-[9.5px] font-bold px-2 py-0.5 rounded-md ${
-                                w.status === 'PROCESSED' || w.status === 'APPROVED'
-                                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
-                                  : w.status === 'REJECTED'
-                                  ? 'bg-rose-950 text-rose-300 border border-rose-500/40'
-                                  : 'bg-amber-950 text-amber-300 border border-amber-500/40'
-                              }`}
-                            >
-                              {w.status}
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                            {w.payoutReference ? `Ref: ${w.payoutReference}` : 'Pending Payout'} • {new Date(w.createdAt).toLocaleTimeString()}
+                        <div className="text-right shrink-0">
+                          <div className="text-sm font-black font-mono text-emerald-800">
+                            +{currencySymbol}{parseFloat(d.amount).toFixed(2)}
                           </div>
                         </div>
                       </div>
+                    ))}
 
-                      <div className="text-right">
-                        <div className="text-sm font-black font-mono text-rose-400">
-                          -{currencySymbol}{parseFloat(w.amount).toFixed(2)}
+                    {withdrawalHistory.map((w) => (
+                      <div
+                        key={`wth-${w.id}`}
+                        className="bg-[#fffdf5] border-2 border-[#caa050] rounded-xl p-2.5 flex items-center justify-between gap-2 shadow-xs min-w-0 box-border"
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <div className="w-8 h-8 rounded-lg bg-[#ca8a04] text-white flex items-center justify-center font-black shrink-0">
+                            <ArrowUpRight className="w-4 h-4 stroke-[3]" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-black text-[#5c2411]">Withdrawal</span>
+                              <span
+                                className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-md shrink-0 ${
+                                  w.status === 'PROCESSED' || w.status === 'APPROVED'
+                                    ? 'bg-emerald-700 text-white'
+                                    : w.status === 'REJECTED'
+                                    ? 'bg-rose-700 text-white'
+                                    : 'bg-amber-600 text-white'
+                                }`}
+                              >
+                                {w.status}
+                              </span>
+                            </div>
+                            <div className="text-[9.5px] text-[#78350f] font-mono truncate max-w-full">
+                              {w.payoutReference ? `Ref: ${w.payoutReference}` : 'Pending Payout'} • {new Date(w.createdAt).toLocaleDateString()}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <div className="text-sm font-black font-mono text-rose-700">
+                            -{currencySymbol}{parseFloat(w.amount).toFixed(2)}
+                          </div>
+                          {w.feeAmount && parseFloat(w.feeAmount) > 0 && (
+                            <div className="text-[9px] text-[#78350f] font-bold">
+                              Fee: {currencySymbol}{parseFloat(w.feeAmount).toFixed(2)}
+                            </div>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                    ))}
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
     </div>
   );
 };

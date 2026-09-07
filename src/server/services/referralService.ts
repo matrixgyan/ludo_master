@@ -106,22 +106,23 @@ function syncToDisk() {
 
 export class ReferralService {
   /**
-   * Helper to generate a clean, secure, collision-free referral code
+   * Helper to ensure player's actual user ID is used as the referral code
    */
-  private static generateUniqueCode(userId: string): string {
-    const hash = Math.abs(
-      userId.split('').reduce((acc, char) => (acc << 5) - acc + char.charCodeAt(0), 0)
-    ).toString(36).toUpperCase();
-    const suffix = Math.floor(1000 + Math.random() * 9000);
-    return `LUDO${hash.slice(0, 3)}${suffix}`.slice(0, 10);
+  private static getReferralCodeForUser(userId: string): string {
+    return (userId || 'user_guest_default').trim();
   }
 
   /**
-   * Get or create a permanent referral code for a user
+   * Get or create a permanent referral code for a user (Code IS player actual user ID)
    */
   public static async getOrCreateUserCode(userId: string): Promise<ReferralCodeItem> {
     const cleanUserId = (userId || 'user_guest_default').trim();
     let existing = inMemoryReferralCodes.find((rc) => rc.userId === cleanUserId);
+
+    if (existing && existing.code !== cleanUserId) {
+      existing.code = cleanUserId;
+      syncToDisk();
+    }
 
     if (!existing && isPostgresConfigured()) {
       try {
@@ -138,13 +139,15 @@ export class ReferralService {
               const row = res.rows[0];
               existing = {
                 userId: row.user_id,
-                code: row.code,
+                code: cleanUserId, // Player actual user ID as refer code
                 totalEarned: String(row.total_earned || '0.00000000'),
                 totalInvited: Number(row.total_invited || 0),
                 totalQualified: Number(row.total_qualified || 0),
                 createdAt: new Date(row.created_at).toISOString(),
                 updatedAt: new Date(row.updated_at).toISOString(),
               };
+              // Keep DB synchronized with player actual user ID
+              await client.query(`UPDATE referral_codes SET code = $1 WHERE user_id = $1`, [cleanUserId]);
               inMemoryReferralCodes.push(existing);
               syncToDisk();
             }
@@ -158,10 +161,9 @@ export class ReferralService {
     }
 
     if (!existing) {
-      const generatedCode = this.generateUniqueCode(cleanUserId);
       existing = {
         userId: cleanUserId,
-        code: generatedCode,
+        code: cleanUserId, // Player actual user ID as refer code
         totalEarned: '0.00000000',
         totalInvited: 0,
         totalQualified: 0,
@@ -185,9 +187,9 @@ export class ReferralService {
 
               await client.query(
                 `INSERT INTO referral_codes (user_id, code, total_earned, total_invited, total_qualified)
-                 VALUES ($1, $2, '0.00000000', 0, 0)
-                 ON CONFLICT (user_id) DO NOTHING`,
-                [cleanUserId, generatedCode]
+                 VALUES ($1, $1, '0.00000000', 0, 0)
+                 ON CONFLICT (user_id) DO UPDATE SET code = $1`,
+                [cleanUserId]
               );
             } finally {
               client.release();
@@ -265,9 +267,9 @@ export class ReferralService {
       throw new Error('Please enter a referral code.');
     }
 
-    // 1. Find referrer by code
+    // 1. Find referrer by code or user ID (case-insensitive)
     let referrerCodeObj = inMemoryReferralCodes.find(
-      (rc) => rc.code.toUpperCase() === cleanCode
+      (rc) => rc.code.toLowerCase() === cleanCode.toLowerCase() || rc.userId.toLowerCase() === cleanCode.toLowerCase()
     );
 
     if (!referrerCodeObj && isPostgresConfigured()) {
@@ -276,16 +278,19 @@ export class ReferralService {
         if (pool) {
           const client = await pool.connect();
           try {
+            // First check referral_codes table
             const res = await client.query(
               `SELECT user_id, code, total_earned, total_invited, total_qualified, created_at, updated_at
-               FROM referral_codes WHERE code = $1 LIMIT 1`,
+               FROM referral_codes 
+               WHERE LOWER(code) = LOWER($1) OR LOWER(user_id) = LOWER($1)
+               LIMIT 1`,
               [cleanCode]
             );
             if (res.rows.length > 0) {
               const row = res.rows[0];
               referrerCodeObj = {
                 userId: row.user_id,
-                code: row.code,
+                code: row.user_id, // Player actual user ID as refer code
                 totalEarned: String(row.total_earned || '0.00000000'),
                 totalInvited: Number(row.total_invited || 0),
                 totalQualified: Number(row.total_qualified || 0),
@@ -293,6 +298,16 @@ export class ReferralService {
                 updatedAt: new Date(row.updated_at).toISOString(),
               };
               inMemoryReferralCodes.push(referrerCodeObj);
+            } else {
+              // If not yet in referral_codes, check if user exists in users table
+              const userRes = await client.query(
+                `SELECT id, username FROM users WHERE LOWER(id) = LOWER($1) OR LOWER(username) = LOWER($1) LIMIT 1`,
+                [cleanCode]
+              );
+              if (userRes.rows.length > 0) {
+                const targetUserId = userRes.rows[0].id;
+                referrerCodeObj = await ReferralService.getOrCreateUserCode(targetUserId);
+              }
             }
           } finally {
             client.release();
@@ -615,5 +630,64 @@ export class ReferralService {
    */
   public static async getAllReferrals(): Promise<ReferralItem[]> {
     return inMemoryReferrals;
+  }
+
+  /**
+   * Get top referrers from real database (100% genuine database data, no mocks)
+   */
+  public static async getTopReferrers(): Promise<Array<{
+    rank: number;
+    userId: string;
+    username: string;
+    avatar: string;
+    totalEarned: number;
+    totalInvited: number;
+    totalQualified: number;
+  }>> {
+    const pool = getDbPool();
+    if (!pool || !isPostgresConfigured()) {
+      return inMemoryReferralCodes
+        .sort((a, b) => (parseFloat(b.totalEarned) || 0) - (parseFloat(a.totalEarned) || 0))
+        .slice(0, 15)
+        .map((rc, idx) => ({
+          rank: idx + 1,
+          userId: rc.userId,
+          username: rc.userId,
+          avatar: '',
+          totalEarned: parseFloat(rc.totalEarned) || 0,
+          totalInvited: rc.totalInvited || 0,
+          totalQualified: rc.totalQualified || 0,
+        }));
+    }
+
+    try {
+      const res = await pool.query(`
+        SELECT 
+          rc.user_id,
+          rc.code,
+          rc.total_earned,
+          rc.total_invited,
+          rc.total_qualified,
+          COALESCE(NULLIF(u.username, ''), NULLIF(u.display_name, ''), rc.user_id) AS username,
+          COALESCE(u.avatar_url, '') AS avatar_url
+        FROM referral_codes rc
+        LEFT JOIN users u ON u.id = rc.user_id
+        ORDER BY rc.total_earned DESC, rc.total_invited DESC, rc.created_at ASC
+        LIMIT 25;
+      `);
+
+      return res.rows.map((row, idx) => ({
+        rank: idx + 1,
+        userId: row.user_id,
+        username: row.username,
+        avatar: row.avatar_url,
+        totalEarned: parseFloat(row.total_earned) || 0,
+        totalInvited: parseInt(row.total_invited, 10) || 0,
+        totalQualified: parseInt(row.total_qualified, 10) || 0,
+      }));
+    } catch (err) {
+      Logger.warn(`Error getting top referrers: ${String(err)}`);
+      return [];
+    }
   }
 }
