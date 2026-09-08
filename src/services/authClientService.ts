@@ -45,6 +45,29 @@ export class AuthClientService {
     return this.user?.id || null;
   }
 
+  /**
+   * Returns authenticated user ID, or persistent 10-digit guest ID.
+   * Guarantees player never sees 'user_guest_default'.
+   */
+  public static getEffectiveUserId(): string {
+    this.initialize();
+    if (this.user?.id && this.user.id !== 'user_guest_default') {
+      return this.user.id;
+    }
+    if (typeof window === 'undefined') return '7849102834';
+    try {
+      let guestId = localStorage.getItem('ludo_permanent_guest_id');
+      if (!guestId || guestId === 'user_guest_default' || guestId.length < 6) {
+        // Generate permanent unique 10-digit numeric Player User ID
+        guestId = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+        localStorage.setItem('ludo_permanent_guest_id', guestId);
+      }
+      return guestId;
+    } catch {
+      return '7849102834';
+    }
+  }
+
   public static getToken(): string | null {
     this.initialize();
     return this.token;

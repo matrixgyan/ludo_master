@@ -185,10 +185,26 @@ export default function App() {
       localStorage.removeItem('evm_testnet_user_balance');
     } catch {}
 
+    // Auto-detect referral link query (?ref=... or ?referral=...)
+    try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const refCode = params.get('ref') || params.get('referral');
+        if (refCode && refCode.trim()) {
+          const cleanRef = refCode.trim();
+          localStorage.setItem('pending_referral_code', cleanRef);
+          const activeUid = currentUser?.id || AuthClientService.getEffectiveUserId();
+          if (activeUid && activeUid.toLowerCase() !== cleanRef.toLowerCase()) {
+            ReferralClientService.applyReferralCode(cleanRef, activeUid).catch(() => {});
+          }
+        }
+      }
+    } catch {}
+
     fetchRealWalletBalance();
     const balanceInterval = setInterval(fetchRealWalletBalance, 4000);
     return () => clearInterval(balanceInterval);
-  }, [fetchRealWalletBalance]);
+  }, [fetchRealWalletBalance, currentUser?.id]);
 
   const handleUpdateBalance = useCallback((amountChange: number) => {
     setBalance((prev) => {
@@ -661,7 +677,8 @@ export default function App() {
   // Match Complete -> Prepare Board for 2P, 3P, or 4P
   const handleMatchComplete = (matchedOpponents: MatchedOpponent[]) => {
     // Record match event for anti-fraud referral qualification
-    ReferralClientService.recordMatchEvent('user_guest_default');
+    const effectivePlayerId = currentUser?.id || AuthClientService.getEffectiveUserId();
+    ReferralClientService.recordMatchEvent(effectivePlayerId);
     setLastMatchedOpponents(matchedOpponents);
 
     if (currentMatchConfig?.gameType === 'snake') {
@@ -1672,7 +1689,7 @@ export default function App() {
             handleStartOnlineMatch(mode, fee, prize, gType, varN, pConfig, tId);
           }}
           onRefreshBalance={fetchRealWalletBalance}
-          userId={currentUser?.id || 'user_guest_default'}
+          userId={currentUser?.id || AuthClientService.getEffectiveUserId()}
           userName={currentUser?.displayName || currentUser?.username || 'Player 1'}
           userAvatar={currentUser?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=160&auto=format&fit=crop&q=80'}
           userEmail={currentUser?.email}

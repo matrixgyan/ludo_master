@@ -37,7 +37,7 @@ export interface ReferralItem {
   firstMatchPlayed: boolean;
   matchGameId?: string;
   firstMatchPlayedAt?: string;
-  rewardAmount: string; // 20.00
+  rewardAmount: string; // 25.00
   rewardCredited: boolean;
   rewardCreditedAt?: string;
   rewardTxId?: string;
@@ -80,14 +80,14 @@ try {
     const raw = fs.readFileSync(referralCodesFilePath, 'utf-8');
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      inMemoryReferralCodes = parsed;
+      inMemoryReferralCodes = parsed.filter((rc: any) => rc.userId !== 'user_guest_default');
     }
   }
   if (fs.existsSync(referralsFilePath)) {
     const raw = fs.readFileSync(referralsFilePath, 'utf-8');
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      inMemoryReferrals = parsed;
+      inMemoryReferrals = parsed.filter((r: any) => r.referrerId !== 'user_guest_default' && r.refereeId !== 'user_guest_default');
     }
   }
 } catch {
@@ -109,14 +109,21 @@ export class ReferralService {
    * Helper to ensure player's actual user ID is used as the referral code
    */
   private static getReferralCodeForUser(userId: string): string {
-    return (userId || 'user_guest_default').trim();
+    const clean = (userId || '').trim();
+    if (!clean || clean === 'user_guest_default') {
+      return Math.floor(1000000000 + Math.random() * 9000000000).toString();
+    }
+    return clean;
   }
 
   /**
    * Get or create a permanent referral code for a user (Code IS player actual user ID)
    */
   public static async getOrCreateUserCode(userId: string): Promise<ReferralCodeItem> {
-    const cleanUserId = (userId || 'user_guest_default').trim();
+    let cleanUserId = (userId || '').trim();
+    if (!cleanUserId || cleanUserId === 'user_guest_default') {
+      cleanUserId = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+    }
     let existing = inMemoryReferralCodes.find((rc) => rc.userId === cleanUserId);
 
     if (existing && existing.code !== cleanUserId) {
@@ -352,7 +359,7 @@ export class ReferralService {
       depositCompleted: false,
       depositAmount: '0.00',
       firstMatchPlayed: false,
-      rewardAmount: '20.00',
+      rewardAmount: '25.00',
       rewardCredited: false,
       ipAddress: ipAddress || '127.0.0.1',
       createdAt: new Date().toISOString(),
@@ -383,7 +390,7 @@ export class ReferralService {
 
             await client.query(
               `INSERT INTO referrals (id, referrer_id, referee_id, referral_code, status, deposit_completed, deposit_amount, first_match_played, reward_amount, reward_credited, ip_address)
-               VALUES ($1, $2, $3, $4, 'PENDING', false, '0.00000000', false, '20.00000000', false, $5)
+               VALUES ($1, $2, $3, $4, 'PENDING', false, '0.00000000', false, '25.00000000', false, $5)
                ON CONFLICT (id) DO NOTHING`,
               [
                 referralItem.id,
@@ -412,7 +419,7 @@ export class ReferralService {
       userId: referrerCodeObj.userId,
       type: 'REFERRAL_REWARD',
       title: '👥 New Friend Joined via Your Code!',
-      message: `A new player joined using your code ${cleanCode}. Your ₹20 reward will be credited once they complete a deposit and play 1 match.`,
+      message: `A new player joined using your code ${cleanCode}. Your ₹25 reward will be credited once they complete a deposit and play 1 match.`,
       referenceId: referralItem.id,
     });
 
@@ -474,7 +481,7 @@ export class ReferralService {
         userId: pendingReferral.referrerId,
         type: 'REFERRAL_REWARD',
         title: '⚡ Referral Step 1/2 Completed!',
-        message: `Your friend deposited ₹${depositAmount}. Your ₹20 reward will unlock as soon as they play their 1st match!`,
+        message: `Your friend deposited ₹${depositAmount}. Your ₹25 reward will unlock as soon as they play their 1st match!`,
         referenceId: pendingReferral.id,
       });
     }
@@ -511,7 +518,7 @@ export class ReferralService {
         userId: pendingReferral.referrerId,
         type: 'REFERRAL_REWARD',
         title: '⚡ Referral Step 1/2 Completed!',
-        message: `Your friend played their 1st match. Your ₹20 reward will unlock as soon as they make a deposit!`,
+        message: `Your friend played their 1st match. Your ₹25 reward will unlock as soon as they make a deposit!`,
         referenceId: pendingReferral.id,
       });
     }
@@ -519,7 +526,7 @@ export class ReferralService {
 
   /**
    * Production-grade Final Reward Unlock & Wallet Balance Credit
-   * Credits ₹20 straight into the referrer's wallet!
+   * Credits ₹25 straight into the referrer's wallet!
    */
   private static async unlockAndCreditReward(referral: ReferralItem): Promise<void> {
     if (referral.rewardCredited || referral.status === 'COMPLETED') {
@@ -532,7 +539,7 @@ export class ReferralService {
     referral.rewardTxId = `ref_reward_${referral.id}`;
     referral.updatedAt = new Date().toISOString();
 
-    const rewardNum = parseFloat(referral.rewardAmount) || 20.0;
+    const rewardNum = parseFloat(referral.rewardAmount) || 25.0;
 
     // Update referrer's code stats
     const referrerCodeObj = inMemoryReferralCodes.find((rc) => rc.userId === referral.referrerId);
@@ -553,7 +560,7 @@ export class ReferralService {
         rewardNum.toFixed(8),
         referral.rewardTxId,
         {
-          type: 'REFERRAL_BONUS_20_INR',
+          type: 'REFERRAL_BONUS_25_INR',
           refereeId: referral.refereeId,
           referralId: referral.id,
         }
@@ -599,9 +606,9 @@ export class ReferralService {
     notificationService.addNotification({
       userId: referral.referrerId,
       type: 'REFERRAL_REWARD',
-      title: '🎉 ₹20 Referral Reward Credited!',
-      message: `Your friend made their 1st deposit and played a match. ₹20 Cash Reward has been credited directly to your wallet!`,
-      amount: '20.00',
+      title: '🎉 ₹25 Referral Reward Credited!',
+      message: `Your friend made their 1st deposit and played a match. ₹25 Cash Reward has been credited directly to your wallet!`,
+      amount: '25.00',
       referenceId: referral.id,
     });
 

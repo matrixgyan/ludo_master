@@ -932,7 +932,7 @@ export const ManualFiatWalletView: React.FC<ManualFiatWalletViewProps> = ({
                       utrNumber.trim().length !== 12 ||
                       (!screenshotPreview && !uploadedScreenshotUrl)
                     }
-                    className="w-full py-3 mb-2 bg-gradient-to-b from-[#fde047] via-[#eab308] to-[#ca8a04] hover:from-[#fef08a] hover:via-[#fde047] hover:to-[#eab308] text-[#451a03] font-black text-sm uppercase tracking-wider rounded-xl shadow-[0_4px_12px_rgba(202,138,4,0.6),inset_0_2px_4px_rgba(255,255,255,0.8)] border-2 border-[#fef08a] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full py-3.5 mb-8 bg-gradient-to-b from-[#fde047] via-[#eab308] to-[#ca8a04] hover:from-[#fef08a] hover:via-[#fde047] hover:to-[#eab308] text-[#451a03] font-black text-sm uppercase tracking-wider rounded-xl shadow-[0_4px_12px_rgba(202,138,4,0.6),inset_0_2px_4px_rgba(255,255,255,0.8)] border-2 border-[#fef08a] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 relative z-10"
                   >
                     {isSubmittingDeposit ? (
                       <>

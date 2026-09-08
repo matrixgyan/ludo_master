@@ -385,6 +385,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
           setIsReferOpen(false);
           setActiveTab('assets');
         }}
+        userId={userId}
       />
 
       <ProfileModal
